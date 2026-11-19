@@ -1,0 +1,11 @@
+{
+  "ingredients": [
+    "oceansdelight:fugu_slice",
+    "oceansdelight:fugu_slice",
+    "farmersdelight:cooked_rice"
+  ],
+  "result": {
+    "id": "oceansdelight:fugu_roll"
+  },
+  "type": "minecraft:crafting_shapeless"
+}

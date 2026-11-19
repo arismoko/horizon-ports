@@ -1,11 +1,15 @@
-oceansdelight for Horizon 26.3 (version 1.0.2-horizon.2)
+Ocean's Delight for Horizon 26.3 (version 1.0.2-horizon.3)
 
 A port of Ocean's Delight fdrf-fabric-1.0.2-1.20 by Scouter.
 Original source: https://github.com/Scouter456/Oceans_Delight
 Original licence: MIT
 
-Ported to Horizon by lavoide: the rules are re-implemented as a Horizon native mod (Rust), and
-the content (items, blocks, textures, models, data) is carried over from the original jar.
-This port is distributed under the same licence as the original (MIT); the licence text is
-in LICENSE (the original's own file where its jar has one). It needs Horizon at commit
-fdc87aecdbd116bf1e08adcd062fcbaea8c2e2ca.
+Ported to Horizon by lavoide: a content package (no code). The items, blocks, textures, models and data
+are carried over from the original jar and converted to Horizon's content format. Its cooking pot and
+cutting board recipes, its guardian soup feast and its loot run on the farmersdelight package
+(Farmer's Delight for Horizon) 0.5 or later, which it needs. This port is distributed under the same
+licence as the original (MIT); the licence text is in LICENSE.
+
+The jar's fabric.mod.json names MIT; the licence file in the jar (LICENSE_oceansdelight, kept here as
+LICENSE-CC0) and the 1.20 Fabric branch's file are the CC0 1.0 text of the Fabric template. This port
+uses MIT, which either allows; LICENSE is the MIT text with the author's name.

@@ -1,0 +1,9 @@
+{
+  "cookingtime": 600,
+  "experience": 0.35,
+  "ingredient": "oceansdelight:stuffed_cod",
+  "result": {
+    "id": "oceansdelight:cooked_stuffed_cod"
+  },
+  "type": "minecraft:campfire_cooking"
+}

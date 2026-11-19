@@ -1,11 +1,24 @@
-nethersdelight for Horizon 26.3 (version 4.1.1-horizon.2)
+Nether's Delight Refabricated for Horizon 26.3 (version 4.1.1-horizon.3)
 
-A port of Nether's Delight Refabricated 1.20.1-4.1.1 by RaymondBlaze.
+A port of Nether's Delight Refabricated 1.20.1-4.1.1 by RaymondBlaze, a Fabric port and fork of
+Nether's Delight by Umpaz, SoyTutta and Sammy.
 Original source: https://github.com/DragonsPlusMinecraft/NethersDelightRefabricated
-Original licence: LGPL-2.1-only
+Upstream project: https://github.com/Chefs-Delight/NethersDelight_Forge
+Original licence: LGPL-2.1-only (the Refabricated project as a whole); MIT (the upstream project)
 
-Ported to Horizon by lavoide: the rules are re-implemented as a Horizon native mod (Rust), and
-the content (items, blocks, textures, models, data) is carried over from the original jar.
-This port is distributed under the same licence as the original (LGPL-2.1-only); the licence text is
-in LICENSE (the original's own file where its jar has one). It needs Horizon at commit
-fdc87aecdbd116bf1e08adcd062fcbaea8c2e2ca.
+Ported to Horizon by lavoide: a content package (no code). The items, blocks, textures, models and data
+are carried over from the original jar and converted to Horizon's content format. Its stove, furnaces,
+feast, plants, soils and loot run on the farmersdelight package (Farmer's Delight for Horizon) 0.5 or
+later, which it needs. This port is distributed under the same licence as the original,
+LGPL-2.1-only; the licence text is in LICENSE (the jar's LICENSE_FABRIC). The upstream project's MIT
+licence is in LICENSE-FORGE (the jar's LICENSE_FORGE). The package is its own source.
+
+The jar's LICENSING.md says:
+
+  This project, Nether's Delight Refabricated is a Fabric port and fork of Nether's Delight
+  (https://github.com/Chefs-Delight/NethersDelight_Forge). The upstream project, Nether's Delight, is
+  licensed under the MIT license (LICENSE_FORGE), you should be receiving the license file in all
+  copies or substantial portions of this project. This project, Nether's Delight Refabricated is
+  licensed under GNU Lesser General Public License v2.1 (LICENSE_FABRIC), more specifically, the
+  license applies to all modifications to the upstream project, and thus also applying to this
+  project as a whole.
