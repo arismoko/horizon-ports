@@ -1,6 +1,9 @@
 {
   "values": [
-    "#c:is_mushroom",
+    {
+      "id": "#c:is_mushroom",
+      "required": false
+    },
     "minecraft:mushroom_fields"
   ]
 }

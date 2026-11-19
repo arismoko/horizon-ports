@@ -8,7 +8,7 @@
 # (parts and hooks; no game module or mixin since 0.5.0). It also serves the delight add-ons' blocks.
 id = "farmersdelight"
 name = "Farmer's Delight"
-version = "0.5.0"
+version = "0.5.1"
 description = "Cooking, farming and food: stoves, cooking pots, skillets, cutting boards, crops and meals (Farmer's Delight 2.4.1 by vectorwing, MehVahdJukaar, MerchantPug)"
 authors = ["vectorwing", "MehVahdJukaar", "MerchantPug"]
 api = "0.2"

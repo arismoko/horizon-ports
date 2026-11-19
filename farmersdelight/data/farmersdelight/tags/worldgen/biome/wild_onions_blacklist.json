@@ -2,6 +2,9 @@
   "values": [
     "minecraft:lush_caves",
     "minecraft:mushroom_fields",
-    "#c:is_mushroom"
+    {
+      "id": "#c:is_mushroom",
+      "required": false
+    }
   ]
 }
