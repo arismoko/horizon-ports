@@ -1,0 +1,17 @@
+{
+ "type": "minecraft:crafting_shaped",
+ "category": "misc",
+ "pattern": [
+  " L ",
+  "LSL",
+  " L "
+ ],
+ "key": {
+  "L": "#minecraft:logs",
+  "S": "sophisticatedstorage:smelting_upgrade"
+ },
+ "result": {
+  "id": "sophisticatedstorage:smoking_upgrade",
+  "count": 1
+ }
+}

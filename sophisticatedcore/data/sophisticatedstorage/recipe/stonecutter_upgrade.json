@@ -1,0 +1,19 @@
+{
+ "type": "minecraft:crafting_shaped",
+ "category": "misc",
+ "pattern": [
+  " S ",
+  "IBI",
+  " R "
+ ],
+ "key": {
+  "B": "sophisticatedstorage:upgrade_base",
+  "I": "minecraft:iron_ingot",
+  "R": "minecraft:redstone",
+  "S": "minecraft:stonecutter"
+ },
+ "result": {
+  "id": "sophisticatedstorage:stonecutter_upgrade",
+  "count": 1
+ }
+}

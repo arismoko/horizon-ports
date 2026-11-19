@@ -1,0 +1,187 @@
+{
+ "template": "minecraft:stone",
+ "properties": {
+  "hardness": 2.5,
+  "explosion_resistance": 1200.0,
+  "sounds": "minecraft:oak_planks",
+  "requires_tool": false,
+  "occludes": false
+ },
+ "state_properties": {
+  "facing": {
+   "type": "enum",
+   "values": [
+    "north",
+    "south",
+    "west",
+    "east"
+   ]
+  },
+  "type": {
+   "type": "enum",
+   "values": [
+    "single",
+    "left",
+    "right"
+   ]
+  },
+  "wood": {
+   "type": "enum",
+   "values": [
+    "oak",
+    "spruce",
+    "birch",
+    "acacia",
+    "jungle",
+    "dark_oak",
+    "crimson",
+    "mangrove",
+    "warped",
+    "cherry",
+    "bamboo"
+   ]
+  },
+  "packed": {
+   "type": "boolean"
+  }
+ },
+ "default_state": {
+  "facing": "north",
+  "type": "single",
+  "wood": "oak",
+  "packed": "false"
+ },
+ "shapes": {
+  "properties": [
+   "facing",
+   "type"
+  ],
+  "values": {
+   "south,single": [
+    [
+     0.0625,
+     0,
+     0.0625,
+     0.9375,
+     0.875,
+     0.9375
+    ]
+   ],
+   "south,left": [
+    [
+     0,
+     0,
+     0.0625,
+     0.9375,
+     0.875,
+     0.9375
+    ]
+   ],
+   "south,right": [
+    [
+     0.0625,
+     0,
+     0.0625,
+     1,
+     0.875,
+     0.9375
+    ]
+   ],
+   "west,single": [
+    [
+     0.0625,
+     0,
+     0.0625,
+     0.9375,
+     0.875,
+     0.9375
+    ]
+   ],
+   "west,left": [
+    [
+     0.0625,
+     0,
+     0,
+     0.9375,
+     0.875,
+     0.9375
+    ]
+   ],
+   "west,right": [
+    [
+     0.0625,
+     0,
+     0.0625,
+     0.9375,
+     0.875,
+     1
+    ]
+   ],
+   "north,single": [
+    [
+     0.0625,
+     0,
+     0.0625,
+     0.9375,
+     0.875,
+     0.9375
+    ]
+   ],
+   "north,left": [
+    [
+     0.0625,
+     0,
+     0.0625,
+     1,
+     0.875,
+     0.9375
+    ]
+   ],
+   "north,right": [
+    [
+     0,
+     0,
+     0.0625,
+     0.9375,
+     0.875,
+     0.9375
+    ]
+   ],
+   "east,single": [
+    [
+     0.0625,
+     0,
+     0.0625,
+     0.9375,
+     0.875,
+     0.9375
+    ]
+   ],
+   "east,left": [
+    [
+     0.0625,
+     0,
+     0.0625,
+     0.9375,
+     0.875,
+     1
+    ]
+   ],
+   "east,right": [
+    [
+     0.0625,
+     0,
+     0,
+     0.9375,
+     0.875,
+     0.9375
+    ]
+   ]
+  }
+ },
+ "components": {
+  "minecraft:damage_resistant": {
+   "types": "#minecraft:is_fire"
+  }
+ }
+}

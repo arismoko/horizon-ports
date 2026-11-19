@@ -1,0 +1,17 @@
+{
+  "type": "minecraft:crafting_shaped",
+  "category": "misc",
+  "pattern": [
+    "DDD",
+    "DSD",
+    "DDD"
+  ],
+  "key": {
+    "D": "minecraft:diamond_block",
+    "S": "sophisticatedbackpacks:stack_upgrade_tier_2"
+  },
+  "result": {
+    "id": "sophisticatedbackpacks:stack_upgrade_tier_3",
+    "count": 1
+  }
+}

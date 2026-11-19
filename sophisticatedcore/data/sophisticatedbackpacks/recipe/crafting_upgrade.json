@@ -1,0 +1,22 @@
+{
+  "type": "minecraft:crafting_shaped",
+  "category": "misc",
+  "pattern": [
+    " T ",
+    "IBI",
+    " C "
+  ],
+  "key": {
+    "B": "sophisticatedbackpacks:upgrade_base",
+    "C": [
+      "minecraft:chest",
+      "minecraft:trapped_chest"
+    ],
+    "I": "minecraft:iron_ingot",
+    "T": "minecraft:crafting_table"
+  },
+  "result": {
+    "id": "sophisticatedbackpacks:crafting_upgrade",
+    "count": 1
+  }
+}

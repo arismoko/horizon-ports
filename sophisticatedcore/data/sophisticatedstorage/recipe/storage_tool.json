@@ -1,0 +1,19 @@
+{
+ "type": "minecraft:crafting_shaped",
+ "category": "misc",
+ "pattern": [
+  " EI",
+  " SR",
+  "S  "
+ ],
+ "key": {
+  "E": "minecraft:ender_pearl",
+  "I": "minecraft:iron_ingot",
+  "R": "minecraft:redstone_torch",
+  "S": "minecraft:stick"
+ },
+ "result": {
+  "id": "sophisticatedstorage:storage_tool",
+  "count": 1
+ }
+}

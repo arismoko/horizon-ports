@@ -2,7 +2,7 @@
 
 Ports of mods from the Homestead 2.0 modpack (Fabric 1.20.1) to [Horizon](https://github.com/horizon-rust/horizon) 26.3. Each folder holds one port, unpacked from its files (`.hnmod` native source mods, `.hmod` content mods), with the original's licence and a NOTICE. Each port is under its original's licence. The files are in this repository's releases, one per port (`<port>-v<version>`).
 
-Pinned to Horizon `fdc87ae` and Horizon Mixins `e8cd0aa`.
+Ports moved to the new single-package format are built with Horizon's exact-build SDK `dd67b76` (each folder's README says which); the rest are still pinned to Horizon `fdc87ae` and Horizon Mixins `e8cd0aa`.
 
 | Port | What it does | Original | Licence |
 |---|---|---|---|
@@ -48,3 +48,6 @@ Pinned to Horizon `fdc87ae` and Horizon Mixins `e8cd0aa`.
 | [accelerateddecay](accelerateddecay/) | Leaves decay quickly after a tree is cut. | [Accelerated Decay](https://github.com/errormikey/accelerated-decay) by ErrorMikey | GPL-3.0-only |
 | [betterthanmending](betterthanmending/) | Sneak-use to repair mending gear with experience. | [BetterThanMending](https://github.com/legobmw99/BetterThanMending/tree/fabric) by legobmw99 | GPL-3.0-only |
 | [fallingtrees](fallingtrees/) | Trees fall when their base is cut. | [Panda's Falling Tree's](https://github.com/PandaMods-Dev/Pandas-Falling-Trees) by The Panda Oliver | GPL-3.0-only |
+| [carryon](carryon/) | Pick up chests with their contents, and mobs, and carry them. | [Carry On](https://github.com/Tschipp/CarryOn) by Tschipp | LGPL-3.0 |
+| [toms_storage](toms_storage/) | Join chests into one network and reach it all from a storage terminal. | [Tom's Simple Storage](https://github.com/tom5454/Toms-Storage) by tom5454 | MIT |
+| [sophisticatedcore](sophisticatedcore/) | Sophisticated Backpacks and Sophisticated Storage in one package. | [Sophisticated Core](https://github.com/Salandora/SophisticatedCore), Backpacks and Storage (Fabric ports by Salandora; originals by P3pp3rF1y) | GPL-3.0 |

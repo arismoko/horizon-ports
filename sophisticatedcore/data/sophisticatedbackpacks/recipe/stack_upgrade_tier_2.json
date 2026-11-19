@@ -1,0 +1,17 @@
+{
+  "type": "minecraft:crafting_shaped",
+  "category": "misc",
+  "pattern": [
+    "GGG",
+    "GSG",
+    "GGG"
+  ],
+  "key": {
+    "G": "minecraft:gold_block",
+    "S": "sophisticatedbackpacks:stack_upgrade_tier_1"
+  },
+  "result": {
+    "id": "sophisticatedbackpacks:stack_upgrade_tier_2",
+    "count": 1
+  }
+}

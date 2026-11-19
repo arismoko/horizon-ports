@@ -1,0 +1,21 @@
+{
+  "type": "sophisticatedcore:upgrade_next_tier",
+  "pattern": [
+    "III",
+    "IBI",
+    "III"
+  ],
+  "key": {
+    "B": [
+      "sophisticatedbackpacks:backpack"
+    ],
+    "I": [
+      "minecraft:iron_ingot"
+    ]
+  },
+  "result": {
+    "id": "sophisticatedbackpacks:iron_backpack",
+    "count": 1
+  },
+  "copy": "B"
+}

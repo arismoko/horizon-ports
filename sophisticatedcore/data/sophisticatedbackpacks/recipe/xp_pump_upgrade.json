@@ -1,0 +1,19 @@
+{
+  "type": "minecraft:crafting_shaped",
+  "category": "misc",
+  "pattern": [
+    "RER",
+    "CPC",
+    "RER"
+  ],
+  "key": {
+    "C": "minecraft:experience_bottle",
+    "E": "minecraft:ender_eye",
+    "P": "sophisticatedbackpacks:advanced_pump_upgrade",
+    "R": "minecraft:redstone"
+  },
+  "result": {
+    "id": "sophisticatedbackpacks:xp_pump_upgrade",
+    "count": 1
+  }
+}

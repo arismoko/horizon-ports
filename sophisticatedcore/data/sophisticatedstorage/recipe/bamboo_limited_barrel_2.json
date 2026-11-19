@@ -1,0 +1,37 @@
+{
+ "type": "minecraft:crafting_shaped",
+ "category": "misc",
+ "pattern": [
+  "PPP",
+  "SRS",
+  "PPP"
+ ],
+ "key": {
+  "P": "minecraft:bamboo_planks",
+  "R": "minecraft:redstone_torch",
+  "S": "minecraft:bamboo_slab"
+ },
+ "result": {
+  "id": "sophisticatedstorage:limited_barrel_2",
+  "count": 1,
+  "components": {
+   "minecraft:custom_data": {
+    "woodType": "bamboo"
+   },
+   "minecraft:custom_model_data": {
+    "strings": [
+     "bamboo"
+    ]
+   },
+   "minecraft:item_name": {
+    "translate": "block.sophisticatedstorage.limited_barrel_2.wooden",
+    "with": [
+     {
+      "translate": "wood_name.sophisticatedstorage.bamboo"
+     },
+     " "
+    ]
+   }
+  }
+ }
+}

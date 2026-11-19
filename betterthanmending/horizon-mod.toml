@@ -1,0 +1,17 @@
+# betterthanmending: a native trait mod (docs/native-mods.md, "Trait mods"). Build it with
+# `horizon-launcher native-build <this folder> --instance <instance> --trust-native-code`.
+id = "betterthanmending"
+name = "betterthanmending"
+version = "0.4.0"
+description = ""
+authors = []
+# A native mod: Rust in src/, compiled by the launcher against the game build [native] pins, beside data/ and assets/.
+api = "0.2"
+side = "both"
+# registries: "May add blocks, items, mob effects and entity types to your worlds".
+capabilities = ["registries"]
+
+[native]
+game = "26.3"
+horizon = "dd67b76ff23e28c6d8e21859df600d31572f81a0"
+mixins = "e59da9094f0c2fdda6c627fe9eff22dec6a906f0"

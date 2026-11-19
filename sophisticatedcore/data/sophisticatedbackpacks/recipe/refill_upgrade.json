@@ -1,0 +1,23 @@
+{
+  "type": "minecraft:crafting_shaped",
+  "category": "misc",
+  "pattern": [
+    " E ",
+    "IBI",
+    "RCR"
+  ],
+  "key": {
+    "B": "sophisticatedbackpacks:upgrade_base",
+    "C": [
+      "minecraft:chest",
+      "minecraft:trapped_chest"
+    ],
+    "E": "minecraft:ender_pearl",
+    "I": "minecraft:iron_ingot",
+    "R": "minecraft:redstone"
+  },
+  "result": {
+    "id": "sophisticatedbackpacks:refill_upgrade",
+    "count": 1
+  }
+}

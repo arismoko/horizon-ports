@@ -1,0 +1,19 @@
+{
+ "type": "minecraft:crafting_shaped",
+ "category": "misc",
+ "pattern": [
+  " I ",
+  "PBP",
+  "RIR"
+ ],
+ "key": {
+  "B": "sophisticatedstorage:upgrade_base",
+  "I": "minecraft:iron_ingot",
+  "P": "minecraft:piston",
+  "R": "minecraft:redstone"
+ },
+ "result": {
+  "id": "sophisticatedstorage:compression_upgrade",
+  "count": 1
+ }
+}

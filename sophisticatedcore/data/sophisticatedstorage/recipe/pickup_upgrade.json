@@ -1,0 +1,19 @@
+{
+ "type": "minecraft:crafting_shaped",
+ "category": "misc",
+ "pattern": [
+  " P ",
+  "LBL",
+  "RRR"
+ ],
+ "key": {
+  "B": "sophisticatedstorage:upgrade_base",
+  "L": "#minecraft:planks",
+  "P": "minecraft:sticky_piston",
+  "R": "minecraft:redstone"
+ },
+ "result": {
+  "id": "sophisticatedstorage:pickup_upgrade",
+  "count": 1
+ }
+}

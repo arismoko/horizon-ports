@@ -1,0 +1,18 @@
+{
+ "type": "minecraft:crafting_shaped",
+ "category": "misc",
+ "pattern": [
+  "TUT",
+  " L ",
+  "T T"
+ ],
+ "key": {
+  "L": "minecraft:leather",
+  "T": "minecraft:string",
+  "U": "sophisticatedstorage:chipped/alchemy_bench_upgrade"
+ },
+ "result": {
+  "id": "sophisticatedbackpacks:chipped/alchemy_bench_upgrade",
+  "count": 1
+ }
+}

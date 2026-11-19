@@ -1,0 +1,56 @@
+{
+ "template": "minecraft:stone",
+ "properties": {
+  "hardness": 2.5,
+  "explosion_resistance": 1200.0,
+  "sounds": "minecraft:oak_planks",
+  "requires_tool": false,
+  "occludes": false
+ },
+ "state_properties": {
+  "facing": {
+   "type": "enum",
+   "values": [
+    "up",
+    "down",
+    "north",
+    "south",
+    "west",
+    "east"
+   ]
+  },
+  "wood": {
+   "type": "enum",
+   "values": [
+    "oak",
+    "spruce",
+    "birch",
+    "acacia",
+    "jungle",
+    "dark_oak",
+    "crimson",
+    "mangrove",
+    "warped",
+    "cherry",
+    "bamboo"
+   ]
+  },
+  "packed": {
+   "type": "boolean"
+  },
+  "open": {
+   "type": "boolean"
+  }
+ },
+ "default_state": {
+  "facing": "up",
+  "wood": "oak",
+  "packed": "false",
+  "open": "false"
+ },
+ "components": {
+  "minecraft:damage_resistant": {
+   "types": "#minecraft:is_fire"
+  }
+ }
+}

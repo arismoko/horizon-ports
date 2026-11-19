@@ -1,0 +1,31 @@
+{
+ "type": "minecraft:crafting_shapeless",
+ "category": "misc",
+ "ingredients": [
+  "minecraft:barrel",
+  "minecraft:redstone_torch"
+ ],
+ "result": {
+  "id": "sophisticatedstorage:barrel",
+  "count": 1,
+  "components": {
+   "minecraft:custom_data": {
+    "woodType": "spruce"
+   },
+   "minecraft:custom_model_data": {
+    "strings": [
+     "spruce"
+    ]
+   },
+   "minecraft:item_name": {
+    "translate": "block.sophisticatedstorage.barrel.wooden",
+    "with": [
+     {
+      "translate": "wood_name.sophisticatedstorage.spruce"
+     },
+     " "
+    ]
+   }
+  }
+ }
+}

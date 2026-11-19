@@ -1,0 +1,16 @@
+{
+  "type": "minecraft:crafting_shaped",
+  "category": "misc",
+  "pattern": [
+    "SSS",
+    "SSS",
+    "SSS"
+  ],
+  "key": {
+    "S": "sophisticatedbackpacks:stack_upgrade_tier_4"
+  },
+  "result": {
+    "id": "sophisticatedbackpacks:stack_upgrade_omega_tier",
+    "count": 1
+  }
+}

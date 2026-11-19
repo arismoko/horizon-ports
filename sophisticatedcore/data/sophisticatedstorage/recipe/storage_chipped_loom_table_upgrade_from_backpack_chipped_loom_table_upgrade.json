@@ -1,0 +1,17 @@
+{
+ "type": "minecraft:crafting_shaped",
+ "category": "misc",
+ "pattern": [
+  "PUP",
+  " P ",
+  "P P"
+ ],
+ "key": {
+  "P": "#minecraft:planks",
+  "U": "sophisticatedbackpacks:chipped/loom_table_upgrade"
+ },
+ "result": {
+  "id": "sophisticatedstorage:chipped/loom_table_upgrade",
+  "count": 1
+ }
+}

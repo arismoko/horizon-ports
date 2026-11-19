@@ -1,0 +1,16 @@
+{
+ "type": "sophisticatedcore:upgrade_next_tier",
+ "ingredients": [
+  [
+   "sophisticatedstorage:limited_diamond_barrel_1"
+  ],
+  [
+   "minecraft:netherite_ingot"
+  ]
+ ],
+ "result": {
+  "id": "sophisticatedstorage:limited_netherite_barrel_1",
+  "count": 1
+ },
+ "copy_index": 0
+}

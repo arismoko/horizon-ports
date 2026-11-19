@@ -1,0 +1,21 @@
+{
+ "type": "sophisticatedcore:upgrade_next_tier",
+ "pattern": [
+  "CCC",
+  "CSC",
+  "CCC"
+ ],
+ "key": {
+  "C": [
+   "minecraft:copper_ingot"
+  ],
+  "S": [
+   "sophisticatedstorage:limited_barrel_1"
+  ]
+ },
+ "result": {
+  "id": "sophisticatedstorage:limited_copper_barrel_1",
+  "count": 1
+ },
+ "copy": "S"
+}

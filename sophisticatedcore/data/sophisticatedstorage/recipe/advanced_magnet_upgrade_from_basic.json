@@ -1,0 +1,27 @@
+{
+ "type": "sophisticatedcore:upgrade_next_tier",
+ "pattern": [
+  " D ",
+  "GMG",
+  "RRR"
+ ],
+ "key": {
+  "D": [
+   "minecraft:diamond"
+  ],
+  "G": [
+   "minecraft:gold_ingot"
+  ],
+  "M": [
+   "sophisticatedstorage:magnet_upgrade"
+  ],
+  "R": [
+   "minecraft:redstone"
+  ]
+ },
+ "result": {
+  "id": "sophisticatedstorage:advanced_magnet_upgrade",
+  "count": 1
+ },
+ "copy": "M"
+}

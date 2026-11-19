@@ -1,0 +1,19 @@
+{
+  "type": "minecraft:crafting_shaped",
+  "category": "misc",
+  "pattern": [
+    " P ",
+    "SBS",
+    "RRR"
+  ],
+  "key": {
+    "B": "sophisticatedbackpacks:upgrade_base",
+    "P": "minecraft:sticky_piston",
+    "R": "minecraft:redstone",
+    "S": "minecraft:string"
+  },
+  "result": {
+    "id": "sophisticatedbackpacks:pickup_upgrade",
+    "count": 1
+  }
+}

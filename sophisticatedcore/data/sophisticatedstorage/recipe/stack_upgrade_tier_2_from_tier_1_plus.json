@@ -1,0 +1,18 @@
+{
+ "type": "minecraft:crafting_shaped",
+ "category": "misc",
+ "pattern": [
+  " I ",
+  "ISI",
+  " B "
+ ],
+ "key": {
+  "B": "minecraft:iron_block",
+  "I": "minecraft:iron_ingot",
+  "S": "sophisticatedstorage:stack_upgrade_tier_1_plus"
+ },
+ "result": {
+  "id": "sophisticatedstorage:stack_upgrade_tier_2",
+  "count": 1
+ }
+}

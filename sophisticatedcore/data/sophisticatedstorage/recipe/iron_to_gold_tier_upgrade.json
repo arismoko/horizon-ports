@@ -1,0 +1,17 @@
+{
+ "type": "minecraft:crafting_shaped",
+ "category": "misc",
+ "pattern": [
+  "GGG",
+  "GRG",
+  "GGG"
+ ],
+ "key": {
+  "G": "minecraft:gold_ingot",
+  "R": "minecraft:redstone_torch"
+ },
+ "result": {
+  "id": "sophisticatedstorage:iron_to_gold_tier_upgrade",
+  "count": 1
+ }
+}

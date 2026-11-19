@@ -1,0 +1,18 @@
+{
+ "type": "minecraft:crafting_shaped",
+ "category": "misc",
+ "pattern": [
+  "GGG",
+  "GSG",
+  "BGB"
+ ],
+ "key": {
+  "B": "minecraft:gold_block",
+  "G": "minecraft:gold_ingot",
+  "S": "sophisticatedstorage:stack_upgrade_tier_2"
+ },
+ "result": {
+  "id": "sophisticatedstorage:stack_upgrade_tier_3",
+  "count": 1
+ }
+}

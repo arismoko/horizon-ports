@@ -1,0 +1,17 @@
+{
+  "type": "minecraft:crafting_shaped",
+  "category": "misc",
+  "pattern": [
+    "CCC",
+    "CBC",
+    "CCC"
+  ],
+  "key": {
+    "B": "sophisticatedbackpacks:upgrade_base",
+    "C": "minecraft:copper_block"
+  },
+  "result": {
+    "id": "sophisticatedbackpacks:stack_upgrade_starter_tier",
+    "count": 1
+  }
+}

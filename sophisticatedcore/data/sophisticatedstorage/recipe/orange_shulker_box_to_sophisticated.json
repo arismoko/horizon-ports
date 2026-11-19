@@ -1,0 +1,22 @@
+{
+ "type": "sophisticatedcore:upgrade_next_tier",
+ "ingredients": [
+  [
+   "minecraft:orange_shulker_box"
+  ],
+  [
+   "minecraft:redstone_torch"
+  ]
+ ],
+ "result": {
+  "id": "sophisticatedstorage:shulker_box",
+  "count": 1,
+  "components": {
+   "minecraft:custom_data": {
+    "accentColor": 16351261,
+    "mainColor": 16351261
+   }
+  }
+ },
+ "copy_index": 0
+}

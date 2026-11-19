@@ -1,0 +1,22 @@
+{
+  "type": "minecraft:crafting_shaped",
+  "category": "misc",
+  "pattern": [
+    "RWR",
+    "PBA",
+    "ISI"
+  ],
+  "key": {
+    "A": "minecraft:wooden_axe",
+    "B": "sophisticatedbackpacks:upgrade_base",
+    "I": "minecraft:iron_ingot",
+    "P": "minecraft:wooden_pickaxe",
+    "R": "minecraft:redstone",
+    "S": "minecraft:wooden_shovel",
+    "W": "minecraft:wooden_sword"
+  },
+  "result": {
+    "id": "sophisticatedbackpacks:tool_swapper_upgrade",
+    "count": 1
+  }
+}

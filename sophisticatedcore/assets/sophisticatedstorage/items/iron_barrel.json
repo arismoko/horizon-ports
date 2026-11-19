@@ -1,0 +1,90 @@
+{
+ "model": {
+  "type": "minecraft:select",
+  "property": "minecraft:custom_model_data",
+  "index": 0,
+  "cases": [
+   {
+    "when": "oak",
+    "model": {
+     "type": "minecraft:model",
+     "model": "sophisticatedstorage:block/iron_barrel/oak"
+    }
+   },
+   {
+    "when": "spruce",
+    "model": {
+     "type": "minecraft:model",
+     "model": "sophisticatedstorage:block/iron_barrel/spruce"
+    }
+   },
+   {
+    "when": "birch",
+    "model": {
+     "type": "minecraft:model",
+     "model": "sophisticatedstorage:block/iron_barrel/birch"
+    }
+   },
+   {
+    "when": "acacia",
+    "model": {
+     "type": "minecraft:model",
+     "model": "sophisticatedstorage:block/iron_barrel/acacia"
+    }
+   },
+   {
+    "when": "jungle",
+    "model": {
+     "type": "minecraft:model",
+     "model": "sophisticatedstorage:block/iron_barrel/jungle"
+    }
+   },
+   {
+    "when": "dark_oak",
+    "model": {
+     "type": "minecraft:model",
+     "model": "sophisticatedstorage:block/iron_barrel/dark_oak"
+    }
+   },
+   {
+    "when": "crimson",
+    "model": {
+     "type": "minecraft:model",
+     "model": "sophisticatedstorage:block/iron_barrel/crimson"
+    }
+   },
+   {
+    "when": "mangrove",
+    "model": {
+     "type": "minecraft:model",
+     "model": "sophisticatedstorage:block/iron_barrel/mangrove"
+    }
+   },
+   {
+    "when": "warped",
+    "model": {
+     "type": "minecraft:model",
+     "model": "sophisticatedstorage:block/iron_barrel/warped"
+    }
+   },
+   {
+    "when": "cherry",
+    "model": {
+     "type": "minecraft:model",
+     "model": "sophisticatedstorage:block/iron_barrel/cherry"
+    }
+   },
+   {
+    "when": "bamboo",
+    "model": {
+     "type": "minecraft:model",
+     "model": "sophisticatedstorage:block/iron_barrel/bamboo"
+    }
+   }
+  ],
+  "fallback": {
+   "type": "minecraft:model",
+   "model": "sophisticatedstorage:block/iron_barrel/oak"
+  }
+ }
+}

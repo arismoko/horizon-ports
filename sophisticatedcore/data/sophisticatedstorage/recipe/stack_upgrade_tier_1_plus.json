@@ -1,0 +1,18 @@
+{
+ "type": "minecraft:crafting_shaped",
+ "category": "misc",
+ "pattern": [
+  "CCC",
+  "CSC",
+  "BCB"
+ ],
+ "key": {
+  "B": "minecraft:copper_block",
+  "C": "minecraft:copper_ingot",
+  "S": "sophisticatedstorage:stack_upgrade_tier_1"
+ },
+ "result": {
+  "id": "sophisticatedstorage:stack_upgrade_tier_1_plus",
+  "count": 1
+ }
+}

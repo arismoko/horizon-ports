@@ -1,0 +1,23 @@
+{
+  "type": "sophisticatedcore:upgrade_next_tier",
+  "pattern": [
+    "GRG",
+    "RBR",
+    "GRG"
+  ],
+  "key": {
+    "B": [
+      "sophisticatedbackpacks:upgrade_base"
+    ],
+    "G": [
+      "minecraft:gold_ingot"
+    ],
+    "R": [
+      "minecraft:redstone_block"
+    ]
+  },
+  "result": {
+    "id": "sophisticatedbackpacks:battery_upgrade",
+    "count": 1
+  }
+}

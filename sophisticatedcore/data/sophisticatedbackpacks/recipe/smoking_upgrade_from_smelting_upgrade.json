@@ -1,0 +1,62 @@
+{
+  "type": "minecraft:crafting_shaped",
+  "category": "misc",
+  "pattern": [
+    " L ",
+    "LSL",
+    " L "
+  ],
+  "key": {
+    "L": [
+      "minecraft:oak_log",
+      "minecraft:oak_wood",
+      "minecraft:oak_stripped_log",
+      "minecraft:oak_stripped_wood",
+      "minecraft:spruce_log",
+      "minecraft:spruce_wood",
+      "minecraft:spruce_stripped_log",
+      "minecraft:spruce_stripped_wood",
+      "minecraft:birch_log",
+      "minecraft:birch_wood",
+      "minecraft:birch_stripped_log",
+      "minecraft:birch_stripped_wood",
+      "minecraft:jungle_log",
+      "minecraft:jungle_wood",
+      "minecraft:jungle_stripped_log",
+      "minecraft:jungle_stripped_wood",
+      "minecraft:acacia_log",
+      "minecraft:acacia_wood",
+      "minecraft:acacia_stripped_log",
+      "minecraft:acacia_stripped_wood",
+      "minecraft:dark_oak_log",
+      "minecraft:dark_oak_wood",
+      "minecraft:dark_oak_stripped_log",
+      "minecraft:dark_oak_stripped_wood",
+      "minecraft:mangrove_log",
+      "minecraft:mangrove_wood",
+      "minecraft:mangrove_stripped_log",
+      "minecraft:mangrove_stripped_wood",
+      "minecraft:cherry_log",
+      "minecraft:cherry_wood",
+      "minecraft:cherry_stripped_log",
+      "minecraft:cherry_stripped_wood",
+      "minecraft:pale_oak_log",
+      "minecraft:pale_oak_wood",
+      "minecraft:pale_oak_stripped_log",
+      "minecraft:pale_oak_stripped_wood",
+      "minecraft:crimson_stem",
+      "minecraft:crimson_hyphae",
+      "minecraft:crimson_stripped_stem",
+      "minecraft:crimson_stripped_hyphae",
+      "minecraft:warped_stem",
+      "minecraft:warped_hyphae",
+      "minecraft:warped_stripped_stem",
+      "minecraft:warped_stripped_hyphae"
+    ],
+    "S": "sophisticatedbackpacks:smelting_upgrade"
+  },
+  "result": {
+    "id": "sophisticatedbackpacks:smoking_upgrade",
+    "count": 1
+  }
+}

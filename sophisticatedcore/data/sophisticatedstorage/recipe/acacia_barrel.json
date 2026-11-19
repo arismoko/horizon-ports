@@ -1,0 +1,37 @@
+{
+ "type": "minecraft:crafting_shaped",
+ "category": "misc",
+ "pattern": [
+  "PSP",
+  "PRP",
+  "PSP"
+ ],
+ "key": {
+  "P": "minecraft:acacia_planks",
+  "R": "minecraft:redstone_torch",
+  "S": "minecraft:acacia_slab"
+ },
+ "result": {
+  "id": "sophisticatedstorage:barrel",
+  "count": 1,
+  "components": {
+   "minecraft:custom_data": {
+    "woodType": "acacia"
+   },
+   "minecraft:custom_model_data": {
+    "strings": [
+     "acacia"
+    ]
+   },
+   "minecraft:item_name": {
+    "translate": "block.sophisticatedstorage.barrel.wooden",
+    "with": [
+     {
+      "translate": "wood_name.sophisticatedstorage.acacia"
+     },
+     " "
+    ]
+   }
+  }
+ }
+}

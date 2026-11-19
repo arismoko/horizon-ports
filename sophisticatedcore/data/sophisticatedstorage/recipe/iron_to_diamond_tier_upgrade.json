@@ -1,0 +1,17 @@
+{
+ "type": "minecraft:crafting_shaped",
+ "category": "misc",
+ "pattern": [
+  "DDD",
+  "DTD",
+  "DDD"
+ ],
+ "key": {
+  "D": "minecraft:diamond",
+  "T": "sophisticatedstorage:iron_to_gold_tier_upgrade"
+ },
+ "result": {
+  "id": "sophisticatedstorage:iron_to_diamond_tier_upgrade",
+  "count": 1
+ }
+}

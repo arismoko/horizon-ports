@@ -1,0 +1,21 @@
+{
+ "type": "sophisticatedcore:upgrade_next_tier",
+ "pattern": [
+  "DDD",
+  "DSD",
+  "DDD"
+ ],
+ "key": {
+  "D": [
+   "minecraft:diamond"
+  ],
+  "S": [
+   "sophisticatedstorage:limited_gold_barrel_4"
+  ]
+ },
+ "result": {
+  "id": "sophisticatedstorage:limited_diamond_barrel_4",
+  "count": 1
+ },
+ "copy": "S"
+}

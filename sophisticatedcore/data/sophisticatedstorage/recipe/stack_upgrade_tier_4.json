@@ -1,0 +1,18 @@
+{
+ "type": "minecraft:crafting_shaped",
+ "category": "misc",
+ "pattern": [
+  "DDD",
+  "DSD",
+  "BDB"
+ ],
+ "key": {
+  "B": "minecraft:diamond_block",
+  "D": "minecraft:diamond",
+  "S": "sophisticatedstorage:stack_upgrade_tier_3"
+ },
+ "result": {
+  "id": "sophisticatedstorage:stack_upgrade_tier_4",
+  "count": 1
+ }
+}

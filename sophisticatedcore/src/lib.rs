@@ -1,0 +1,822 @@
+//! sophisticatedcore: Sophisticated Core 1.2.7.15.166 (P3pp3rF1y, Salandora; Fabric port; GPL-3.0) and the rules of
+//! Sophisticated Backpacks 3.23.4.5.110 (P3pp3rF1y, Ridanisaurus, Salandora; GPL-3.0), from the decompiled jars
+//! (tools/dl/sophisticatedcore/src, tools/dl/sophisticatedbackpacks/src). data/ and assets/ are the core jar's
+//! content (mods/sophisticatedcore); the backpacks' items, blocks, models and recipes are the content package
+//! sophisticatedbackpacks (tools/sophisticatedbackpacks_port.py). All of it is the mod API: no game module, no mixin.
+//!
+//! As Farmer's Delight serves its add-ons, the core serves the storage items listed in `storage_items` (the six
+//! backpacks now; Sophisticated Storage's later). The parts:
+//! - `contents`: a storage's slots and upgrades live in its stack (custom_data `inventory` / `upgradeInventory`,
+//!   the jar's keys), so they stay with the item when it is dropped, placed, worn or crafted into the next tier;
+//! - `menu`: the storage screen as a mod chest menu (pages, sort, upgrade slots, upgrade settings, the crafting
+//!   grid), opened from the hand, by the Open Backpack key (B; the trinkets back slot first, then the chest slot,
+//!   then the inventory), or on a placed backpack;
+//! - `ticking`: what upgrades do while carried (pickup, magnet, void, feeding, compacting, refill) and the
+//!   restock/deposit sneak-click on an inventory block;
+//! - here: placing a backpack (sneak + use on a block), picking it back up (sneak + empty hand), its block entity
+//!   (one slot holding the backpack, spilled when broken), the chest loot injections (Homestead's
+//!   `chestLootEnabled = true`) and the crafting kinds (`crafting`).
+//!
+//! Not ported: the jar's own screen (tabs, sorting buttons, the memory and no-sort slot settings), the furnace,
+//! jukebox, tank, battery, pump, XP pump, tool swapper, stonecutter, anvil, smithing, inception, everlasting and
+//! infinity upgrades (they sit in their slot and do nothing), the filter upgrade (it filters automation, and a
+//! placed backpack offers none), the backpack's render on the player's back, mobs spawning with backpacks.
+mod contents;
+mod crafting;
+mod menu;
+mod places;
+mod storage;
+mod storage_items;
+mod ticking;
+mod upgrades;
+
+use std::collections::HashMap;
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::{Arc, Mutex};
+
+use mod_api::serde_json::json;
+use mod_api::{
+    BlockEntityOnLoadEvent, BlockEntityPart, BlockPart, BlockSide, BlockState, BlockUpdateFlags, BreakBlockEvent,
+    BuildCreativeModeTabContentsEvent, CanFitInsideContainerItemsEvent, ClientHost, DataLoadContext, Flow, Hand, Host,
+    HostSide, Hooks, IPayloadContext, IPayloadHandler, ITEMS, InputKeyEvent, InteractionResult, ItemPart,
+    ItemPickedUpPostEvent, ItemResource, ItemStack, KeyAction, KeyRegistration, LeftClickBlockEvent, LevelHost,
+    LoopContext, LootTableLoadEvent, MenuClickedEvent, MenuClosedEvent, MenuReplace, ModContainer,
+    OnBlockPlacedByEvent, PayloadBytes, PayloadHandleError, PayloadId, Registrar, RegistrationContext,
+    ResourceHandler, RightClickBlockEvent, RightClickItemEvent, ServerHost, ServerTickEvent, ServerTickPhase,
+    SoundSource, StateForPlacementEvent, TooltipEvent, UseItemOnEvent, UseOnEvent, UseWithoutItemEvent,
+};
+
+use contents::Contents;
+use menu::{Outcome, Session};
+use places::Loc;
+use storage_items::Family;
+
+/// The crafting kinds (their ids must appear here: tools/next_content_fix.py keeps recipes of a type the owning
+/// package's lib.rs names).
+pub const UPGRADE_NEXT_TIER: &str = "sophisticatedcore:upgrade_next_tier";
+pub const STORAGE_DYE: &str = "sophisticatedcore:storage_dye";
+
+const OPEN: &str = "sophisticatedcore:open";
+const KEY: &str = "open_backpack";
+
+/// The vanilla chests the jar's loot modifiers add its `inject/chests/*` tables to.
+const LOOT: [&str; 8] = [
+    "abandoned_mineshaft", "bastion_treasure", "desert_pyramid", "end_city_treasure", "nether_bridge", "shipwreck_treasure",
+    "simple_dungeon", "woodland_mansion",
+];
+
+fn lock<T>(m: &Mutex<T>) -> std::sync::MutexGuard<'_, T> {
+    m.lock().unwrap_or_else(|e| e.into_inner())
+}
+
+enum Job {
+    Open(u128, Loc),
+    Key(u128),
+}
+
+#[derive(Default)]
+struct Shared {
+    jobs: Mutex<Vec<Job>>,
+    sessions: Mutex<HashMap<u128, Session>>,
+    /// The tick a player last placed or interacted with a backpack (the client's use packet follows the sneak-use).
+    used: Mutex<HashMap<u128, u64>>,
+    ticks: AtomicU64,
+    /// Placed storages whose upgrades work on their own.
+    placed: storage::Placed,
+    /// A player's last limited barrel deposit (tick, position): a second within 10 ticks deposits everything.
+    deposits: Mutex<HashMap<u128, (u64, [i32; 3])>>,
+}
+
+impl Shared {
+    fn queue(&self, job: Job) {
+        lock(&self.jobs).push(job);
+    }
+
+    fn tick(&self) -> u64 {
+        self.ticks.load(Ordering::Relaxed)
+    }
+
+    fn mark_used(&self, uuid: u128) {
+        lock(&self.used).insert(uuid, self.tick());
+    }
+
+    fn just_used(&self, uuid: u128) -> bool {
+        lock(&self.used).get(&uuid).is_some_and(|t| self.tick().saturating_sub(*t) <= 2)
+    }
+
+    fn open(&self, host: &mut dyn ServerHost, uuid: u128, loc: Loc) {
+        let replace = if lock(&self.sessions).contains_key(&uuid) { MenuReplace::InPlace } else { MenuReplace::CloseFirst };
+        if let Some(prev) = lock(&self.sessions).remove(&uuid) {
+            self.closed_block(host, &prev.loc);
+        }
+        if let Some(s) = menu::open(host, uuid, loc, replace) {
+            let placed = match &s.loc {
+                Loc::Block { dim, pos } => host.level(dim).map(|l| (l, *pos)),
+                _ => None,
+            };
+            match (placed, s.kind.family) {
+                (Some((level, pos)), Family::Backpack) => {
+                    let _ = (level, pos);
+                    if let Some(p) = host.player(uuid) {
+                        let _ = p.play_sound(host, "minecraft:item.armor.equip_leather", SoundSource::Players, 0.5, 1.0);
+                    }
+                }
+                (Some((level, pos)), family) => {
+                    self.placed.note(level, pos);
+                    let at = pos.map(|v| f64::from(v) + 0.5);
+                    let sound = match family {
+                        Family::Chest => "minecraft:block.chest.open",
+                        Family::ShulkerBox => "minecraft:block.shulker_box.open",
+                        _ => "minecraft:block.barrel.open",
+                    };
+                    level.play_sound(host, sound, at, SoundSource::Blocks, 0.5, 1.0);
+                    if family == Family::Barrel {
+                        storage::change_props(host, level, pos, &[("open", "true")]);
+                    }
+                }
+                (None, _) => {
+                    if let Some(p) = host.player(uuid) {
+                        let _ = p.play_sound(host, "minecraft:item.armor.equip_leather", SoundSource::Players, 0.5, 1.0);
+                    }
+                }
+            }
+            lock(&self.sessions).insert(uuid, s);
+        }
+    }
+
+    /// A menu on a placed storage closed: a barrel shuts when nobody else has it open.
+    fn closed_block(&self, host: &mut dyn ServerHost, loc: &Loc) {
+        let Loc::Block { dim, pos } = loc else { return };
+        if lock(&self.sessions).values().any(|s| &s.loc == loc) {
+            return;
+        }
+        let Some(level) = host.level(dim) else { return };
+        let Some(kind) = storage::kind_of_block(&storage::block_id(&*host, level, *pos)) else { return };
+        let at = pos.map(|v| f64::from(v) + 0.5);
+        let sound = match kind.family {
+            Family::Chest => "minecraft:block.chest.close",
+            Family::ShulkerBox => "minecraft:block.shulker_box.close",
+            _ => "minecraft:block.barrel.close",
+        };
+        level.play_sound(host, sound, at, SoundSource::Blocks, 0.5, 1.0);
+        if kind.family == Family::Barrel {
+            storage::change_props(host, level, *pos, &[("open", "false")]);
+        }
+    }
+
+    /// The Open Backpack key (KeybindHandler / BackpackOpenMessage): the trinkets back slot, the chest slot, then
+    /// the hands and the inventory.
+    fn open_key(&self, host: &mut dyn ServerHost, uuid: u128) {
+        let mut candidates = vec![Loc::Worn(places::BACK.into()), Loc::Inv(38), Loc::Inv(40)];
+        if let Some(p) = host.player(uuid)
+            && let Some(sel) = p.selected_slot(&*host)
+        {
+            candidates.insert(1, Loc::Inv(sel as u32));
+        }
+        candidates.extend((0..36).map(Loc::Inv));
+        for loc in candidates {
+            if places::storage_at(host, uuid, &loc).is_some_and(|(_, k)| k.family == Family::Backpack) {
+                self.open(host, uuid, loc);
+                return;
+            }
+        }
+        places::message(host, uuid, "No backpack worn or in your inventory");
+    }
+
+    /// Shows the session's view again (the client predicted a pickup the server didn't make).
+    fn refresh(&self, host: &mut dyn ServerHost, uuid: u128, s: &mut Session) -> bool {
+        let Some(loc) = places::find(host, uuid, &s.loc, s.id) else { return false };
+        s.loc = loc;
+        let Some((st, kind)) = places::storage_at(host, uuid, &s.loc) else { return false };
+        let c = Contents::read(&*host, &st, kind);
+        if let menu::View::Main { page } = s.view
+            && page >= s.pages()
+        {
+            s.view = menu::View::Main { page: 0 };
+        }
+        let items = menu::render(host, s, &c);
+        host.menu_set_items(uuid, s.window, items).is_ok()
+    }
+
+    fn close(&self, host: &mut dyn ServerHost, uuid: u128) {
+        let prev = lock(&self.sessions).remove(&uuid);
+        host.close_menu(uuid);
+        if let Some(prev) = prev {
+            self.closed_block(host, &prev.loc);
+        }
+    }
+
+    fn click(&self, host: &mut dyn ServerHost, ev: &MenuClickedEvent) {
+        let uuid = ev.uuid;
+        let Some(mut s) = lock(&self.sessions).get(&uuid).filter(|s| s.window == ev.window).cloned() else { return };
+        let Some(loc) = places::find(host, uuid, &s.loc, s.id) else {
+            self.close(host, uuid);
+            return;
+        };
+        s.loc = loc;
+        let Some((st, kind)) = places::storage_at(host, uuid, &s.loc) else {
+            self.close(host, uuid);
+            return;
+        };
+        let c = Contents::read(&*host, &st, kind);
+        let (outcome, msg) = menu::click(host, uuid, &s, &c, ev);
+        let changed = match outcome {
+            Outcome::Changed(c2) => Some(c2),
+            Outcome::ChangedView(c2, v) => {
+                s.view = v;
+                Some(c2)
+            }
+            Outcome::View(v) => {
+                s.view = v;
+                None
+            }
+            Outcome::Close => {
+                self.close(host, uuid);
+                return;
+            }
+            Outcome::Nothing => None,
+        };
+        if let Some(c2) = changed
+            && let Some(mut fresh) = places::read(host, uuid, &s.loc)
+        {
+            c2.write(&*host, &mut fresh, kind);
+            if !places::write(host, uuid, &s.loc, Some(fresh)) {
+                eprintln!("[sophisticatedcore] the storage at {:?} wasn't written", s.loc);
+            }
+        }
+        if let Some(m) = msg {
+            places::message(host, uuid, m);
+        }
+        if !self.refresh(host, uuid, &mut s) {
+            self.close(host, uuid);
+            return;
+        }
+        if let Some(cur) = lock(&self.sessions).get_mut(&uuid)
+            && cur.window == s.window
+        {
+            *cur = s;
+        }
+    }
+
+    /// Re-renders the open menus showing storages that `ids` name (an upgrade changed them).
+    fn refresh_ids(&self, host: &mut dyn ServerHost, ids: &[[i32; 4]]) {
+        if ids.is_empty() {
+            return;
+        }
+        let open: Vec<(u128, Session)> =
+            lock(&self.sessions).iter().filter(|(_, s)| ids.contains(&s.id)).map(|(u, s)| (*u, s.clone())).collect();
+        for (uuid, mut s) in open {
+            self.refresh(host, uuid, &mut s);
+        }
+    }
+}
+
+struct OpenHandler(Arc<Shared>);
+
+impl IPayloadHandler for OpenHandler {
+    fn handle(&self, _payload: PayloadBytes, context: &mut dyn IPayloadContext) -> Result<(), PayloadHandleError> {
+        if let Ok(p) = context.player() {
+            self.0.queue(Job::Key(p.uuid()));
+        }
+        Ok(())
+    }
+}
+
+/// The hand's inventory slot.
+fn hand_slot(host: &dyn mod_api::Host, uuid: u128, hand: Hand) -> Option<u32> {
+    match hand {
+        Hand::Main => host.player(uuid)?.selected_slot(host).map(|s| s as u32),
+        _ => Some(40),
+    }
+}
+
+/// BackpackItem.useOn's placement: on the clicked face (or in the clicked block when it can be replaced), facing
+/// the player; the block entity keeps the backpack. Creative keeps the hand's backpack and places a copy with new
+/// contents id (BackpackWrapper.cloneBackpack).
+fn place(host: &mut dyn ServerHost, uuid: u128, hand: Hand, pos: [i32; 3], face: [i32; 3], stack: &ItemStack) -> bool {
+    let Some(kind) = storage_items::by_item(&contents::item_id(&*host, stack)) else { return false };
+    let Some(block) = kind.block else { return false };
+    let Some(player) = host.player(uuid) else { return false };
+    let Some(dim) = player.dimension(&*host).map(|d| d.to_string()) else { return false };
+    let Some(level) = host.level(&dim) else { return false };
+    const REPLACEABLE: [&str; 9] = [
+        "minecraft:air", "minecraft:cave_air", "minecraft:void_air", "minecraft:short_grass", "minecraft:fern",
+        "minecraft:snow", "minecraft:dead_bush", "minecraft:vine", "minecraft:water",
+    ];
+    let id_at = |host: &dyn mod_api::Host, p: [i32; 3]| level.block(host, p).map(|k| k.id(host).to_string()).unwrap_or_default();
+    let target = if REPLACEABLE.contains(&id_at(&*host, pos).as_str()) {
+        pos
+    } else {
+        [pos[0] + face[0], pos[1] + face[1], pos[2] + face[2]]
+    };
+    if !REPLACEABLE.contains(&id_at(&*host, target).as_str()) {
+        return false;
+    }
+    // The player's horizontal facing from yaw (0 south, 90 west, 180 north, 270 east); the backpack faces back.
+    let yaw = player.entity().rotation(&*host).map_or(0.0, |r| r[0]);
+    let quarter = ((f64::from(yaw) / 90.0).round() as i64).rem_euclid(4);
+    let facing = ["north", "east", "south", "west"][quarter as usize];
+    let Some(state) = host.block_state_id(&format!("{block}[facing={facing}]")) else { return false };
+    let flags = BlockUpdateFlags::NEIGHBORS | BlockUpdateFlags::CLIENTS;
+    if !matches!(level.set_block(host, target, state, flags), Ok(true)) {
+        return false;
+    }
+    let mut placed = contents::with_count(stack, 1).unwrap_or(stack.clone());
+    let creative = places::creative(&*host, uuid);
+    if creative {
+        let mut d = contents::custom_data(&placed);
+        contents::put(&mut d, "contentsUuid", mod_api::Tag::IntArray(contents::new_uuid().to_vec()));
+        contents::set_custom_data(&mut placed, d);
+    } else {
+        contents::ensure_uuid(&mut placed);
+    }
+    if !places::write(host, uuid, &Loc::Block { dim: dim.clone(), pos: target }, Some(placed)) {
+        eprintln!("[sophisticatedcore] the placed backpack's block entity took nothing at {target:?}");
+    }
+    if !creative && let Some(slot) = hand_slot(&*host, uuid, hand) {
+        places::set_slot(host, player, slot, stack.clone().shrink(1));
+    }
+    let at = target.map(|v| f64::from(v) + 0.5);
+    level.play_sound(host, "minecraft:block.wool.place", at, SoundSource::Blocks, 1.0, 0.8);
+    true
+}
+
+/// BackpackBlock.putInPlayersHandAndRemove: a sneak-click with an empty hand takes the backpack.
+fn pick_up(host: &mut dyn ServerHost, uuid: u128, dim: &str, pos: [i32; 3]) -> bool {
+    let loc = Loc::Block { dim: dim.to_string(), pos };
+    let Some(st) = places::read(host, uuid, &loc) else { return false };
+    let Some(player) = host.player(uuid) else { return false };
+    let Some(level) = host.level(dim) else { return false };
+    if !places::write(host, uuid, &loc, None) {
+        return false;
+    }
+    let Some(air) = host.block_state_id("minecraft:air") else { return false };
+    let _ = level.set_block(host, pos, air, BlockUpdateFlags::NEIGHBORS | BlockUpdateFlags::CLIENTS);
+    let main = hand_slot(&*host, uuid, Hand::Main);
+    let inv = places::inventory(host, player);
+    match main {
+        Some(slot) if inv[slot as usize].is_none() && places::complete(&*host, player) => {
+            places::set_slot(host, player, slot, Some(st));
+        }
+        _ => places::give_or_drop(host, player, &st),
+    }
+    let at = pos.map(|v| f64::from(v) + 0.5);
+    level.play_sound(host, "minecraft:item.armor.equip_leather", at, SoundSource::Blocks, 0.5, 1.0);
+    true
+}
+
+/// BackpackItem: sneak-use on a block runs the inventory interaction upgrades or places the backpack; it never
+/// goes inside another storage (`canBePlacedInContainerItems = false`); its tooltip.
+struct StorageItemPart(Arc<Shared>);
+
+#[mod_api::horizon_part]
+impl ItemPart for StorageItemPart {
+    fn use_on(&self, host: HostSide<'_>, event: &mut UseOnEvent<'_>) -> Option<InteractionResult> {
+        let HostSide::Server(host) = host else { return None };
+        let slot = hand_slot(&*host, event.player, event.hand)?;
+        if !places::sneaking(&*host, event.player) {
+            // BackpackItem.useOn passes and Item.use opens it; Horizon's window doesn't send the item use after a
+            // block click, so the click on a block opens it here (the item use that may follow is skipped).
+            self.0.mark_used(event.player);
+            self.0.queue(Job::Open(event.player, Loc::Inv(slot)));
+            return Some(InteractionResult::Success);
+        }
+        let dim = host.player(event.player)?.dimension(&*host)?.to_string();
+        let level = host.level(&dim)?;
+        let loc = Loc::Inv(slot);
+        if ticking::interact(host, event.player, &loc, level, event.pos, event.face) {
+            self.0.mark_used(event.player);
+            return Some(InteractionResult::Success);
+        }
+        let stack = event.stack.clone();
+        if place(host, event.player, event.hand, event.pos, event.face, &stack) {
+            self.0.mark_used(event.player);
+            return Some(InteractionResult::Success);
+        }
+        None
+    }
+
+    fn can_fit_inside_container_items(&self, _context: &dyn LoopContext, event: &mut CanFitInsideContainerItemsEvent<'_>) {
+        event.fits = false;
+    }
+
+    fn tooltip(&self, host: &dyn ClientHost, event: &mut TooltipEvent<'_>) {
+        let Some(kind) = storage_items::by_item(&contents::item_id(host, event.stack)) else { return };
+        let c = Contents::read(host, event.stack, kind);
+        let used = c.slots.iter().flatten().count();
+        event.lines.push((mod_api::Text::literal(format!("§7{used} of {} slots used", kind.slots)), 0xFFAAAAAA));
+        for u in c.upgrades.iter().flatten() {
+            let name = host.hover_name(u);
+            event.lines.push((mod_api::Text::literal(format!("§9{name}")), 0xFF5555FF));
+        }
+        let unknown = c.unknown_count();
+        if unknown > 0 {
+            event.lines.push((mod_api::Text::literal(format!("§c{unknown} stacks of mods not installed (kept)")), 0xFFFF5555));
+        }
+        if used == 0 && c.upgrades.iter().all(Option::is_none) {
+            event.lines.push((mod_api::Text::literal("§8Use to open; sneak-use on a block to place"), 0xFF555555));
+        }
+    }
+}
+
+/// BackpackBlock.use: opens the placed backpack; a sneak-click with an empty hand takes it.
+struct StorageBlockPart(Arc<Shared>);
+
+#[mod_api::horizon_part]
+impl BlockPart for StorageBlockPart {
+    fn use_item_on(&self, host: &mut dyn ServerHost, event: &mut UseItemOnEvent<'_>) -> Option<InteractionResult> {
+        let click = event.click;
+        if !matches!(click.hand, Hand::Main) {
+            return Some(InteractionResult::Success);
+        }
+        // An empty hand goes on to use_without_item (the vanilla TRY_WITH_EMPTY_HAND), where sneaking takes it.
+        let empty = host
+            .player(click.player)
+            .and_then(|p| mod_api::LivingRef::new(p.entity()).hand_item(&*host, Hand::Main))
+            .is_none_or(|s| s.count() == 0);
+        if empty {
+            return None;
+        }
+        let dim = click.dimension.key().id().to_string();
+        self.0.queue(Job::Open(click.player, Loc::Block { dim, pos: click.pos }));
+        Some(InteractionResult::Success)
+    }
+
+    fn use_without_item(&self, host: &mut dyn ServerHost, event: &mut UseWithoutItemEvent<'_>) -> Option<InteractionResult> {
+        let click = event.click;
+        if !matches!(click.hand, Hand::Main) {
+            return Some(InteractionResult::Success);
+        }
+        let dim = click.dimension.key().id().to_string();
+        if places::sneaking(&*host, click.player) {
+            pick_up(host, click.player, &dim, click.pos);
+        } else {
+            self.0.queue(Job::Open(click.player, Loc::Block { dim, pos: click.pos }));
+        }
+        Some(InteractionResult::Success)
+    }
+}
+
+/// The placed backpack's block entity: the declared container (one slot, no screen) holds the backpack.
+struct StorageBlockEntity;
+
+#[mod_api::horizon_part]
+impl BlockPart for StorageBlockEntity {}
+
+#[mod_api::horizon_part]
+impl BlockEntityPart for StorageBlockEntity {}
+
+/// Sophisticated Storage's block items (StorageBlockItem): the placed block's block entity takes the stack; the
+/// tooltip.
+struct PlacedItemPart(Arc<Shared>);
+
+#[mod_api::horizon_part]
+impl ItemPart for PlacedItemPart {
+    fn on_block_placed_by(&self, host: &mut dyn ServerHost, event: &mut OnBlockPlacedByEvent<'_>) {
+        if let Some((level, pos)) = storage::placed(host, event.placer, event.pos, event.stack) {
+            self.0.placed.note(level, pos);
+        }
+    }
+
+    fn tooltip(&self, host: &dyn ClientHost, event: &mut TooltipEvent<'_>) {
+        let Some(kind) = storage_items::by_item(&contents::item_id(host, event.stack)) else { return };
+        if kind.family == Family::LimitedBarrel {
+            let s = if kind.slots == 1 { "slot" } else { "slots" };
+            event.lines.push((mod_api::Text::literal(format!("§8{} {s}, {}x base stack size multiplier", kind.slots, kind.base)), 0xFF555555));
+        }
+        let c = Contents::read(host, event.stack, kind);
+        if storage::is_packed(event.stack) {
+            event.lines.push((mod_api::Text::literal("§6Packed".to_string()), 0xFFFFAA00));
+        }
+        let used = c.slots.iter().flatten().count();
+        if used > 0 {
+            event.lines.push((mod_api::Text::literal(format!("§7{used} of {} slots used", c.slots.len())), 0xFFAAAAAA));
+        }
+        for u in c.upgrades.iter().flatten() {
+            let name = host.hover_name(u);
+            event.lines.push((mod_api::Text::literal(format!("§9{name}")), 0xFF5555FF));
+        }
+        let unknown = c.unknown_count();
+        if unknown > 0 {
+            event.lines.push((mod_api::Text::literal(format!("§c{unknown} stacks of mods not installed (kept)")), 0xFFFF5555));
+        }
+    }
+}
+
+/// StorageBlockBase: placement facing, opening, the limited barrels' front.
+struct StorageBlock(Arc<Shared>);
+
+#[mod_api::horizon_part]
+impl BlockPart for StorageBlock {
+    fn state_for_placement(&self, level: &dyn LevelHost, event: &mut StateForPlacementEvent<'_>) -> Option<Option<BlockState>> {
+        let block = level.state_block(event.state)?.to_string();
+        let kind = storage::kind_of_block(&block)?;
+        let ctx = event.context;
+        let facing = storage::placement_facing(kind.family, ctx.yaw, ctx.pitch, ctx.face);
+        let current = level.state_string(event.state)?;
+        let rest = current.split_once('[').map(|(_, r)| r.trim_end_matches(']').to_string()).unwrap_or_default();
+        let mut props: Vec<String> = rest.split(',').filter(|kv| !kv.is_empty() && !kv.starts_with("facing=")).map(str::to_string).collect();
+        props.push(format!("facing={facing}"));
+        level.block_state_id(&format!("{block}[{}]", props.join(","))).map(Some)
+    }
+
+    fn use_item_on(&self, host: &mut dyn ServerHost, event: &mut UseItemOnEvent<'_>) -> Option<InteractionResult> {
+        let click = event.click;
+        if !matches!(click.hand, Hand::Main) {
+            return Some(InteractionResult::Success);
+        }
+        let empty = click.stack.is_none_or(|s| s.count() == 0);
+        if empty || places::sneaking(&*host, click.player) {
+            return None;
+        }
+        self.0.use_storage(host, click, true)
+    }
+
+    fn use_without_item(&self, host: &mut dyn ServerHost, event: &mut UseWithoutItemEvent<'_>) -> Option<InteractionResult> {
+        let click = event.click;
+        if !matches!(click.hand, Hand::Main) {
+            return Some(InteractionResult::Success);
+        }
+        self.0.use_storage(host, click, false)
+    }
+}
+
+/// A placed storage's block entity: one slot holding the storage's stack; noted when it loads, so its upgrades work.
+struct StorageEntity(Arc<Shared>);
+
+#[mod_api::horizon_part]
+impl BlockPart for StorageEntity {}
+
+#[mod_api::horizon_part]
+impl BlockEntityPart for StorageEntity {
+    fn block_entity_on_load(&self, host: HostSide<'_>, event: &mut BlockEntityOnLoadEvent) {
+        let HostSide::Server(host) = host else { return };
+        if let (Some(level), Some(pos)) = (event.entity.level(&*host), event.entity.position(&*host)) {
+            self.0.placed.note(level, pos);
+        }
+    }
+}
+
+impl Shared {
+    /// StorageBlockBase.use: opens the storage (a double chest's main half); a packed storage doesn't open; a limited
+    /// barrel's front takes the held stack (twice in 10 ticks: every stack of that item) instead.
+    fn use_storage(&self, host: &mut dyn ServerHost, click: &mod_api::BlockClick<'_>, holding: bool) -> Option<InteractionResult> {
+        let dim = click.dimension.key().id().to_string();
+        let level = host.level(&dim)?;
+        let pos = click.pos;
+        let kind = storage::kind_of_block(&storage::block_id(&*host, level, pos))?;
+        let main = storage::main_pos(&*host, level, pos);
+        if storage::read_be(&*host, level, main).is_some_and(|s| storage::is_packed(&s)) {
+            places::message(host, click.player, "Packed: break it to take it with its contents");
+            return Some(InteractionResult::Success);
+        }
+        if kind.family == Family::LimitedBarrel && !places::sneaking(&*host, click.player) {
+            let facing = level.block_property(&*host, pos, "facing").unwrap_or_default();
+            if click.hit.face == storage::dir_vec(&facing) {
+                let player = host.player(click.player)?;
+                let slot = storage::limited_slot(kind, &facing, pos, click.hit.point);
+                let now = self.tick();
+                let again = lock(&self.deposits).get(&click.player).is_some_and(|(t, p)| *p == pos && now.saturating_sub(*t) < 10);
+                lock(&self.deposits).insert(click.player, (now, pos));
+                if holding || again {
+                    storage::limited_deposit(host, player, level, pos, slot, again);
+                }
+                return Some(InteractionResult::Success);
+            }
+        }
+        self.queue(Job::Open(click.player, storage::menu_loc(&*host, &dim, level, pos)));
+        Some(InteractionResult::Success)
+    }
+}
+
+#[derive(Default)]
+struct Mod {
+    shared: Arc<Shared>,
+}
+
+#[mod_api::horizon_mod]
+impl Hooks for Mod {
+    fn register(&self, r: &mut dyn Registrar, cx: &RegistrationContext) {
+        let has = |ns: &str| cx.mods().iter().any(|p| p.namespaces().any(|n| n == ns));
+        let backpacks = has("sophisticatedbackpacks");
+        let storage_loaded = has("sophisticatedstorage");
+        let keys = crafting::keys(r, backpacks, storage_loaded);
+        r.register_crafting_recipe_serializer(UPGRADE_NEXT_TIER, crafting::UpgradeNextTier { keys: keys.clone() });
+        r.register_crafting_recipe_serializer(STORAGE_DYE, crafting::StorageDye { keys });
+        let mut blocks = Vec::new();
+        for s in storage_items::BACKPACKS.iter().filter(|s| has(storage_items::namespace(s))) {
+            let item = r.item_key(s.id);
+            r.item_part(item, StorageItemPart(self.shared.clone()));
+            if let Some(b) = s.block {
+                let key = r.block_key(b);
+                r.block_part(key, StorageBlockPart(self.shared.clone()));
+                r.block_container(&key, ModContainer { slots: 1, ..Default::default() });
+                blocks.push(b);
+            }
+        }
+        if !blocks.is_empty() {
+            let kind = r.block_entity_type("backpack").blocks(&blocks).build();
+            if let Err(e) = r.block_entity_part(&kind, StorageBlockEntity) {
+                eprintln!("[sophisticatedcore] backpack block entity part refused: {e:?}");
+            }
+        }
+        let mut storage_blocks = Vec::new();
+        for s in storage_items::STORAGE.iter().filter(|s| has(storage_items::namespace(s))) {
+            let item = r.item_key(s.id);
+            r.item_part(item, PlacedItemPart(self.shared.clone()));
+            let key = r.block_key(s.id);
+            r.block_part(key, StorageBlock(self.shared.clone()));
+            r.block_container(&key, ModContainer { slots: 1, ..Default::default() });
+            r.block_capability_before_game(&ITEMS, &key, |host, at: BlockSide, _, _| {
+                storage::Handler::new(&*host, at.level, at.pos).map(|h| Box::new(h) as Box<dyn ResourceHandler<ItemResource>>)
+            });
+            storage_blocks.push(s.id);
+        }
+        if !storage_blocks.is_empty() {
+            let kind = r.block_entity_type("storage").blocks(&storage_blocks).build();
+            if let Err(e) = r.block_entity_part(&kind, StorageEntity(self.shared.clone())) {
+                eprintln!("[sophisticatedcore] storage block entity part refused: {e:?}");
+            }
+        }
+        // The jar's default is B, which is Horizon's emote key (`emoteKey` in horizon-extras.txt): B opened the emote
+        // wheel and never this. J is free in vanilla 26.3, Horizon's extras and this pack's mods (K quests, G
+        // trinkets, Z zoom, caps lock socks), and Horizon binds nothing to it.
+        r.register_key_mapping(KeyRegistration::new(KEY, "key.keyboard.j").label("keybind.sophisticatedbackpacks.open_backpack"));
+        r.payload_handlers()
+            .registrar("1")
+            .optional()
+            .play_to_server(PayloadId(OPEN.into()), Arc::new(OpenHandler(self.shared.clone())));
+    }
+
+    /// SBPLootInjectModifier: the jar's chest tables join the vanilla chests'.
+    fn loot_table_load(&self, _context: &dyn DataLoadContext, event: &mut LootTableLoadEvent<'_>) {
+        let Some(chest) = event.id.strip_prefix("minecraft:chests/") else { return };
+        if !LOOT.contains(&chest) {
+            return;
+        }
+        let pool = json!({"rolls": 1, "entries": [{"type": "minecraft:loot_table", "value": format!("sophisticatedbackpacks:inject/chests/{chest}")}]});
+        match event.table.get_mut("pools").and_then(|p| p.as_array_mut()) {
+            Some(pools) => pools.push(pool),
+            None => event.table["pools"] = json!([pool]),
+        }
+    }
+
+    fn server_tick(&self, host: &mut dyn ServerHost, event: &mut ServerTickEvent<'_>) {
+        if !matches!(event.phase, ServerTickPhase::ServerTickEnd { .. }) {
+            return;
+        }
+        let n = self.shared.ticks.fetch_add(1, Ordering::Relaxed) + 1;
+        let jobs = std::mem::take(&mut *lock(&self.shared.jobs));
+        for job in jobs {
+            match job {
+                Job::Open(uuid, loc) => self.shared.open(host, uuid, loc),
+                Job::Key(uuid) => self.shared.open_key(host, uuid),
+            }
+        }
+        let players: Vec<u128> = host.players().server_players().iter().map(|p| p.uuid()).collect();
+        for uuid in players {
+            let ids = ticking::tick(host, uuid, n);
+            self.shared.refresh_ids(host, &ids);
+        }
+        storage::tick(host, &self.shared.placed, n);
+    }
+
+    /// StorageTierUpgradeItem.onItemUseFirst and the packing tape: before the block's own use (a vanilla chest would
+    /// open).
+    fn right_click_block(&self, host: HostSide<'_>, event: &mut RightClickBlockEvent<'_>) -> Flow {
+        let click = event.click;
+        let HostSide::Server(host) = host else { return Flow::Continue };
+        if !matches!(click.hand, Hand::Main) {
+            return Flow::Continue;
+        }
+        let Some(stack) = click.stack.filter(|s| s.count() > 0) else { return Flow::Continue };
+        let held = contents::item_id(&*host, stack);
+        if !held.starts_with("sophisticatedstorage:") {
+            return Flow::Continue;
+        }
+        let dim = click.dimension.key().id().to_string();
+        let Some(level) = host.level(&dim) else { return Flow::Continue };
+        if !storage::takes_click(&held, &storage::block_id(&*host, level, click.pos)) {
+            return Flow::Continue;
+        }
+        let (Some(player), Some(slot)) = (host.player(click.player), hand_slot(&*host, click.player, Hand::Main)) else { return Flow::Continue };
+        let stack = stack.clone();
+        if storage::use_tool(host, player, slot, &stack, level, click.pos) {
+            self.shared.placed.note(level, click.pos);
+            *event.cancellation_result = InteractionResult::Success;
+            event.cancelled = true;
+            return Flow::Cancel;
+        }
+        Flow::Continue
+    }
+
+    /// A player breaks a placed storage: its contents spill (or stay, packed / shulker box) before it drops.
+    fn break_block(&self, host: &mut dyn ServerHost, event: &mut BreakBlockEvent<'_>) -> Flow {
+        let Some(player) = host.players().acting_player() else { return Flow::Continue };
+        let Some(dim) = player.dimension(&*host).map(|d| d.to_string()) else { return Flow::Continue };
+        let Some(level) = host.level(&dim) else { return Flow::Continue };
+        if storage::kind_of_block(&storage::block_id(&*host, level, event.pos)).is_some() {
+            storage::broken(host, player, level, event.pos);
+        }
+        Flow::Continue
+    }
+
+    /// LimitedBarrelBlock.attack: a left click on the front takes one of the slot's item (a stack when sneaking).
+    fn left_click_block(&self, host: &mut dyn ServerHost, event: &mut LeftClickBlockEvent) -> Flow {
+        let Some(player) = host.players().acting_player() else { return Flow::Continue };
+        let Some(dim) = player.dimension(&*host).map(|d| d.to_string()) else { return Flow::Continue };
+        let Some(level) = host.level(&dim) else { return Flow::Continue };
+        let Some(kind) = storage::kind_of_block(&storage::block_id(&*host, level, event.pos)) else { return Flow::Continue };
+        if kind.family != Family::LimitedBarrel {
+            return Flow::Continue;
+        }
+        let facing = level.block_property(&*host, event.pos, "facing").unwrap_or_default();
+        if event.face != storage::dir_vec(&facing) {
+            return Flow::Continue;
+        }
+        let point = storage::look_point(&*host, player, event.pos, &facing).unwrap_or(event.pos.map(|v| f64::from(v) + 0.5));
+        let slot = storage::limited_slot(kind, &facing, event.pos, point);
+        let sneak = places::sneaking(&*host, player.uuid());
+        storage::limited_take(host, player, level, event.pos, slot, sneak);
+        if places::creative(&*host, player.uuid()) {
+            event.cancelled = true;
+            return Flow::Cancel;
+        }
+        Flow::Continue
+    }
+
+    /// The jar's creative tab lists every wood of a chest or barrel (WoodStorageBlockBase.addCreativeTabItems); the
+    /// tab's json leaves them out, so they come here, after its shulker boxes, blocks and upgrades. (The dyed variants
+    /// the jar lists too are left out: Horizon draws storage untinted.)
+    fn build_creative_mode_tab_contents(&self, host: &mut dyn ClientHost, event: &mut BuildCreativeModeTabContentsEvent<'_>) {
+        if event.tab != "sophisticatedstorage:main" {
+            return;
+        }
+        let h: &dyn Host = &*host;
+        for kind in storage_items::STORAGE.iter().filter(|k| storage_items::wooden(k)) {
+            let Some(st) = storage::new_stack(h, kind.id) else { continue };
+            for w in storage_items::WOODS {
+                let mut s = st.clone();
+                storage::set_wood(&mut s, kind, w);
+                event.items.push(s);
+            }
+        }
+    }
+
+    /// BackpackItem.use: opens the backpack in hand.
+    fn right_click_item(&self, host: HostSide<'_>, event: &mut RightClickItemEvent<'_>) -> Flow {
+        let click = event.click;
+        let HostSide::Server(host) = host else { return Flow::Continue };
+        if storage_items::by_item(&contents::item_id(&*host, click.stack)).is_none_or(|k| k.family != Family::Backpack) {
+            return Flow::Continue;
+        }
+        if !self.shared.just_used(click.player)
+            && let Some(slot) = hand_slot(&*host, click.player, click.hand)
+        {
+            self.shared.queue(Job::Open(click.player, Loc::Inv(slot)));
+        }
+        *event.cancellation_result = InteractionResult::Success;
+        event.cancelled = true;
+        Flow::Cancel
+    }
+
+    fn menu_clicked(&self, host: &mut dyn ServerHost, event: &mut MenuClickedEvent) {
+        self.shared.click(host, event);
+    }
+
+    fn menu_closed(&self, host: &mut dyn ServerHost, event: &mut MenuClosedEvent) {
+        let prev = {
+            let mut sessions = lock(&self.shared.sessions);
+            if sessions.get(&event.uuid).is_some_and(|s| s.window == event.window) { sessions.remove(&event.uuid) } else { None }
+        };
+        if let Some(prev) = prev {
+            self.shared.closed_block(host, &prev.loc);
+        }
+    }
+
+    /// What vanilla's pickup put in the inventory goes on into a backpack with a pickup upgrade.
+    fn item_picked_up_post(&self, host: &mut dyn ServerHost, event: &mut ItemPickedUpPostEvent<'_>) {
+        let left = event.remaining.as_ref().map_or(0, |s| s.count());
+        let Some(picked) = contents::with_count(event.original, event.original.count().saturating_sub(left)) else { return };
+        let ids = ticking::picked_up(host, event.player, &picked);
+        self.shared.refresh_ids(host, &ids);
+    }
+
+    /// The Open Backpack key, while playing or in the player's own inventory.
+    fn input_key(&self, host: &mut dyn ClientHost, event: &mut InputKeyEvent<'_>) {
+        if !matches!(event.action, KeyAction::Press) {
+            return;
+        }
+        let Some((key, _)) = host.mod_key("sophisticatedcore", KEY) else { return };
+        if event.key != key {
+            return;
+        }
+        let inventory = host.observed_screen_id().is_some_and(|s| s.id == "inventory") && host.screen_title().is_none();
+        if !(host.playing() || inventory) {
+            return;
+        }
+        if let Err(e) = host.send_payload_to_server(&PayloadId(OPEN.into()), PayloadBytes(Vec::new())) {
+            eprintln!("[sophisticatedcore] open: {e:?}");
+        }
+    }
+}

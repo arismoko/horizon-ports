@@ -1,0 +1,17 @@
+{
+  "type": "minecraft:crafting_shaped",
+  "category": "misc",
+  "pattern": [
+    "III",
+    "IBI",
+    "III"
+  ],
+  "key": {
+    "B": "sophisticatedbackpacks:upgrade_base",
+    "I": "minecraft:iron_block"
+  },
+  "result": {
+    "id": "sophisticatedbackpacks:stack_upgrade_tier_1",
+    "count": 1
+  }
+}

@@ -1,0 +1,11 @@
+{
+ "type": "minecraft:crafting_shapeless",
+ "category": "misc",
+ "ingredients": [
+  "sophisticatedstorage:storage_io"
+ ],
+ "result": {
+  "id": "sophisticatedstorage:storage_input",
+  "count": 1
+ }
+}

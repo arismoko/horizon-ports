@@ -1,0 +1,16 @@
+# blockrunner: Block Runner 8.0.4 (Fuzs) with Homestead's config: `minecraft:dirt_path` x1.35,
+# `#minecraft:stone_bricks` x1.15. A BlockPart's `block_speed_factor` on those blocks (both sides,
+# so prediction and the server agree), tuned so that walking on them is that much faster.
+id = "blockrunner"
+name = "blockrunner"
+version = "0.4.0"
+description = ""
+authors = []
+api = "0.2"
+side = "both"
+capabilities = ["registries"]
+
+[native]
+game = "26.3"
+horizon = "dd67b76ff23e28c6d8e21859df600d31572f81a0"
+mixins = "e59da9094f0c2fdda6c627fe9eff22dec6a906f0"

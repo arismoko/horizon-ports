@@ -1,0 +1,17 @@
+{
+  "type": "minecraft:crafting_shaped",
+  "category": "misc",
+  "pattern": [
+    "NNN",
+    "NSN",
+    "NNN"
+  ],
+  "key": {
+    "N": "minecraft:netherite_block",
+    "S": "sophisticatedbackpacks:stack_upgrade_tier_3"
+  },
+  "result": {
+    "id": "sophisticatedbackpacks:stack_upgrade_tier_4",
+    "count": 1
+  }
+}

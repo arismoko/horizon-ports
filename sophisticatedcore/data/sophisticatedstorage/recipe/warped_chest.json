@@ -1,0 +1,36 @@
+{
+ "type": "minecraft:crafting_shaped",
+ "category": "misc",
+ "pattern": [
+  "PPP",
+  "PRP",
+  "PPP"
+ ],
+ "key": {
+  "P": "minecraft:warped_planks",
+  "R": "minecraft:redstone_torch"
+ },
+ "result": {
+  "id": "sophisticatedstorage:chest",
+  "count": 1,
+  "components": {
+   "minecraft:custom_data": {
+    "woodType": "warped"
+   },
+   "minecraft:custom_model_data": {
+    "strings": [
+     "warped"
+    ]
+   },
+   "minecraft:item_name": {
+    "translate": "block.sophisticatedstorage.chest.wooden",
+    "with": [
+     {
+      "translate": "wood_name.sophisticatedstorage.warped"
+     },
+     " "
+    ]
+   }
+  }
+ }
+}

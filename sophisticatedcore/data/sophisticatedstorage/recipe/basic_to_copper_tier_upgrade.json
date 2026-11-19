@@ -1,0 +1,17 @@
+{
+ "type": "minecraft:crafting_shaped",
+ "category": "misc",
+ "pattern": [
+  "CCC",
+  "CRC",
+  "CCC"
+ ],
+ "key": {
+  "C": "minecraft:copper_ingot",
+  "R": "minecraft:redstone_torch"
+ },
+ "result": {
+  "id": "sophisticatedstorage:basic_to_copper_tier_upgrade",
+  "count": 1
+ }
+}

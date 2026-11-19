@@ -1,0 +1,19 @@
+{
+ "type": "minecraft:crafting_shaped",
+ "category": "misc",
+ "pattern": [
+  " D ",
+  "GJG",
+  "RRR"
+ ],
+ "key": {
+  "D": "minecraft:diamond",
+  "G": "minecraft:gold_ingot",
+  "J": "sophisticatedstorage:jukebox_upgrade",
+  "R": "minecraft:redstone"
+ },
+ "result": {
+  "id": "sophisticatedstorage:advanced_jukebox_upgrade",
+  "count": 1
+ }
+}

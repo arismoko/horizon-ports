@@ -1,0 +1,27 @@
+{
+  "type": "sophisticatedcore:upgrade_next_tier",
+  "pattern": [
+    " D ",
+    "GFG",
+    "RRR"
+  ],
+  "key": {
+    "D": [
+      "minecraft:diamond"
+    ],
+    "F": [
+      "sophisticatedbackpacks:refill_upgrade"
+    ],
+    "G": [
+      "minecraft:gold_ingot"
+    ],
+    "R": [
+      "minecraft:redstone"
+    ]
+  },
+  "result": {
+    "id": "sophisticatedbackpacks:advanced_refill_upgrade",
+    "count": 1
+  },
+  "copy": "F"
+}

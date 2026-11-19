@@ -1,0 +1,12 @@
+{
+ "type": "minecraft:crafting_shapeless",
+ "category": "misc",
+ "ingredients": [
+  "minecraft:slime_ball",
+  "minecraft:paper"
+ ],
+ "result": {
+  "id": "sophisticatedstorage:packing_tape",
+  "count": 1
+ }
+}

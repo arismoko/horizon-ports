@@ -1,0 +1,18 @@
+{
+ "type": "minecraft:crafting_shaped",
+ "category": "misc",
+ "pattern": [
+  "SFS",
+  "SBS",
+  "FSF"
+ ],
+ "key": {
+  "B": "sophisticatedstorage:upgrade_base",
+  "F": "minecraft:flint",
+  "S": "minecraft:stick"
+ },
+ "result": {
+  "id": "sophisticatedstorage:stack_downgrade_tier_1",
+  "count": 1
+ }
+}

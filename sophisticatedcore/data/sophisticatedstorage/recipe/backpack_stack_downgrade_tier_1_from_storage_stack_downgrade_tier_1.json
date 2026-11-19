@@ -1,0 +1,18 @@
+{
+ "type": "minecraft:crafting_shaped",
+ "category": "misc",
+ "pattern": [
+  "TUT",
+  " L ",
+  "T T"
+ ],
+ "key": {
+  "L": "minecraft:leather",
+  "T": "minecraft:string",
+  "U": "sophisticatedstorage:stack_downgrade_tier_1"
+ },
+ "result": {
+  "id": "sophisticatedbackpacks:stack_downgrade_tier_1",
+  "count": 1
+ }
+}

@@ -1,0 +1,30 @@
+{
+ "type": "sophisticatedcore:upgrade_next_tier",
+ "pattern": [
+  " D ",
+  "GHG",
+  "ROR"
+ ],
+ "key": {
+  "D": [
+   "minecraft:diamond"
+  ],
+  "G": [
+   "minecraft:gold_ingot"
+  ],
+  "H": [
+   "sophisticatedstorage:hopper_upgrade"
+  ],
+  "O": [
+   "minecraft:dropper"
+  ],
+  "R": [
+   "minecraft:redstone"
+  ]
+ },
+ "result": {
+  "id": "sophisticatedstorage:advanced_hopper_upgrade",
+  "count": 1
+ },
+ "copy": "H"
+}

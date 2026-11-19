@@ -1,0 +1,17 @@
+{
+ "type": "minecraft:crafting_shaped",
+ "category": "misc",
+ "pattern": [
+  "PUP",
+  " P ",
+  "P P"
+ ],
+ "key": {
+  "P": "#minecraft:planks",
+  "U": "sophisticatedbackpacks:advanced_void_upgrade"
+ },
+ "result": {
+  "id": "sophisticatedstorage:advanced_void_upgrade",
+  "count": 1
+ }
+}

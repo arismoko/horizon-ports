@@ -1,0 +1,15 @@
+Sophisticated Backpacks and Storage for Horizon 26.3 (package sophisticatedcore, version 0.4.0)
+
+A port of three Fabric 1.20.1 mods, in one package:
+- Sophisticated Core 1.2.7.15.166 by P3pp3rF1y, Salandora (https://github.com/Salandora/SophisticatedCore)
+- Sophisticated Backpacks 3.23.4.5.110 by P3pp3rF1y, Ridanisaurus, Salandora
+  (https://github.com/Salandora/SophisticatedBackpacks)
+- Sophisticated Storage 1.3.5.11.142 by P3pp3rF1y, Ridanisaurus, Salandora
+  (https://github.com/Salandora/SophisticatedStorage)
+Original licence: GPL-3.0 (all three)
+
+Ported to Horizon by lavoide: the rules of all three are re-implemented in Rust on Horizon's mod API, and
+their content (items, blocks, textures, models, recipes and other data) is carried over from the three jars,
+under their own namespaces. This port is distributed under the same licence as the originals (GPL-3.0); the
+licence text is the original repositories' LICENSE (the jars have none). Built against Horizon's exact-build
+SDK dd67b76ff23e28c6d8e21859df600d31572f81a0.

@@ -1,0 +1,17 @@
+{
+ "type": "minecraft:crafting_shaped",
+ "category": "misc",
+ "pattern": [
+  " S ",
+  "SRS",
+  " S "
+ ],
+ "key": {
+  "R": "minecraft:redstone_torch",
+  "S": "minecraft:stick"
+ },
+ "result": {
+  "id": "sophisticatedstorage:basic_tier_upgrade",
+  "count": 1
+ }
+}

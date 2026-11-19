@@ -1,0 +1,12 @@
+{
+ "type": "minecraft:crafting_shapeless",
+ "category": "misc",
+ "ingredients": [
+  "sophisticatedstorage:controller",
+  "minecraft:ender_pearl"
+ ],
+ "result": {
+  "id": "sophisticatedstorage:storage_link",
+  "count": 3
+ }
+}

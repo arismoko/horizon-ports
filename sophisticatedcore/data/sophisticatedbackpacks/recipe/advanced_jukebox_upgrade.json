@@ -1,0 +1,19 @@
+{
+  "type": "minecraft:crafting_shaped",
+  "category": "misc",
+  "pattern": [
+    " D ",
+    "GJG",
+    "RRR"
+  ],
+  "key": {
+    "D": "minecraft:diamond",
+    "G": "minecraft:gold_ingot",
+    "J": "sophisticatedbackpacks:jukebox_upgrade",
+    "R": "minecraft:redstone"
+  },
+  "result": {
+    "id": "sophisticatedbackpacks:advanced_jukebox_upgrade",
+    "count": 1
+  }
+}

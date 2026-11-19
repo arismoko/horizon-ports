@@ -1,0 +1,30 @@
+{
+  "type": "sophisticatedcore:upgrade_next_tier",
+  "pattern": [
+    "EIE",
+    "IPI",
+    "R L"
+  ],
+  "key": {
+    "E": [
+      "minecraft:ender_pearl"
+    ],
+    "I": [
+      "minecraft:iron_ingot"
+    ],
+    "L": [
+      "minecraft:lapis_lazuli"
+    ],
+    "P": [
+      "sophisticatedbackpacks:pickup_upgrade"
+    ],
+    "R": [
+      "minecraft:redstone"
+    ]
+  },
+  "result": {
+    "id": "sophisticatedbackpacks:magnet_upgrade",
+    "count": 1
+  },
+  "copy": "P"
+}

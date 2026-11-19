@@ -1,0 +1,17 @@
+{
+ "type": "minecraft:crafting_shaped",
+ "category": "misc",
+ "pattern": [
+  "DDD",
+  "DRD",
+  "DDD"
+ ],
+ "key": {
+  "D": "minecraft:diamond",
+  "R": "minecraft:redstone_torch"
+ },
+ "result": {
+  "id": "sophisticatedstorage:gold_to_diamond_tier_upgrade",
+  "count": 1
+ }
+}

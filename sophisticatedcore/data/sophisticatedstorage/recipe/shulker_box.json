@@ -1,0 +1,21 @@
+{
+ "type": "minecraft:crafting_shaped",
+ "category": "misc",
+ "pattern": [
+  " S",
+  "RC",
+  " S"
+ ],
+ "key": {
+  "C": [
+   "minecraft:chest",
+   "minecraft:trapped_chest"
+  ],
+  "R": "minecraft:redstone_torch",
+  "S": "minecraft:shulker_shell"
+ },
+ "result": {
+  "id": "sophisticatedstorage:shulker_box",
+  "count": 1
+ }
+}

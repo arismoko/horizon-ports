@@ -1,0 +1,18 @@
+{
+  "type": "minecraft:crafting_shaped",
+  "pattern": [
+    "PCP",
+    "cGg",
+    "PCP"
+  ],
+  "key": {
+    "P": "#minecraft:planks",
+    "c": "minecraft:chest",
+    "C": "minecraft:comparator",
+    "G": "minecraft:glowstone",
+    "g": "minecraft:glass"
+  },
+  "result": {
+    "id": "toms_storage:ts.storage_terminal"
+  }
+}

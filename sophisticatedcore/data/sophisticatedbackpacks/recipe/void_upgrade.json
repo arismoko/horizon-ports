@@ -1,0 +1,19 @@
+{
+  "type": "minecraft:crafting_shaped",
+  "category": "misc",
+  "pattern": [
+    " E ",
+    "OBO",
+    "ROR"
+  ],
+  "key": {
+    "B": "sophisticatedbackpacks:upgrade_base",
+    "E": "minecraft:ender_pearl",
+    "O": "minecraft:obsidian",
+    "R": "minecraft:redstone"
+  },
+  "result": {
+    "id": "sophisticatedbackpacks:void_upgrade",
+    "count": 1
+  }
+}

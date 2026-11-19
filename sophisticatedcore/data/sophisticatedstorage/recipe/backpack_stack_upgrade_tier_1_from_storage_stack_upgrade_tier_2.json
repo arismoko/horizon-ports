@@ -1,0 +1,18 @@
+{
+ "type": "minecraft:crafting_shaped",
+ "category": "misc",
+ "pattern": [
+  "TST",
+  "SLS",
+  "T T"
+ ],
+ "key": {
+  "L": "minecraft:leather",
+  "S": "sophisticatedstorage:stack_upgrade_tier_2",
+  "T": "minecraft:string"
+ },
+ "result": {
+  "id": "sophisticatedbackpacks:stack_upgrade_tier_1",
+  "count": 1
+ }
+}

@@ -1,0 +1,36 @@
+{
+ "type": "minecraft:crafting_shaped",
+ "category": "misc",
+ "pattern": [
+  "PPP",
+  "PRP",
+  "PPP"
+ ],
+ "key": {
+  "P": "minecraft:mangrove_planks",
+  "R": "minecraft:redstone_torch"
+ },
+ "result": {
+  "id": "sophisticatedstorage:chest",
+  "count": 1,
+  "components": {
+   "minecraft:custom_data": {
+    "woodType": "mangrove"
+   },
+   "minecraft:custom_model_data": {
+    "strings": [
+     "mangrove"
+    ]
+   },
+   "minecraft:item_name": {
+    "translate": "block.sophisticatedstorage.chest.wooden",
+    "with": [
+     {
+      "translate": "wood_name.sophisticatedstorage.mangrove"
+     },
+     " "
+    ]
+   }
+  }
+ }
+}

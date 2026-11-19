@@ -1,0 +1,23 @@
+{
+  "type": "minecraft:crafting_shaped",
+  "category": "misc",
+  "pattern": [
+    "ADA",
+    "IBI",
+    " C "
+  ],
+  "key": {
+    "A": "minecraft:anvil",
+    "B": "sophisticatedbackpacks:upgrade_base",
+    "C": [
+      "minecraft:chest",
+      "minecraft:trapped_chest"
+    ],
+    "D": "minecraft:diamond",
+    "I": "minecraft:iron_ingot"
+  },
+  "result": {
+    "id": "sophisticatedbackpacks:anvil_upgrade",
+    "count": 1
+  }
+}

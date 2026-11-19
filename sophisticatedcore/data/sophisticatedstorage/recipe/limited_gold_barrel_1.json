@@ -1,0 +1,21 @@
+{
+ "type": "sophisticatedcore:upgrade_next_tier",
+ "pattern": [
+  "GGG",
+  "GSG",
+  "GGG"
+ ],
+ "key": {
+  "G": [
+   "minecraft:gold_ingot"
+  ],
+  "S": [
+   "sophisticatedstorage:limited_iron_barrel_1"
+  ]
+ },
+ "result": {
+  "id": "sophisticatedstorage:limited_gold_barrel_1",
+  "count": 1
+ },
+ "copy": "S"
+}

@@ -1,0 +1,19 @@
+{
+  "type": "minecraft:crafting_shaped",
+  "category": "misc",
+  "pattern": [
+    " J ",
+    "IBI",
+    " R "
+  ],
+  "key": {
+    "B": "sophisticatedbackpacks:upgrade_base",
+    "I": "minecraft:iron_ingot",
+    "J": "minecraft:jukebox",
+    "R": "minecraft:redstone"
+  },
+  "result": {
+    "id": "sophisticatedbackpacks:jukebox_upgrade",
+    "count": 1
+  }
+}

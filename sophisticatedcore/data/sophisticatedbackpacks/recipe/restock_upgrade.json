@@ -1,0 +1,23 @@
+{
+  "type": "minecraft:crafting_shaped",
+  "category": "misc",
+  "pattern": [
+    " P ",
+    "IBI",
+    "RCR"
+  ],
+  "key": {
+    "B": "sophisticatedbackpacks:upgrade_base",
+    "C": [
+      "minecraft:chest",
+      "minecraft:trapped_chest"
+    ],
+    "I": "minecraft:iron_ingot",
+    "P": "minecraft:sticky_piston",
+    "R": "minecraft:redstone"
+  },
+  "result": {
+    "id": "sophisticatedbackpacks:restock_upgrade",
+    "count": 1
+  }
+}

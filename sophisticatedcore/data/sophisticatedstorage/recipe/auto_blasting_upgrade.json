@@ -1,0 +1,30 @@
+{
+ "type": "sophisticatedcore:upgrade_next_tier",
+ "pattern": [
+  "DHD",
+  "RSH",
+  "GHG"
+ ],
+ "key": {
+  "D": [
+   "minecraft:diamond"
+  ],
+  "G": [
+   "minecraft:gold_ingot"
+  ],
+  "H": [
+   "minecraft:hopper"
+  ],
+  "R": [
+   "minecraft:redstone"
+  ],
+  "S": [
+   "sophisticatedstorage:blasting_upgrade"
+  ]
+ },
+ "result": {
+  "id": "sophisticatedstorage:auto_blasting_upgrade",
+  "count": 1
+ },
+ "copy": "S"
+}

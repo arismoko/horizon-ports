@@ -1,0 +1,30 @@
+{
+  "type": "sophisticatedcore:upgrade_next_tier",
+  "pattern": [
+    "DID",
+    "GPG",
+    "RRR"
+  ],
+  "key": {
+    "D": [
+      "minecraft:diamond"
+    ],
+    "G": [
+      "minecraft:gold_ingot"
+    ],
+    "I": [
+      "minecraft:dispenser"
+    ],
+    "P": [
+      "sophisticatedbackpacks:pump_upgrade"
+    ],
+    "R": [
+      "minecraft:redstone"
+    ]
+  },
+  "result": {
+    "id": "sophisticatedbackpacks:advanced_pump_upgrade",
+    "count": 1
+  },
+  "copy": "P"
+}

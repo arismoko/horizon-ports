@@ -1,0 +1,21 @@
+{
+ "type": "sophisticatedcore:upgrade_next_tier",
+ "pattern": [
+  " I ",
+  "ISI",
+  " I "
+ ],
+ "key": {
+  "I": [
+   "minecraft:iron_ingot"
+  ],
+  "S": [
+   "sophisticatedstorage:copper_chest"
+  ]
+ },
+ "result": {
+  "id": "sophisticatedstorage:iron_chest",
+  "count": 1
+ },
+ "copy": "S"
+}

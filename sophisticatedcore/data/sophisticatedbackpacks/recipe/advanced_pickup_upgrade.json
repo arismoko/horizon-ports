@@ -1,0 +1,27 @@
+{
+  "type": "sophisticatedcore:upgrade_next_tier",
+  "pattern": [
+    " D ",
+    "GPG",
+    "RRR"
+  ],
+  "key": {
+    "D": [
+      "minecraft:diamond"
+    ],
+    "G": [
+      "minecraft:gold_ingot"
+    ],
+    "P": [
+      "sophisticatedbackpacks:pickup_upgrade"
+    ],
+    "R": [
+      "minecraft:redstone"
+    ]
+  },
+  "result": {
+    "id": "sophisticatedbackpacks:advanced_pickup_upgrade",
+    "count": 1
+  },
+  "copy": "P"
+}

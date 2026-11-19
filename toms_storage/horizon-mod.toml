@@ -1,0 +1,22 @@
+# toms_storage: Tom's Simple Storage 1.7.1 (tom5454; MIT). One package: data/ and assets/ are the content mod
+# mods/toms_storage (tools/toms_storage_port.py from the carry of the jar). Everything else is the mod API
+# (src/lib.rs): no game module and no mixin.
+# - The inventory connector joins the inventories touching it (through trims too, 16 blocks) and those put on
+#   the cables by cable connectors into one; the connector, the cable connectors and the inventory proxy answer
+#   the item capability for it, so hoppers and terminals reach the whole network.
+# - The storage and crafting terminals are server menus (chest screens) over the network: pages, sorting,
+#   search by typing, taking and putting items, a 3x3 crafting grid refilled from the network.
+# - Wireless and advanced wireless terminals open a terminal from afar.
+id = "toms_storage"
+name = "Tom's Simple Storage"
+version = "0.3.0"
+description = "Tom's Simple Storage: storage and crafting terminals over every connected inventory, cables, trims and wireless terminals (by tom5454)"
+authors = ["tom5454"]
+api = "0.2"
+side = "both"
+capabilities = ["registries"]
+
+[native]
+game = "26.3"
+horizon = "dd67b76ff23e28c6d8e21859df600d31572f81a0"
+mixins = "e59da9094f0c2fdda6c627fe9eff22dec6a906f0"

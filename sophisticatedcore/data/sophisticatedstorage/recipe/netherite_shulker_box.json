@@ -1,0 +1,16 @@
+{
+ "type": "sophisticatedcore:upgrade_next_tier",
+ "ingredients": [
+  [
+   "sophisticatedstorage:diamond_shulker_box"
+  ],
+  [
+   "minecraft:netherite_ingot"
+  ]
+ ],
+ "result": {
+  "id": "sophisticatedstorage:netherite_shulker_box",
+  "count": 1
+ },
+ "copy_index": 0
+}

@@ -1,0 +1,29 @@
+{
+ "type": "minecraft:crafting_shaped",
+ "category": "misc",
+ "pattern": [
+  "SCS",
+  "PBP",
+  "SCS"
+ ],
+ "key": {
+  "B": [
+   "sophisticatedstorage:chest",
+   "sophisticatedstorage:barrel"
+  ],
+  "C": "minecraft:comparator",
+  "P": "#minecraft:planks",
+  "S": [
+   "minecraft:stone",
+   "minecraft:granite",
+   "minecraft:diorite",
+   "minecraft:andesite",
+   "minecraft:deepslate",
+   "minecraft:tuff"
+  ]
+ },
+ "result": {
+  "id": "sophisticatedstorage:controller",
+  "count": 1
+ }
+}

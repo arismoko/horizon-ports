@@ -1,0 +1,17 @@
+{
+ "type": "minecraft:crafting_shaped",
+ "category": "misc",
+ "pattern": [
+  "LLL",
+  "LBL",
+  "LLL"
+ ],
+ "key": {
+  "B": "sophisticatedstorage:upgrade_base",
+  "L": "#minecraft:logs"
+ },
+ "result": {
+  "id": "sophisticatedstorage:stack_upgrade_tier_1",
+  "count": 1
+ }
+}

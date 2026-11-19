@@ -1,0 +1,13 @@
+{
+  "type": "sophisticatedcore:storage_dye",
+  "storage": [
+    "sophisticatedbackpacks:backpack",
+    "sophisticatedbackpacks:copper_backpack",
+    "sophisticatedbackpacks:iron_backpack",
+    "sophisticatedbackpacks:gold_backpack",
+    "sophisticatedbackpacks:diamond_backpack",
+    "sophisticatedbackpacks:netherite_backpack"
+  ],
+  "main_default": 13394234,
+  "accent_default": 6434330
+}

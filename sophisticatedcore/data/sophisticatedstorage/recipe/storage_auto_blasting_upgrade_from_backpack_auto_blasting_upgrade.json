@@ -1,0 +1,17 @@
+{
+ "type": "minecraft:crafting_shaped",
+ "category": "misc",
+ "pattern": [
+  "PUP",
+  " P ",
+  "P P"
+ ],
+ "key": {
+  "P": "#minecraft:planks",
+  "U": "sophisticatedbackpacks:auto_blasting_upgrade"
+ },
+ "result": {
+  "id": "sophisticatedstorage:auto_blasting_upgrade",
+  "count": 1
+ }
+}

@@ -1,0 +1,73 @@
+{
+  "template": "minecraft:stone",
+  "item": false,
+  "block_item": "sophisticatedbackpacks:backpack",
+  "properties": {
+    "hardness": 0.8,
+    "explosion_resistance": 0.8,
+    "sounds": "minecraft:white_wool",
+    "requires_tool": false,
+    "occludes": false
+  },
+  "state_properties": {
+    "facing": {
+      "type": "enum",
+      "values": [
+        "north",
+        "south",
+        "west",
+        "east"
+      ]
+    }
+  },
+  "default_state": {
+    "facing": "north"
+  },
+  "shapes": {
+    "properties": [
+      "facing"
+    ],
+    "values": {
+      "north": [
+        [
+          0.0469,
+          0.0,
+          0.1719,
+          0.9531,
+          0.9062,
+          0.75
+        ]
+      ],
+      "south": [
+        [
+          0.0469,
+          0.0,
+          0.25,
+          0.9531,
+          0.9062,
+          0.8281
+        ]
+      ],
+      "west": [
+        [
+          0.1719,
+          0.0,
+          0.0469,
+          0.75,
+          0.9062,
+          0.9531
+        ]
+      ],
+      "east": [
+        [
+          0.25,
+          0.0,
+          0.0469,
+          0.8281,
+          0.9062,
+          0.9531
+        ]
+      ]
+    }
+  }
+}

@@ -1,0 +1,27 @@
+{
+  "type": "sophisticatedcore:upgrade_next_tier",
+  "pattern": [
+    " D ",
+    "GVG",
+    "RRR"
+  ],
+  "key": {
+    "D": [
+      "minecraft:diamond"
+    ],
+    "G": [
+      "minecraft:gold_ingot"
+    ],
+    "R": [
+      "minecraft:redstone"
+    ],
+    "V": [
+      "sophisticatedbackpacks:tool_swapper_upgrade"
+    ]
+  },
+  "result": {
+    "id": "sophisticatedbackpacks:advanced_tool_swapper_upgrade",
+    "count": 1
+  },
+  "copy": "V"
+}

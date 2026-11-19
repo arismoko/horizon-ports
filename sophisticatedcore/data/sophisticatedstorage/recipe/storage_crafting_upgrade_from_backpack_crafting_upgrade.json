@@ -1,0 +1,17 @@
+{
+ "type": "minecraft:crafting_shaped",
+ "category": "misc",
+ "pattern": [
+  "PUP",
+  " P ",
+  "P P"
+ ],
+ "key": {
+  "P": "#minecraft:planks",
+  "U": "sophisticatedbackpacks:crafting_upgrade"
+ },
+ "result": {
+  "id": "sophisticatedstorage:crafting_upgrade",
+  "count": 1
+ }
+}

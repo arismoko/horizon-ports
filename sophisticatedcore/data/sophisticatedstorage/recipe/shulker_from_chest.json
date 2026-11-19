@@ -1,0 +1,21 @@
+{
+ "type": "sophisticatedcore:upgrade_next_tier",
+ "pattern": [
+  "S",
+  "C",
+  "S"
+ ],
+ "key": {
+  "C": [
+   "sophisticatedstorage:chest"
+  ],
+  "S": [
+   "minecraft:shulker_shell"
+  ]
+ },
+ "result": {
+  "id": "sophisticatedstorage:shulker_box",
+  "count": 1
+ },
+ "copy": "C"
+}

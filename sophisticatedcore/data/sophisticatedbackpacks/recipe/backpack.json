@@ -1,0 +1,21 @@
+{
+  "type": "minecraft:crafting_shaped",
+  "category": "misc",
+  "pattern": [
+    "SLS",
+    "SCS",
+    "LLL"
+  ],
+  "key": {
+    "C": [
+      "minecraft:chest",
+      "minecraft:trapped_chest"
+    ],
+    "L": "minecraft:leather",
+    "S": "minecraft:string"
+  },
+  "result": {
+    "id": "sophisticatedbackpacks:backpack",
+    "count": 1
+  }
+}

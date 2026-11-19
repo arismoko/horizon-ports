@@ -1,0 +1,17 @@
+# securecrops: Secure Crops 2.0.0 (zekk051) with Homestead's gamerules (secureFarmlandAndCrops,
+# secureFarmlandIfEmpty on, secureFarmlandBreakCrops off): nothing tramples farmland, with or
+# without a crop. Fall damage still happens. The `farmland_trample` hook (server) cancels every
+# trample; the old bundle replaced the landing registry loader instead.
+id = "securecrops"
+name = "securecrops"
+version = "0.4.0"
+description = ""
+authors = []
+api = "0.2"
+side = "both"
+capabilities = ["registries"]
+
+[native]
+game = "26.3"
+horizon = "dd67b76ff23e28c6d8e21859df600d31572f81a0"
+mixins = "e59da9094f0c2fdda6c627fe9eff22dec6a906f0"

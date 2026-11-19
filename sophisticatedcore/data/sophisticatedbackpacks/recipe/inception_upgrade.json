@@ -1,0 +1,19 @@
+{
+  "type": "minecraft:crafting_shaped",
+  "category": "misc",
+  "pattern": [
+    "ESE",
+    "DBD",
+    "EDE"
+  ],
+  "key": {
+    "B": "sophisticatedbackpacks:upgrade_base",
+    "D": "minecraft:diamond",
+    "E": "minecraft:ender_eye",
+    "S": "minecraft:nether_star"
+  },
+  "result": {
+    "id": "sophisticatedbackpacks:inception_upgrade",
+    "count": 1
+  }
+}

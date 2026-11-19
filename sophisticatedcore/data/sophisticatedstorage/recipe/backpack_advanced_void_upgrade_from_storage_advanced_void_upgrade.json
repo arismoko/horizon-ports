@@ -1,0 +1,18 @@
+{
+ "type": "minecraft:crafting_shaped",
+ "category": "misc",
+ "pattern": [
+  "TUT",
+  " L ",
+  "T T"
+ ],
+ "key": {
+  "L": "minecraft:leather",
+  "T": "minecraft:string",
+  "U": "sophisticatedstorage:advanced_void_upgrade"
+ },
+ "result": {
+  "id": "sophisticatedbackpacks:advanced_void_upgrade",
+  "count": 1
+ }
+}

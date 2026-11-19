@@ -1,0 +1,16 @@
+{
+ "type": "minecraft:crafting_shaped",
+ "category": "misc",
+ "pattern": [
+  "SSS",
+  "SSS",
+  "SSS"
+ ],
+ "key": {
+  "S": "sophisticatedstorage:stack_upgrade_tier_5"
+ },
+ "result": {
+  "id": "sophisticatedstorage:stack_upgrade_omega_tier",
+  "count": 1
+ }
+}

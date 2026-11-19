@@ -1,0 +1,33 @@
+{
+ "template": "minecraft:stone",
+ "properties": {
+  "hardness": 2.0,
+  "explosion_resistance": 2.0,
+  "sounds": "minecraft:shulker_box",
+  "requires_tool": false,
+  "occludes": false
+ },
+ "state_properties": {
+  "facing": {
+   "type": "enum",
+   "values": [
+    "up",
+    "down",
+    "north",
+    "south",
+    "west",
+    "east"
+   ]
+  },
+  "packed": {
+   "type": "boolean"
+  }
+ },
+ "default_state": {
+  "facing": "up",
+  "packed": "false"
+ },
+ "components": {
+  "minecraft:max_stack_size": 1
+ }
+}

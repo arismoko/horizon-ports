@@ -1,0 +1,19 @@
+{
+ "type": "minecraft:crafting_shaped",
+ "category": "misc",
+ "pattern": [
+  " H ",
+  "IBI",
+  "RRR"
+ ],
+ "key": {
+  "B": "sophisticatedstorage:upgrade_base",
+  "H": "minecraft:hopper",
+  "I": "minecraft:iron_ingot",
+  "R": "minecraft:redstone"
+ },
+ "result": {
+  "id": "sophisticatedstorage:hopper_upgrade",
+  "count": 1
+ }
+}

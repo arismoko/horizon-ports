@@ -1,0 +1,30 @@
+{
+ "type": "minecraft:crafting_shaped",
+ "category": "misc",
+ "pattern": [
+  "SPS",
+  "RBG",
+  "SPS"
+ ],
+ "key": {
+  "B": [
+   "sophisticatedstorage:chest",
+   "sophisticatedstorage:barrel"
+  ],
+  "G": "minecraft:gold_ingot",
+  "P": "#minecraft:planks",
+  "R": "minecraft:repeater",
+  "S": [
+   "minecraft:stone",
+   "minecraft:granite",
+   "minecraft:diorite",
+   "minecraft:andesite",
+   "minecraft:deepslate",
+   "minecraft:tuff"
+  ]
+ },
+ "result": {
+  "id": "sophisticatedstorage:storage_io",
+  "count": 1
+ }
+}

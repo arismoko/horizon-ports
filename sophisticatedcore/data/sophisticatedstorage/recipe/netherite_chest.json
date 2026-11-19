@@ -1,0 +1,16 @@
+{
+ "type": "sophisticatedcore:upgrade_next_tier",
+ "ingredients": [
+  [
+   "sophisticatedstorage:diamond_chest"
+  ],
+  [
+   "minecraft:netherite_ingot"
+  ]
+ ],
+ "result": {
+  "id": "sophisticatedstorage:netherite_chest",
+  "count": 1
+ },
+ "copy_index": 0
+}

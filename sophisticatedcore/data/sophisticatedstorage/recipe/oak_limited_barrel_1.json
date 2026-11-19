@@ -1,0 +1,37 @@
+{
+ "type": "minecraft:crafting_shaped",
+ "category": "misc",
+ "pattern": [
+  "PSP",
+  "PRP",
+  "PPP"
+ ],
+ "key": {
+  "P": "minecraft:oak_planks",
+  "R": "minecraft:redstone_torch",
+  "S": "minecraft:oak_slab"
+ },
+ "result": {
+  "id": "sophisticatedstorage:limited_barrel_1",
+  "count": 1,
+  "components": {
+   "minecraft:custom_data": {
+    "woodType": "oak"
+   },
+   "minecraft:custom_model_data": {
+    "strings": [
+     "oak"
+    ]
+   },
+   "minecraft:item_name": {
+    "translate": "block.sophisticatedstorage.limited_barrel_1.wooden",
+    "with": [
+     {
+      "translate": "wood_name.sophisticatedstorage.oak"
+     },
+     " "
+    ]
+   }
+  }
+ }
+}

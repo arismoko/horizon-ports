@@ -1,0 +1,21 @@
+{
+  "type": "sophisticatedcore:upgrade_next_tier",
+  "pattern": [
+    "DDD",
+    "DBD",
+    "DDD"
+  ],
+  "key": {
+    "B": [
+      "sophisticatedbackpacks:gold_backpack"
+    ],
+    "D": [
+      "minecraft:diamond"
+    ]
+  },
+  "result": {
+    "id": "sophisticatedbackpacks:diamond_backpack",
+    "count": 1
+  },
+  "copy": "B"
+}

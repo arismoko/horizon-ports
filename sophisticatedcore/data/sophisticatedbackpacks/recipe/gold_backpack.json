@@ -1,0 +1,21 @@
+{
+  "type": "sophisticatedcore:upgrade_next_tier",
+  "pattern": [
+    "GGG",
+    "GBG",
+    "GGG"
+  ],
+  "key": {
+    "B": [
+      "sophisticatedbackpacks:iron_backpack"
+    ],
+    "G": [
+      "minecraft:gold_ingot"
+    ]
+  },
+  "result": {
+    "id": "sophisticatedbackpacks:gold_backpack",
+    "count": 1
+  },
+  "copy": "B"
+}

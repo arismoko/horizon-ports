@@ -1,0 +1,19 @@
+{
+ "type": "minecraft:crafting_shaped",
+ "category": "misc",
+ "pattern": [
+  " E ",
+  "OBO",
+  "ROR"
+ ],
+ "key": {
+  "B": "sophisticatedstorage:upgrade_base",
+  "E": "minecraft:ender_pearl",
+  "O": "minecraft:obsidian",
+  "R": "minecraft:redstone"
+ },
+ "result": {
+  "id": "sophisticatedstorage:void_upgrade",
+  "count": 1
+ }
+}

@@ -1,0 +1,17 @@
+{
+ "type": "minecraft:crafting_shaped",
+ "category": "misc",
+ "pattern": [
+  " W ",
+  " SW",
+  "S  "
+ ],
+ "key": {
+  "S": "minecraft:stick",
+  "W": "#minecraft:wool"
+ },
+ "result": {
+  "id": "sophisticatedstorage:paintbrush",
+  "count": 1
+ }
+}

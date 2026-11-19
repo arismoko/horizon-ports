@@ -1,0 +1,18 @@
+{
+ "type": "minecraft:crafting_shaped",
+ "category": "misc",
+ "pattern": [
+  "RSR",
+  "SBS",
+  "RSR"
+ ],
+ "key": {
+  "B": "sophisticatedstorage:upgrade_base",
+  "R": "minecraft:redstone",
+  "S": "minecraft:string"
+ },
+ "result": {
+  "id": "sophisticatedstorage:filter_upgrade",
+  "count": 1
+ }
+}

@@ -1,0 +1,27 @@
+{
+ "type": "sophisticatedcore:upgrade_next_tier",
+ "pattern": [
+  " D ",
+  "GVG",
+  "RRR"
+ ],
+ "key": {
+  "D": [
+   "minecraft:diamond"
+  ],
+  "G": [
+   "minecraft:gold_ingot"
+  ],
+  "R": [
+   "minecraft:redstone"
+  ],
+  "V": [
+   "sophisticatedstorage:feeding_upgrade"
+  ]
+ },
+ "result": {
+  "id": "sophisticatedstorage:advanced_feeding_upgrade",
+  "count": 1
+ },
+ "copy": "V"
+}

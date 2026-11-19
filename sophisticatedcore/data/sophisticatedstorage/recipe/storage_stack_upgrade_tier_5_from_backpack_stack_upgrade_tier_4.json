@@ -1,0 +1,17 @@
+{
+ "type": "minecraft:crafting_shaped",
+ "category": "misc",
+ "pattern": [
+  "PSP",
+  " P ",
+  "P P"
+ ],
+ "key": {
+  "P": "#minecraft:planks",
+  "S": "sophisticatedbackpacks:stack_upgrade_tier_4"
+ },
+ "result": {
+  "id": "sophisticatedstorage:stack_upgrade_tier_5",
+  "count": 3
+ }
+}

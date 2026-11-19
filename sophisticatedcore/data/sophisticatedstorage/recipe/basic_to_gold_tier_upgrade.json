@@ -1,0 +1,17 @@
+{
+ "type": "minecraft:crafting_shaped",
+ "category": "misc",
+ "pattern": [
+  "GGG",
+  "GTG",
+  "GGG"
+ ],
+ "key": {
+  "G": "minecraft:gold_ingot",
+  "T": "sophisticatedstorage:basic_to_iron_tier_upgrade"
+ },
+ "result": {
+  "id": "sophisticatedstorage:basic_to_gold_tier_upgrade",
+  "count": 1
+ }
+}

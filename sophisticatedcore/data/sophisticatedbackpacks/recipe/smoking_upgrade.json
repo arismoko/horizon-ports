@@ -1,0 +1,19 @@
+{
+  "type": "minecraft:crafting_shaped",
+  "category": "misc",
+  "pattern": [
+    "RIR",
+    "IBI",
+    "RSR"
+  ],
+  "key": {
+    "B": "sophisticatedbackpacks:upgrade_base",
+    "I": "minecraft:iron_ingot",
+    "R": "minecraft:redstone",
+    "S": "minecraft:smoker"
+  },
+  "result": {
+    "id": "sophisticatedbackpacks:smoking_upgrade",
+    "count": 1
+  }
+}

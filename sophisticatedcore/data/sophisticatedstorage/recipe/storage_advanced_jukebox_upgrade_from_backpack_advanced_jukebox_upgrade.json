@@ -1,0 +1,17 @@
+{
+ "type": "minecraft:crafting_shaped",
+ "category": "misc",
+ "pattern": [
+  "PUP",
+  " P ",
+  "P P"
+ ],
+ "key": {
+  "P": "#minecraft:planks",
+  "U": "sophisticatedbackpacks:advanced_jukebox_upgrade"
+ },
+ "result": {
+  "id": "sophisticatedstorage:advanced_jukebox_upgrade",
+  "count": 1
+ }
+}

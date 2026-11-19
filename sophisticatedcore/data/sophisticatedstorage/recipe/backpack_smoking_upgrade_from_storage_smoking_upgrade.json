@@ -1,0 +1,18 @@
+{
+ "type": "minecraft:crafting_shaped",
+ "category": "misc",
+ "pattern": [
+  "TUT",
+  " L ",
+  "T T"
+ ],
+ "key": {
+  "L": "minecraft:leather",
+  "T": "minecraft:string",
+  "U": "sophisticatedstorage:smoking_upgrade"
+ },
+ "result": {
+  "id": "sophisticatedbackpacks:smoking_upgrade",
+  "count": 1
+ }
+}

@@ -1,0 +1,17 @@
+{
+ "type": "minecraft:crafting_shaped",
+ "category": "misc",
+ "pattern": [
+  "PUP",
+  " P ",
+  "P P"
+ ],
+ "key": {
+  "P": "#minecraft:planks",
+  "U": "sophisticatedbackpacks:chipped/botanist_workbench_upgrade"
+ },
+ "result": {
+  "id": "sophisticatedstorage:chipped/botanist_workbench_upgrade",
+  "count": 1
+ }
+}

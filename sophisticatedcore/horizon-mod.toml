@@ -1,0 +1,31 @@
+# sophisticatedcore: Sophisticated Core 1.2.7.15.166 (P3pp3rF1y, Salandora; Fabric port; GPL-3.0) with the rules of
+# Sophisticated Backpacks 3.23.4.5.110 (P3pp3rF1y, Ridanisaurus, Salandora; GPL-3.0). data/ and assets/ are the core
+# jar's content (mods/sophisticatedcore, tools/sophisticatedbackpacks_port.py); the backpacks' content is the
+# content-only package sophisticatedbackpacks. Everything else is the mod API (src/): no game module and no mixin.
+# - Storage items keep their contents in the stack (custom_data `inventory`, `upgradeInventory`, the jar's keys):
+#   kept when dropped, placed, worn or crafted into the next tier.
+# - The storage menu: a chest screen with pages and a row of upgrade slots, opened from the hand, by the
+#   Open Backpack key (worn in the trinkets back slot, else the first backpack in the inventory) or on a placed
+#   backpack. Clicks move items between the backpack and the inventory (a mod menu has no cursor here).
+# - Upgrades: stack, pickup, magnet, feeding, compacting, void, restock, deposit, refill, crafting, with their
+#   filter settings. The rest (filter, furnaces, jukebox, tank, pump, tool swapper...) sit in their slot inert.
+# - Crafting kinds `sophisticatedcore:upgrade_next_tier` (keeps the components: tier upgrades keep the contents) and
+#   `sophisticatedcore:storage_dye`.
+# - Sophisticated Storage 1.3.5.11.142 (same authors; GPL-3.0): its chests, barrels, limited barrels and shulker boxes
+#   (content: the content-only package sophisticatedstorage, tools/sophisticatedstorage_port.py) are placed, opened,
+#   broken, tier-upgraded in place, packed with packing tape and reached by hoppers here (src/storage.rs).
+id = "sophisticatedcore"
+name = "Sophisticated Backpacks and Storage"
+version = "0.4.0"
+description = "Sophisticated Core: storage contents, upgrades and menus for Sophisticated Backpacks and Sophisticated Storage (by P3pp3rF1y, Salandora)"
+authors = ["P3pp3rF1y", "Ridanisaurus", "Salandora"]
+api = "0.2"
+side = "both"
+capabilities = ["registries"]
+# The backpacks' and the storages' content are merged in by tools/build_next.py (MERGED): one package.
+namespaces = ["sophisticatedbackpacks", "sophisticatedstorage"]
+
+[native]
+game = "26.3"
+horizon = "dd67b76ff23e28c6d8e21859df600d31572f81a0"
+mixins = "e59da9094f0c2fdda6c627fe9eff22dec6a906f0"

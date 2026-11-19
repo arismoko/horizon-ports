@@ -1,0 +1,21 @@
+{
+ "type": "sophisticatedcore:upgrade_next_tier",
+ "pattern": [
+  "DDD",
+  "DSD",
+  "DDD"
+ ],
+ "key": {
+  "D": [
+   "minecraft:diamond"
+  ],
+  "S": [
+   "sophisticatedstorage:gold_chest"
+  ]
+ },
+ "result": {
+  "id": "sophisticatedstorage:diamond_chest",
+  "count": 1
+ },
+ "copy": "S"
+}

@@ -1,0 +1,19 @@
+{
+  "type": "minecraft:crafting_shaped",
+  "category": "misc",
+  "pattern": [
+    "IPI",
+    "PBP",
+    "RPR"
+  ],
+  "key": {
+    "B": "sophisticatedbackpacks:upgrade_base",
+    "I": "minecraft:iron_ingot",
+    "P": "minecraft:piston",
+    "R": "minecraft:redstone"
+  },
+  "result": {
+    "id": "sophisticatedbackpacks:compacting_upgrade",
+    "count": 1
+  }
+}
