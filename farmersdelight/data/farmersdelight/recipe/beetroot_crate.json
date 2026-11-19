@@ -1,0 +1,14 @@
+{
+  "key": {
+    "#": "minecraft:beetroot"
+  },
+  "pattern": [
+    "###",
+    "###",
+    "###"
+  ],
+  "result": {
+    "id": "farmersdelight:beetroot_crate"
+  },
+  "type": "minecraft:crafting_shaped"
+}

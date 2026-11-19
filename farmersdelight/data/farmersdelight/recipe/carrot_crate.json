@@ -1,0 +1,14 @@
+{
+  "key": {
+    "#": "minecraft:carrot"
+  },
+  "pattern": [
+    "###",
+    "###",
+    "###"
+  ],
+  "result": {
+    "id": "farmersdelight:carrot_crate"
+  },
+  "type": "minecraft:crafting_shaped"
+}
