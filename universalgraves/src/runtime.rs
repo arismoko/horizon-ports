@@ -206,9 +206,22 @@ pub(crate) fn take_messages(player: u128) -> Vec<String> {
     mine
 }
 
-/// The grave the experience of this death goes to, and the tick: spawn_orbs runs right after
-/// the drops, in the same tick (unless a sculk catalyst took the experience).
-static XP_TO: std::sync::Mutex<Option<([i32; 3], i64)>> = std::sync::Mutex::new(None);
+/// The death whose experience goes into the grave just made. ServerPlayer.die (respawn.rs) runs,
+/// in order and in one tick: the drops (`bury`), `living_experience_drop` for the same dying
+/// entity (`xp_arm`: armed), then `spawn_orbs` with that experience unless a sculk catalyst took
+/// it (`take_xp`: only while armed), then `guest_killed_player_trigger` (`xp_done`: forgotten).
+/// So only that death's own orbs go into the grave, never a later orb spawn.
+struct XpTo {
+    pos: [i32; 3],
+    tick: i64,
+    /// The dying player's entity id (`DyingDrops::entity`).
+    entity: u32,
+    armed: bool,
+}
+static XP_TO: std::sync::Mutex<Option<XpTo>> = std::sync::Mutex::new(None);
+fn xp_to() -> std::sync::MutexGuard<'static, Option<XpTo>> {
+    XP_TO.lock().unwrap_or_else(std::sync::PoisonError::into_inner)
+}
 
 fn spot_ok(game: &Game<'_>, p: [i32; 3]) -> bool {
     let s = game.world.block(p[0], p[1], p[2]);
@@ -255,7 +268,9 @@ fn skull_state(game: &Game<'_>, yaw: f32) -> Option<BlockStateId> {
 /// Player.dropEquipment for a guest in their turn: the stacks go into a new grave with their
 /// slots (vanishing-cursed ones are destroyed, as vanilla does). False leaves the drop to
 /// vanilla: keep_inventory, nothing to store, or no room for a grave.
-pub(crate) fn bury(game: &mut Game<'_>) -> bool {
+pub(crate) fn bury(game: &mut Game<'_>, entity: u32) -> bool {
+    // A death that leaves no grave has no experience to capture.
+    *xp_to() = None;
     if game.ui.rules.bool_at(horizon_client::gamerules::vanilla::KEEP_INVENTORY) {
         return false;
     }
@@ -317,8 +332,12 @@ pub(crate) fn bury(game: &mut Game<'_>) -> bool {
         trinkets,
     });
     store(game, graves);
-    *XP_TO.lock().unwrap_or_else(std::sync::PoisonError::into_inner) =
-        Some((pos, game.world.game_time));
+    *xp_to() = Some(XpTo {
+        pos,
+        tick: game.world.game_time,
+        entity,
+        armed: false,
+    });
     tell(
         owner,
         format!(
@@ -329,11 +348,27 @@ pub(crate) fn bury(game: &mut Game<'_>) -> bool {
     true
 }
 
+/// `living_experience_drop` is asked for a dying `entity` of `kind`: when it is the player whose
+/// grave was just made, the next orb spawn is that death's experience.
+pub(crate) fn xp_arm(game: &Game<'_>, entity: u32, kind: &str) {
+    if let Some(to) = xp_to().as_mut()
+        && kind == "minecraft:player"
+        && to.entity == entity
+        && to.tick == game.world.game_time
+    {
+        to.armed = true;
+    }
+}
+
+/// The death is over (`guest_killed_player_trigger`): whatever wasn't captured stays out.
+pub(crate) fn xp_done() {
+    *xp_to() = None;
+}
+
 /// The death's experience goes into the grave just made (experience_type percent_points 100:
-/// all of what vanilla would drop).
+/// all of what vanilla would drop). Only the orb spawn of the armed death, in its tick.
 pub(crate) fn take_xp(game: &mut Game<'_>, value: u32) -> bool {
-    let Some((pos, tick)) = XP_TO.lock().unwrap_or_else(std::sync::PoisonError::into_inner).take()
-    else {
+    let Some(XpTo { pos, tick, .. }) = xp_to().take_if(|to| to.armed) else {
         return false;
     };
     if tick != game.world.game_time {
@@ -390,7 +425,9 @@ fn clear_block(game: &mut Game<'_>, pos: [i32; 3]) {
 /// back into the slots they came from (else anywhere, else dropped) and the experience.
 /// True when the click was the grave's.
 pub(crate) fn open(game: &mut Game<'_>) -> bool {
-    if !matches!(game.guest_use, Some(GuestUse::OnBlock(_))) {
+    // A spectator only looks: the game's own spectator handling (use_item_as_player) takes the
+    // click, before the grave or any inventory is touched.
+    if game.spectator() || !matches!(game.guest_use, Some(GuestUse::OnBlock(_))) {
         return false;
     }
     let Some(hit) = game.pick() else { return false };

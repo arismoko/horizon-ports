@@ -4,7 +4,7 @@
 # tools/trinkets_port.py.
 id = "radiantgear"
 name = "radiantgear"
-version = "0.4.0"
+version = "0.4.1"
 description = ""
 authors = []
 # A native mod: Rust in src/, compiled by the launcher against the game build [native] pins, beside data/ and assets/.

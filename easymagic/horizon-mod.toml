@@ -12,7 +12,7 @@
 # on the table, hoppers and comparators, the hint list option.
 id = "easymagic"
 name = "easymagic"
-version = "0.4.0"
+version = "0.4.1"
 description = ""
 authors = []
 # A native mod: Rust in src/, compiled by the launcher against the game build [native] pins, beside data/ and assets/.

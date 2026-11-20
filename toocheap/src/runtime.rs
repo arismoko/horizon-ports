@@ -3,9 +3,12 @@
 // `stations::anvil_result` (AnvilMenu.createResult, horizon_client_lib: not patchable) drops the
 // result when the cost reaches 40 and the player isn't creative. Its `creative` flag also lets
 // any enchantment onto any item, which is the only other thing it changes. So when the cap
-// dropped the result (no output, cost 40 or more), the result is made again with `creative`, and
-// kept only when every enchantment of the right input could go on the left one anyway (or the
-// left is a book) and the cost came out the same: then it is exactly the uncapped result.
+// dropped the result (no output, cost 40 or more), the result is made again with `creative` from
+// a right input without the enchantments that can't go on the left item (unless the left is a
+// book). Survival skips exactly those entries, so the item is the uncapped survival result; the
+// rules between enchantments (`compatible`) still apply as in survival. Survival also fails when
+// every enchantment was skipped, and so does this. The XP charged is the game's own uncapped
+// survival cost (`vanilla.xp_cost`), which still counts the skipped entries' conflicts.
 use super::*;
 
 pub(crate) fn uncap(game: &mut Game<'_>, value: &mut crate::menu::AnvilUpdate) {
@@ -15,34 +18,45 @@ pub(crate) fn uncap(game: &mut Game<'_>, value: &mut crate::menu::AnvilUpdate) {
     let enchantments = std::sync::Arc::clone(game.item_enchantments());
     let items = game.items();
     let left = &value.left;
+    let mut right = value.right.clone();
     if &*left.item != "minecraft:enchanted_book"
-        && let Some(right) = value.right.as_ref()
-        && right
-            .crafting_enchantments()
-            .iter()
-            .any(|(id, _)| !enchantments.can_enchant(items, id, &left.item))
+        && let Some(right) = right.as_mut()
     {
-        return;
+        let all = right.crafting_enchantments();
+        let kept: Vec<_> = all
+            .iter()
+            .filter(|(id, _)| enchantments.can_enchant(items, id, &left.item))
+            .cloned()
+            .collect();
+        if kept.len() != all.len() {
+            // Survival: every entry skipped and none applied is no result.
+            if kept.is_empty() {
+                return;
+            }
+            right.set_crafting_enchantments(kept);
+        }
     }
     let hover = horizon_client::stations::hover_name(&game.pack.names, left);
     let r = horizon_client::stations::anvil_result(
         &enchantments,
         items,
         Some(left),
-        value.right.as_ref(),
+        right.as_ref(),
         value.name.as_deref(),
         &hover,
         true,
     );
-    if r.result.is_none() || r.cost != value.vanilla.xp_cost {
+    // Without the skipped entries' conflict points the cost can only be lower than survival's.
+    if r.result.is_none() || r.cost > value.vanilla.xp_cost {
         return;
     }
+    let cost = value.vanilla.xp_cost;
     let material = i32::try_from(r.repair_item_count_cost).unwrap_or(i32::MAX);
     value.vanilla.output = r.result.clone();
     value.vanilla.material_cost = material;
     if value.output.is_none() {
         value.output = r.result;
-        value.xp_cost = r.cost;
+        value.xp_cost = cost;
         value.material_cost = material;
     }
 }

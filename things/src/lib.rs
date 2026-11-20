@@ -416,13 +416,12 @@ impl Mod {
             if !passable(&block) {
                 break;
             }
-            queue.push(format!(
-                "execute in {dim} positioned {:.2} {:.2} {:.2} as @e[type=item,distance=..{radius:.2}] run tp @s {name}",
-                at[0], at[1], at[2]
-            ));
+            // The same selector twice, in a row: only the items this point moves lose their pickup delay.
+            let near = format!("execute in {dim} positioned {:.2} {:.2} {:.2} as @e[type=item,distance=..{radius:.2}] run", at[0], at[1], at[2]);
+            queue.push(format!("{near} data merge entity @s {{PickupDelay:0s}}"));
+            queue.push(format!("{near} tp @s {name}"));
             d += 1.0;
         }
-        queue.push(format!("execute as {name} at @s as @e[type=item,distance=..1.5] run data merge entity @s {{PickupDelay:0s}}"));
         queue.push(format!("execute as {name} at @s run playsound minecraft:entity.enderman.teleport player {name} ~ ~ ~ 0.125 2"));
         stack.set_damage((stack.damage() + MAGNET_COST).min(MAGNET_CHARGE));
         let _ = player.set_inventory_slot(host, slot, Some(stack));

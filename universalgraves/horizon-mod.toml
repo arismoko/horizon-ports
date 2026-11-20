@@ -13,7 +13,7 @@
 # teleporting, unlock costs.
 id = "universalgraves"
 name = "universalgraves"
-version = "0.4.0"
+version = "0.4.1"
 description = ""
 authors = []
 # A native mod: Rust in src/, compiled by the launcher against the game build [native] pins, beside data/ and assets/.
@@ -41,9 +41,31 @@ cancellable = true
 priority = 100
 target = "horizon_client::game::item_entities::Game<'_>::drop_inventory"
 helper = "src/mixins/bury.rs"
-bindings = [{ name = "game", ty = "&mut Game<'_>", value = "&mut *self" }]
+bindings = [
+  { name = "game", ty = "&mut Game<'_>", value = "&mut *self" },
+  { name = "dying", ty = "&crate::game::creatures::DyingDrops<'_>", value = "dying" },
+]
 
-# The death's experience into the grave.
+# The death's experience into the grave: armed by that death's own living_experience_drop (same
+# dying entity), taken by the orb spawn that follows it, forgotten when the death is over.
+[[native.mixin]]
+id = "xp_arm"
+kind = "HEAD"
+target = "horizon_client::game::native_hooks::living_experience_drop::Game<'_>::native_living_experience_drop"
+helper = "src/mixins/xp_arm.rs"
+bindings = [
+  { name = "game", ty = "&Game<'_>", value = "&*self" },
+  { name = "entity", ty = "u32", value = "entity" },
+  { name = "kind", ty = "&str", value = "kind" },
+]
+
+[[native.mixin]]
+id = "xp_done"
+kind = "HEAD"
+target = "horizon_client::game::lan_actions::respawn::Game<'_>::guest_killed_player_trigger"
+helper = "src/mixins/xp_done.rs"
+bindings = []
+
 [[native.mixin]]
 id = "xp"
 kind = "HEAD"

@@ -8,7 +8,7 @@
 # The rename screen (use a name tag in the air) is not ported. The recipe is in mods/homestead.
 id = "convenientnametags"
 name = "convenientnametags"
-version = "0.4.0"
+version = "0.4.1"
 description = ""
 authors = []
 # A native mod: Rust in src/, compiled by the launcher against the game build [native] pins, beside data/ and assets/.

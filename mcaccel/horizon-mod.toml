@@ -6,11 +6,12 @@
 # - the worn face's blur is data now: each carved face's block item has vanilla's `equippable`
 #   with its own `camera_overlay` (data/mcaccel/horizon/block/carved_pumpkin_*.json; the old
 #   bundle's mixin target `screen_quads` has a closure now, which mixins refuse);
-# - src/lib.rs: `left_click_block` (shears turn a face back) and `enderman_anger` (a worn carved
-#   face hides the stare), on the server.
+# - mixin `left_click` (LeftClickPumpkinEvent: shears turn a face back where the dig starts, only
+#   when the game's block_action_restricted allows it), with runtime.rs;
+# - src/lib.rs: `enderman_anger` (a worn carved face hides the stare), on the server.
 id = "mcaccel"
 name = "Minecraft Accelerated"
-version = "0.4.0"
+version = "0.4.1"
 description = "Shears carve faces into pumpkins (Minecraft Accelerated 1.0.0 by mari, CC0-1.0)"
 authors = []
 api = "0.2"
@@ -40,6 +41,19 @@ bindings = [
   { name = "at", ty = "[i32; 3]", value = "pos" },
   { name = "side", ty = "[i32; 3]", value = "face" },
   { name = "held", ty = "Option<&ItemStack>", value = "held" },
+]
+
+# LeftClickPumpkinEvent: shears' left click turns the face back, after the dig's reach, spawn
+# protection and border checks; runtime.rs also asks block_action_restricted (spectator, adventure).
+[[native.mixin]]
+id = "left_click"
+kind = "HEAD"
+target = "horizon_client::game::native_hooks::base::Game<'_>::native_left_click_block"
+helper = "src/mixins/left_click.rs"
+bindings = [
+  { name = "game", ty = "&mut Game<'_>", value = "&mut *self" },
+  { name = "at", ty = "[i32; 3]", value = "pos" },
+  { name = "side", ty = "[i32; 3]", value = "face" },
 ]
 
 [[native.mixin]]

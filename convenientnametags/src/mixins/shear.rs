@@ -18,11 +18,11 @@ fn shear_name(
     if !m.alive() {
         return ::core::ops::ControlFlow::Continue(());
     }
-    let Some(name) = m.custom_name.clone() else {
+    if m.custom_name.is_none() {
         return ::core::ops::ControlFlow::Continue(());
-    };
+    }
     let m = m.clone();
-    crate::game::creatures::convenientnametags::drop_tag(game, &m, &name);
+    crate::game::creatures::convenientnametags::drop_tag(game, &m);
     game.mobs[index].custom_name = None;
     game.mobs[index].custom_name_text = None;
     // The save keeps the loaded tag's `CustomName` unless the mob writes a new one

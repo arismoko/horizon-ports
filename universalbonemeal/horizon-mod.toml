@@ -5,7 +5,7 @@
 # mixins sit one level up, on GameLevel's LevelAccess methods that call them.
 id = "universalbonemeal"
 name = "universalbonemeal"
-version = "0.4.0"
+version = "0.4.1"
 description = ""
 authors = []
 api = "0.2"

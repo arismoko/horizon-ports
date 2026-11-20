@@ -9,7 +9,11 @@
 //! - lets a book into the grindstone's inputs (a `MenuPart`'s `menu_slot_rules`, both sides);
 //! - `grindstone_place`: no result for a player who can't pay its levels (GrindstoneScreen's
 //!   canTakeResult, decided when the result is made rather than when it is taken);
-//! - `grindstone_take`: takes the levels (`Player.giveExperienceLevels(-cost)`).
+//! - `grindstone_take`: takes the levels (`Player.giveExperienceLevels(-cost)`). The hook runs after
+//!   the engine moved the result, so it can't refuse the take: the runtime's `click` mixin
+//!   (server.rs) re-checks the cost against the levels before each click on the grindstone and
+//!   takes away a result the player can no longer pay for, so a click that moves the result is one
+//!   this hook charges in the same op.
 use std::collections::HashMap;
 use std::sync::Mutex;
 

@@ -14,7 +14,7 @@
 # upgraded socks stay in the result slot).
 id = "things"
 name = "Things"
-version = "0.4.0"
+version = "0.4.1"
 description = "Trinkets and tools (Things 0.3.3 by glisco, MIT)"
 authors = []
 api = "0.2"

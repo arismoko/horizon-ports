@@ -72,11 +72,10 @@ fn worn_view(game: &Game<'_>) -> Vec<(String, ItemStack)> {
         .unwrap_or_default()
 }
 
-fn eyes_in_water(game: &Game<'_>, p: &horizon_client::motion::PlayerMotion) -> bool {
-    let eyes = [p.position.x.floor() as i32, (p.position.y + 1.62).floor() as i32, p.position.z.floor() as i32];
-    let name = &game.res.facts().get(game.world.block(eyes[0], eyes[1], eyes[2])).name;
-    matches!(&**name, "minecraft:water" | "minecraft:bubble_column" | "minecraft:kelp" | "minecraft:kelp_plant"
-        | "minecraft:seagrass" | "minecraft:tall_seagrass")
+/// `Entity.isEyeInFluid(FluidTags.WATER)` from the player's last fluid update (LambDynamicLights'
+/// water check): the water's surface and the pose's eye height decide it.
+fn eyes_in_water(p: &horizon_client::motion::PlayerMotion) -> bool {
+    p.is_eye_in_fluid(horizon_client::motion::WATER)
 }
 
 /// The brightest light of the worn stacks: (level, item).
@@ -101,7 +100,7 @@ pub(crate) fn gather_with_worn(game: &mut Game<'_>, camera: glam::DVec3, alpha: 
         return core::ops::ControlFlow::Continue(());
     }
     let Some(p) = game.player.as_ref().filter(|p| !p.spectator) else { return core::ops::ControlFlow::Continue(()) };
-    let Some((level, _item)) = worn_light(game, &worn_view(game), eyes_in_water(game, p)) else {
+    let Some((level, _item)) = worn_light(game, &worn_view(game), eyes_in_water(p)) else {
         return core::ops::ControlFlow::Continue(());
     };
     let feet = game.previous_position.lerp(p.position, game.clock.camera_fraction());

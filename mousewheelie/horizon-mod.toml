@@ -17,7 +17,7 @@
 # Everything is ordinary slot clicks (the game's own `tweak_click`), so it runs on any server.
 id = "mousewheelie"
 name = "mousewheelie"
-version = "0.4.0"
+version = "0.4.1"
 description = ""
 authors = []
 # A native mod: Rust in src/, compiled by the launcher against the game build [native] pins, beside data/ and assets/.

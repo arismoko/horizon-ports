@@ -23,12 +23,13 @@ const BUCKET_USES: u32 = 16;
 /// LumberAxeItem.MAX_TREE_SIZE and MIN_LEAVES_REQUIRED.
 const MAX_TREE: usize = 256;
 const MIN_LEAVES: usize = 3;
-/// Homestead has Falling Trees (native/fallingtrees). On Java its BlockEvent.BREAK takes the
+/// Homestead has Falling Trees (native-next/fallingtrees). On Java its BlockEvent.BREAK takes the
 /// whole tree for any axe (LumberAxeItem is one) and cancels the break, so the lumber axe's
-/// postMine never runs; native/fallingtrees fells it on the next tick instead. Set this to
-/// false if Falling Trees is ever left out (a mixin can't ask which native mods are loaded:
-/// mod_api.rs takes no modules).
-const FALLING_TREES: bool = true;
+/// postMine never runs; native-next/fallingtrees fells it on the next tick instead. Without it,
+/// the lumber axe fells the tree itself. The mod crate reads the loaded packages at registration.
+fn falling_trees() -> bool {
+    mod_tokimistoolshed::falling_trees()
+}
 /// AbacusHudRenderer.MAX_AXIS_LENGTH.
 const MAX_AXIS: i32 = 128;
 
@@ -181,7 +182,7 @@ pub(crate) fn break_block(game: &mut Game<'_>, at: [i32; 3]) -> ControlFlow<Resu
     let result = game.break_block(at);
     if result.is_ok() && state_at(game, at) != before {
         match kind {
-            Kind::LumberAxe if FALLING_TREES => {}
+            Kind::LumberAxe if falling_trees() => {}
             Kind::LumberAxe => fell(game, at, &facts.name),
             // ScytheItem: always the horizontal 3x3.
             Kind::Scythe => around(game, at, [0, 1, 0], kind),
@@ -750,7 +751,9 @@ pub(crate) fn abacus_hud(game: &mut Game<'_>) {
 /// Copy mode, a random hotbar block in Shuffle mode). The old block's drops, as the tier's
 /// pickaxe with the chisel's enchantments would get them, go to the inventory, and the chisel
 /// takes a use (it stops at its last one). Using it in the air switches the mode (on Java:
-/// Left Alt and the mouse wheel, a client keybind).
+/// Left Alt and the mouse wheel, a client keybind). Nothing changes unless the player may break
+/// the block, the block has no block entity and is one whole block, and a replacement can stand
+/// there; a placement that still fails puts the same state back, which is then the whole block.
 fn chisel(game: &mut Game<'_>, block_hit: Option<&Hit>, mut held: ItemStack, pickaxe: &str) -> ControlFlow<Result<bool>> {
     let mode = custom_int(&held, "ChiselMode").unwrap_or(0).clamp(0, 1);
     let Some(hit) = block_hit else {
@@ -764,6 +767,23 @@ fn chisel(game: &mut Game<'_>, block_hit: Option<&Hit>, mut held: ItemStack, pic
     let state = state_at(game, pos);
     let facts = game.res.facts().get(state).clone();
     if is_air(&facts.name) {
+        return ControlFlow::Continue(());
+    }
+    // The game's own rules for changing the block, before anything changes: a spectator, or an
+    // adventure player whose chisel can't break it (block_action_restricted), and spawn protection
+    // or the world border (mayInteract). The click goes on to the block then (a button, a door).
+    let block_pos = horizon_core::position::BlockPos::new(pos[0], pos[1], pos[2]);
+    if game.block_action_restricted(pos) || !game.may_interact_at(block_pos) {
+        return ControlFlow::Continue(());
+    }
+    // Targets the swap can't put back whole: a block entity (a chest's items, a sign's text), an
+    // unbreakable block, a fluid or a waterlogged block, and the half of a two-block one.
+    if facts.block_entity
+        || facts.hardness < 0.0
+        || facts.fluid_level > 0
+        || facts.waterlogged
+        || two_part(game, state)
+    {
         return ControlFlow::Continue(());
     }
     let max = game.res.items().get(&held.item).map_or(0, |i| i.max_damage);
@@ -799,6 +819,17 @@ fn chisel(game: &mut Game<'_>, block_hit: Option<&Hit>, mut held: ItemStack, pic
         };
         stack.and_then(|s| block_of(game, s)).is_some_and(|b| b != facts.name)
     });
+    // The replacement must stand where the old block is (canSurvive), and be one block.
+    candidates.retain(|slot| {
+        let stack = match slot {
+            Some(i) => game.inventory[*i].as_ref(),
+            None => game.offhand.as_ref(),
+        };
+        let Some(block) = stack.and_then(|s| game.res.items().get(&s.item)).and_then(|i| i.block) else {
+            return false;
+        };
+        !two_part(game, block) && game.with_level(|b, level, ticks| b.can_survive(level, ticks, block_pos, block))
+    });
     if candidates.is_empty() {
         return ControlFlow::Continue(());
     }
@@ -831,6 +862,15 @@ fn chisel(game: &mut Game<'_>, block_hit: Option<&Hit>, mut held: ItemStack, pic
         }
     }
     ControlFlow::Break(Ok(false))
+}
+
+/// A door's, a bed's or a tall plant's half: clearing one leaves the other.
+fn two_part(game: &Game<'_>, state: BlockStateId) -> bool {
+    game.pack.assets.registry.state(state).is_some_and(|st| {
+        st.properties
+            .iter()
+            .any(|(k, v)| matches!((&**k, &**v), ("half", "upper" | "lower") | ("part", "head" | "foot")))
+    })
 }
 
 fn kind_is_chisel(item: &str) -> bool {

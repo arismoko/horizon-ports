@@ -1,10 +1,12 @@
 # tokimistoolshed: Tokimi's Toolshed 1.8 (Cozy Studios). One package: data/ and assets/ are the
 # content mod mods/tokimistoolshed (tools/tokimistoolshed_port.py), copied here because a content
 # package can't use a compiled mod's id. src/runtime.rs is the old bundle's rules (a module in
-# game.rs); each mixin below hands over to it.
+# game.rs); each mixin below hands over to it. src/lib.rs reads at registration whether
+# fallingtrees is loaded (with it, Falling Trees fells the lumber axe's tree; without it the
+# lumber axe does) and listens to player_tick_post for the Abacus HUD.
 id = "tokimistoolshed"
 name = "Tokimi's Toolshed"
-version = "0.4.0"
+version = "0.4.1"
 description = "Hammers, excavators, scythes, clippers, lumber axes, copper buckets, trowel, chisels, abacus (Tokimi's Toolshed 1.8 by Cozy Studios)"
 authors = []
 api = "0.2"
@@ -126,7 +128,8 @@ bindings = [
   { name = "hit", ty = "Option<&super::Hit>", value = "block_hit" },
 ]
 
-# AbacusHudRenderer: the counts over the hotbar (after each player tick).
+# AbacusHudRenderer: the counts over the hotbar (after each player tick). The game runs this
+# route only while a mod listens to player_tick_post: src/lib.rs does.
 [[native.mixin]]
 id = "abacus"
 kind = "HEAD"

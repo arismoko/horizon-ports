@@ -29,10 +29,14 @@ fn own_uuid(game: &Game<'_>) -> Option<u128> {
     }
 }
 
-/// The worn stacks where only `&Game` is at hand, read from the holder's saved form without
-/// inserting anything; a remote client reads its synced copy.
-fn worn_view(game: &Game<'_>) -> Vec<(String, ItemStack)> {
-    let Some(uuid) = game.lan_acting_uuid.or_else(|| own_uuid(game)) else { return Vec::new() };
+fn acting(game: &Game<'_>) -> Option<u128> {
+    game.lan_acting_uuid.or_else(|| own_uuid(game))
+}
+
+/// The worn stacks of `uuid` where only `&Game` is at hand, read from the holder's saved form
+/// without inserting anything; a remote client reads its synced copy (none for a player whose
+/// attachment the server didn't sync).
+fn worn_view(game: &Game<'_>, uuid: u128) -> Vec<(String, ItemStack)> {
     let att: Option<&mod_api::Attachments> = if game.native_authoritative() {
         if game.lan_acting_uuid == Some(uuid) {
             Some(&game.player_state.attachments)
@@ -77,7 +81,7 @@ fn worn_glider(game: &Game<'_>, worn: &[(String, ItemStack)]) -> Option<(String,
 
 /// LivingEntity.canGlide with ElytraSlot: also a glider in a trinket slot.
 pub(crate) fn glider_worn(game: &Game<'_>, value: bool) -> bool {
-    value || worn_glider(game, &worn_view(game)).is_some()
+    value || acting(game).is_some_and(|uuid| worn_glider(game, &worn_view(game, uuid)).is_some())
 }
 
 /// LivingEntity.updateFallFlying's wear: with no glider in the armour, the trinket one wears.
@@ -93,7 +97,7 @@ pub(crate) fn wear_glider(game: &mut Game<'_>, points: u32) -> bool {
     {
         return false;
     }
-    let Some(uuid) = game.lan_acting_uuid.or_else(|| own_uuid(game)) else { return false };
+    let Some(uuid) = acting(game) else { return false };
     let Ok(mut c) = WORN.get(game, Holder::Player(uuid)) else { return false };
     let worn: Vec<(String, ItemStack)> = c
         .iter()
@@ -107,8 +111,21 @@ pub(crate) fn wear_glider(game: &mut Game<'_>, points: u32) -> bool {
     true
 }
 
-/// ElytraSlotLayer for the window's own player: the trinket glider's wings, when the chest has none.
-pub(crate) fn own_wings(
+/// The player the avatar `m` is: another player's (a mob of the level, on a server or a LAN
+/// guest) by its entity id, else the window's own model (`player_model` or its inventory copy).
+fn wearer(game: &Game<'_>, m: &horizon_client::mobs::Mob) -> Option<u128> {
+    if !game.mobs.iter().any(|x| std::ptr::eq(x, m)) {
+        return acting(game);
+    }
+    match &game.remote {
+        Some(r) => r.player_uuid(m.id),
+        None => game.lan.as_ref()?.hub.guests.iter().find(|g| g.entity_id as u32 == m.id).map(|g| g.uuid),
+    }
+}
+
+/// ElytraSlotLayer for any player avatar: the trinket glider's wings of the player `m` is, when
+/// the chest has none.
+pub(crate) fn wings(
     game: &Game<'_>,
     m: &horizon_client::mobs::Mob,
     chest: Option<&str>,
@@ -121,7 +138,8 @@ pub(crate) fn own_wings(
     if chest.is_some_and(|c| items.get(c).is_some_and(|i| i.glider)) {
         return false;
     }
-    let Some((_, stack)) = worn_glider(game, &worn_view(game)) else { return false };
+    let Some(uuid) = wearer(game, m) else { return false };
+    let Some((_, stack)) = worn_glider(game, &worn_view(game, uuid)) else { return false };
     game.wings_geometry(
         Some(&*stack.item),
         Some(&stack),

@@ -3,12 +3,15 @@
 # name as the item's hoverable `[name]`, as vanilla's ItemStack.getDisplayName shows it.
 #
 # The window's half is a game module (`crate::game::smwyg`) and two HEAD injections: the key (on
-# `Game::key_pressed`) and the send (on `Game::handle_chat_input`). The send goes to the server as the
-# mod message `smwyg:share`. The server's half is the trait mod in `api/`: it writes the line with
-# `tellraw @a`, the sender's name from the server's own player list where it has one.
+# `Game::key_pressed`) and the send (on `Game::handle_chat_input`). The send first tells the server
+# the decorated line as the mod message `smwyg:share`, then lets the game send the line as ordinary
+# signed player chat. The server's half is the trait mod in `src/lib.rs`: its `server_chat` hook swaps
+# the hoverable item in as the message's unsigned content once the line has passed the game's chat
+# checks (hidden chat, chat filter and mutes, other mods' cancels, spam limit). The delivered line is
+# player chat, not a system message; the signature covers the typed text.
 id = "smwyg"
 name = "smwyg"
-version = "0.4.0"
+version = "0.4.1"
 description = ""
 authors = []
 # A native mod: Rust in src/, compiled by the launcher against the game build [native] pins, beside data/ and assets/.

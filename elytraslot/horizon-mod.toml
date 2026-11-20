@@ -3,7 +3,7 @@
 # `trinkets:worn` player attachment and needs none of its code.
 id = "elytraslot"
 name = "elytraslot"
-version = "0.4.0"
+version = "0.4.1"
 description = ""
 authors = []
 # A native mod: Rust in src/, compiled by the launcher against the game build [native] pins, beside data/ and assets/.
@@ -46,7 +46,7 @@ bindings = [
   { name = "points", ty = "u32", value = "points" },
 ]
 
-# ElytraSlotLayer: its wings on the window's own player.
+# ElytraSlotLayer: its wings on a player avatar, from that player's own worn slots.
 [[native.mixin]]
 id = "wings"
 kind = "HEAD"

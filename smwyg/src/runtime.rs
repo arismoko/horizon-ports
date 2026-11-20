@@ -52,12 +52,19 @@ pub(crate) fn share_key(game: &mut Game<'_>, key: KeyCode) -> bool {
     true
 }
 
-/// The chat line is being sent: if it still holds the shared name, send it to the server as
-/// `smwyg:share` (the text before, the item, the text after) in its place.
+/// The chat line is being sent: if it still holds the shared name, tell the server first with
+/// `smwyg:share` (the line as the game will send it, and the text before, the item, the text
+/// after). The line itself then goes on as ordinary signed player chat, so the server's chat
+/// checks (hidden chat, the chat filter and mutes, the mods' `server_chat`, the spam limit) all
+/// see it; the server's half only swaps in the hoverable item when that line reaches
+/// `server_chat` untouched. The payload goes out at once on the connection the chat packet
+/// follows, so the server reads it first.
 pub(crate) fn send(game: &mut Game<'_>, message: &str) -> bool {
     let Some((name, component)) = SHARE.lock().unwrap().take() else {
         return false;
     };
+    // The text the game sends (handle_chat_input normalizes it before sending).
+    let message = horizon_client::chat::normalize_chat_message(message);
     if message.starts_with('/') {
         return false;
     }
@@ -66,18 +73,16 @@ pub(crate) fn send(game: &mut Game<'_>, message: &str) -> bool {
     };
     let before = &message[..at];
     let after = &message[at + name.len()..];
-    let own = game.player_display_name().resolved().plain();
     let payload = serde_json::json!({
-        "name": own,
+        "text": message,
         "body": ["", before, component, after],
     });
-    game.ui.chat.add_recent(message);
     let id = mod_api::PayloadId("smwyg:share".into());
     let bytes = mod_api::PayloadBytes(payload.to_string().into_bytes());
     if let Err(e) = game.send_payload_to_server(&id, bytes) {
+        // No server to decorate it (a vanilla server): the plain line alone.
         eprintln!("[smwyg] smwyg:share not sent: {e:?}");
-        // No server to show it (a vanilla server): send the plain line.
-        return false;
     }
-    true
+    // The game sends the line either way.
+    false
 }

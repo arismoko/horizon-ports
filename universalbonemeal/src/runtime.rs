@@ -105,16 +105,30 @@ fn max_tall_height(x: i32, z: i32) -> i32 {
 }
 
 /// `ChorusPlantBehavior.getTopConnectedBlock`: the chorus flowers reached by walking the plant's
-/// connections (not down, not back), at most 128 deep.
+/// connections (not down, not back), at most 128 deep. A stem reached again along another path
+/// is walked again only with more depth left than before, so each stem is walked at most once
+/// per depth and the plant's branches joining up can't multiply the work; the flowers found
+/// (and their order) are the full walk's.
 fn chorus_flowers(level: &GameLevel<'_>, start: BlockPos) -> Vec<BlockPos> {
-    let b = level.behaviours;
-    let p = b.props;
     let mut out = Vec::new();
-    fn walk(level: &GameLevel<'_>, pos: BlockPos, from: Option<(i32, i32, i32)>, depth: i32, out: &mut Vec<BlockPos>) {
+    let mut seen = std::collections::HashMap::new();
+    fn walk(
+        level: &GameLevel<'_>,
+        pos: BlockPos,
+        from: Option<(i32, i32, i32)>,
+        depth: i32,
+        out: &mut Vec<BlockPos>,
+        seen: &mut std::collections::HashMap<(i32, i32, i32), i32>,
+    ) {
         let b = level.behaviours;
         let p = b.props;
         let state = level.block_state(pos);
         if depth > 0 && is(b, state, "minecraft:chorus_plant") {
+            let best = seen.entry((pos.x, pos.y, pos.z)).or_insert(0);
+            if *best >= depth {
+                return;
+            }
+            *best = depth;
             for (key, d) in [
                 (p.north, (0, 0, -1)),
                 (p.east, (1, 0, 0)),
@@ -123,15 +137,14 @@ fn chorus_flowers(level: &GameLevel<'_>, start: BlockPos) -> Vec<BlockPos> {
                 (p.up, (0, 1, 0)),
             ] {
                 if Some(d) != from && b.table.bool(state, key) {
-                    walk(level, off(pos, d.0, d.1, d.2), Some((-d.0, -d.1, -d.2)), depth - 1, out);
+                    walk(level, off(pos, d.0, d.1, d.2), Some((-d.0, -d.1, -d.2)), depth - 1, out, seen);
                 }
             }
         } else if is(b, state, "minecraft:chorus_flower") && !out.contains(&pos) {
             out.push(pos);
         }
     }
-    let _ = p;
-    walk(level, start, Some((0, -1, 0)), 128, &mut out);
+    walk(level, start, Some((0, -1, 0)), 128, &mut out, &mut seen);
     out
 }
 

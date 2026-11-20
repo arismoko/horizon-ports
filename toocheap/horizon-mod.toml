@@ -6,7 +6,7 @@
 # - mixin `label`: "Too Expensive!" reads "Enchantment Cost: N" (the line stays red).
 id = "toocheap"
 name = "toocheap"
-version = "0.4.0"
+version = "0.4.1"
 description = ""
 authors = []
 api = "0.2"

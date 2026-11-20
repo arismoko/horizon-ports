@@ -40,12 +40,12 @@ fn worn(game: &mut Game<'_>, uuid: u128) -> Vec<Option<ItemStack>> {
         .collect()
 }
 
-fn set_worn(game: &mut Game<'_>, uuid: u128, stacks: &[Option<ItemStack>]) {
-    let mut c = Compound::new();
-    for (s, stack) in mod_trinkets::SLOTS.iter().zip(stacks) {
-        if let Some(stack) = stack.as_ref().filter(|s| s.count > 0) {
-            c.insert(s.0.into(), horizon_client::save::item_to_nbt(stack));
-        }
+/// Empties the slots `ids` of `uuid`'s worn attachment. Every other saved entry (items this build
+/// can't make, ids that aren't slots of this table) is kept as it is, as the menu writer does.
+fn clear_slots(game: &mut Game<'_>, uuid: u128, ids: &[&str]) {
+    let mut c = WORN.get(game, Holder::Player(uuid)).unwrap_or_default();
+    for id in ids {
+        c.remove(&(*id).into());
     }
     let _ = WORN.set(game, Holder::Player(uuid), c);
 }
@@ -61,7 +61,9 @@ pub(crate) fn drop_on_death(game: &mut Game<'_>, at: [f64; 3]) {
     if worn.iter().all(Option::is_none) {
         return;
     }
-    set_worn(game, uuid, &vec![None; mod_trinkets::SLOTS.len()]);
+    let dropped: Vec<&str> =
+        mod_trinkets::SLOTS.iter().zip(&worn).filter(|(_, s)| s.is_some()).map(|(s, _)| s.0).collect();
+    clear_slots(game, uuid, &dropped);
     let pos = [at[0].floor() as i32, at[1].floor() as i32, at[2].floor() as i32];
     for s in worn.into_iter().flatten() {
         if s.enchantment_level("minecraft:vanishing_curse") == 0 {
@@ -103,7 +105,7 @@ pub(crate) fn apply_worn_totem(game: &mut Game<'_>) -> Option<Option<super::tote
     let mut worn = worn(game, uuid);
     let i = worn.iter().position(|s| s.as_ref().is_some_and(|s| &*s.item == TOTEM))?;
     let totem = worn[i].take();
-    set_worn(game, uuid, &worn);
+    clear_slots(game, uuid, &[mod_trinkets::SLOTS[i].0]);
     let saved = std::mem::replace(&mut game.offhand, totem);
     let body = game.apply_totem();
     game.offhand = saved;

@@ -37,7 +37,8 @@ fn total_xp(level: i32, progress: f32) -> i32 {
 
 /// clickMenuButton(4): with an item that has offers, and the lapis and points (or creative), the
 /// player gets a new enchantment seed, pays, and the offers are made again. True when `id` was
-/// the re-roll.
+/// the re-roll on this player's open enchanting menu; any other menu's button 4 (a stonecutter
+/// recipe, a loom pattern, a lectern's, a mod menu's) goes back to the game's dispatcher.
 pub(crate) fn reroll(game: &mut Game<'_>, conn: u32, window: i32, id: i32) -> bool {
     if id != REROLL {
         return false;
@@ -46,14 +47,14 @@ pub(crate) fn reroll(game: &mut Game<'_>, conn: u32, window: i32, id: i32) -> bo
         return false;
     };
     let Some(gi) = host.hub.guests.iter().position(|g| g.conn == conn) else {
-        return true;
+        return false;
     };
     let Some(mut gs) = host
         .menus
         .get_mut(&conn)
         .and_then(|p| p.station.take_if(|s| s.window == window && s.kind == StationKind::Enchanting))
     else {
-        return true;
+        return false;
     };
     let g = &host.hub.guests[gi];
     let creative = g.creative();

@@ -2,8 +2,8 @@
 // faces, the mod's pumpkins as golem heads, and the worn face's blur. The blocks are the
 // content mod mods/mcaccel.
 //
-// Injected as `crate::game::mcaccel`. The shears' left click and the enderman's stare are the mod
-// crate's hooks (src/lib.rs), whose face table (`mod_mcaccel::step`) this uses too.
+// Injected as `crate::game::mcaccel`. The enderman's stare is the mod
+// crate's hook (src/lib.rs), whose face table (`mod_mcaccel::step`) this uses too.
 use super::*;
 
 /// The block after (`forward`) or before `name` in its cycle (the mod crate's table).
@@ -45,7 +45,12 @@ fn state_of(game: &Game<'_>, name: &str, facing: &str) -> Option<horizon_world::
 
 /// Turns the pumpkin at `at` to `next`, as setBlockState does it: onPlace builds a golem.
 fn turn(game: &mut Game<'_>, at: [i32; 3], next: &str, side: [i32; 3]) -> horizon_client::Result<bool> {
-    let Some(state) = state_of(game, next, facing(game, side)) else {
+    let facing = facing(game, side);
+    turn_facing(game, at, next, facing)
+}
+
+fn turn_facing(game: &mut Game<'_>, at: [i32; 3], next: &str, facing: &str) -> horizon_client::Result<bool> {
+    let Some(state) = state_of(game, next, facing) else {
         return Ok(false);
     };
     let center = at.map(|c| f64::from(c) + 0.5);
@@ -74,6 +79,37 @@ pub(crate) fn shears_use(
         game.trigger_block("minecraft:item_used_on_block", at, &shears);
         Ok(())
     })())
+}
+
+/// LeftClickPumpkinEvent: a survival or adventure player hitting a pumpkin of the cycle with
+/// shears turns it back a face, where the dig starts (after reach, spawn protection and the world
+/// border). The Java event answers PASS, so a creative player breaks the block: nothing turns then.
+/// The game's own `block_action_restricted` decides as it does for the dig itself: a player who
+/// may not break the block (adventure without `can_break`) doesn't turn it either. The block
+/// turns at once, on the state the click hit; on the top or bottom it keeps its facing.
+pub(crate) fn left_click(game: &mut Game<'_>, at: [i32; 3], side: [i32; 3]) -> horizon_client::Result<()> {
+    if game.creative || game.block_action_restricted(at) {
+        return Ok(());
+    }
+    if !game.held().is_some_and(|s| &*s.item == "minecraft:shears") {
+        return Ok(());
+    }
+    let Some(previous) = step(&name_at(game, at), false) else {
+        return Ok(());
+    };
+    let facing = match (side[0], side[2]) {
+        (0, -1) => "north".to_owned(),
+        (0, 1) => "south".to_owned(),
+        (-1, 0) => "west".to_owned(),
+        (1, 0) => "east".to_owned(),
+        _ => {
+            let reg = game.pack.assets.registry;
+            reg.state(game.world.block(at[0], at[1], at[2]))
+                .and_then(|st| st.properties.get("facing").map(|f| f.to_string()))
+                .unwrap_or_else(|| "north".to_owned())
+        }
+    };
+    turn_facing(game, at, &previous, &facing).map(|_| ())
 }
 
 /// BlockInit.PUMPKIN_BLOCKS: every one of the mod's 28 blocks heads a golem.

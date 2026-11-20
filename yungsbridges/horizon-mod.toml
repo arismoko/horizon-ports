@@ -4,7 +4,7 @@
 # listens to `level_tick_post`, so the game calls the level tick hook point the tick mixin uses.
 id = "yungsbridges"
 name = "YUNG's Bridges"
-version = "0.4.0"
+version = "0.4.1"
 description = "Bridges over rivers (YUNG's Bridges 4.0.3 by YungNickYoung, LGPLv3)"
 authors = []
 api = "0.2"

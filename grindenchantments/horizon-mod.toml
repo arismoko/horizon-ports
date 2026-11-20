@@ -5,13 +5,16 @@
 # - src/lib.rs: a menu part lets a book into the grindstone's inputs (menu_slot_rules); the
 #   `grindstone_place` hook hides the result from a player who can't pay its levels, the
 #   `grindstone_take` hook takes the levels.
+# - mixin `click` on lan_station_click (server.rs): before a guest's click runs, a result whose
+#   cost the guest can no longer pay is taken away, so the engine can't move it; a click that
+#   moves it is charged by `grindstone_take` in the same op, at the levels checked.
 # - mixins on the game's grindstone hook dispatchers (`api_grindstone_place`, `api_grindstone_take`):
 #   the operation's result and the inputs it leaves, computed with the game's enchantment data
 #   (runtime.rs), which a server hook has no access to (`enchantment_min_cost` is client-only).
 # - mixin `label` on draw_station: "Enchantment Cost: N" on the screen.
 id = "grindenchantments"
 name = "grindenchantments"
-version = "0.4.0"
+version = "0.4.1"
 description = ""
 authors = []
 api = "0.2"
@@ -28,6 +31,12 @@ id = "runtime"
 file = "crates/horizon-client/src/game/blocks/stations.rs"
 name = "grindenchantments"
 source = "src/runtime.rs"
+
+[[native.module]]
+id = "server"
+file = "crates/horizon-client/src/game/network/lan_stations.rs"
+name = "grindenchantments"
+source = "src/server.rs"
 
 [[native.mixin]]
 id = "place"
@@ -49,6 +58,18 @@ bindings = [
   { name = "game", ty = "&mut super::Game<'_>", value = "&mut *self" },
   { name = "player", ty = "u128", value = "player" },
   { name = "value", ty = "&mut crate::menu::GrindstoneTake", value = "value" },
+]
+
+# The authoritative take: the cost re-checked before the click can move the result.
+[[native.mixin]]
+id = "click"
+kind = "HEAD"
+target = "horizon_client::game::lan_stations::Game<'_>::lan_station_click"
+helper = "src/mixins/click.rs"
+bindings = [
+  { name = "game", ty = "&mut Game<'_>", value = "&mut *self" },
+  { name = "conn", ty = "u32", value = "conn" },
+  { name = "p", ty = "&play::ContainerClick", value = "p" },
 ]
 
 [[native.mixin]]

@@ -6,24 +6,43 @@
 // chunk is queued, and once the chunks around it are loaded the same scan, rarity and template
 // run there. The templates and the list are bridge_data.rs (tools/yungsbridges_port.py).
 //
+// Java places a bridge while its chunks are still being generated, over the terrain alone. Here
+// the world around may be older, so before anything is written every block the bridge would
+// write (the template, the legs) is worked out and checked: each must be in a chunk generated
+// new in the last few minutes (`FRESH`), and hold what Java's bridge went over (air, water,
+// plants, natural terrain: `may_replace`), with no block entity. Any other and the bridge is
+// left out whole.
+//
 // Injected as `crate::game::yungsbridges`.
 use super::*;
 use super::structure_blocks::TemplateEntry;
 use super::yungsbridges_data::{BRIDGES, Bridge, TEMPLATES, Template};
 use std::cell::RefCell;
-use std::collections::{HashMap, VecDeque};
+use std::collections::{HashMap, HashSet, VecDeque};
 
 /// Level.getSeaLevel() in the overworld.
 const SEA_LEVEL: i32 = 63;
 /// Queued chunks looked at per tick, and the most kept.
 const PER_TICK: usize = 64;
 const MAX_QUEUE: usize = 8192;
+/// How long, in overworld ticks, a newly generated chunk may still take a bridge.
+const FRESH_TICKS: u64 = 6000;
+/// The pillar markers (DynamicLegProcessor): legs go down from them.
+const LEG_MARKERS: &[&str] = &[
+    "minecraft:yellow_stained_glass", "minecraft:warped_fence", "minecraft:pink_stained_glass",
+    "minecraft:light_blue_stained_glass", "minecraft:magenta_stained_glass", "minecraft:gray_stained_glass",
+    "minecraft:prismarine_wall",
+];
 
 thread_local! {
     static QUEUE: RefCell<VecDeque<[i32; 2]>> = RefCell::new(VecDeque::new());
     static ENTRIES: RefCell<HashMap<usize, Option<TemplateEntry>>> = RefCell::new(HashMap::new());
-    /// With YUNGSBRIDGES_LOG: chunks queued, decorated, in a river, crossings, past the rarity.
-    static STATS: RefCell<[u32; 7]> = const { RefCell::new([0; 7]) };
+    /// The chunks generated new, and the tick they came on.
+    static FRESH: RefCell<HashMap<[i32; 2], u64>> = RefCell::new(HashMap::new());
+    static TICKS: std::cell::Cell<u64> = const { std::cell::Cell::new(0) };
+    /// With YUNGSBRIDGES_LOG: chunks queued, decorated, in a river, crossings, past the rarity,
+    /// opaque starts, banks, refused for a block in the way, refused for an old chunk.
+    static STATS: RefCell<[u32; 9]> = const { RefCell::new([0; 9]) };
     /// YUNGSBRIDGES_FORCE="cx,cz;..." (testing): those chunks are queued once, and the biome
     /// filter and rarity are skipped.
     static FORCED: std::cell::Cell<Option<bool>> = const { std::cell::Cell::new(None) };
@@ -41,7 +60,7 @@ fn stat(i: usize) {
         let mut s = s.borrow_mut();
         s[i] += 1;
         if i == 1 && s[1] % 100 == 0 {
-            eprintln!("yungsbridges stats: queued {} decorated {} river {} crossings {} placed {} (opaque starts {}, banks {})", s[0], s[1], s[2], s[3], s[4], s[5], s[6]);
+            eprintln!("yungsbridges stats: queued {} decorated {} river {} crossings {} past rarity {} (opaque starts {}, banks {}) refused: blocked {} old chunk {}", s[0], s[1], s[2], s[3], s[4], s[5], s[6], s[7], s[8]);
         }
     });
 }
@@ -56,6 +75,7 @@ pub(crate) fn chunk_loaded(dimension: &str, chunk: [i32; 2], new: bool) {
     if !new || dimension != "minecraft:overworld" {
         return;
     }
+    FRESH.with(|f| f.borrow_mut().insert(chunk, TICKS.get()));
     QUEUE.with(|q| {
         let mut q = q.borrow_mut();
         if q.len() < MAX_QUEUE {
@@ -84,11 +104,21 @@ pub(crate) fn tick(game: &mut Game<'_>) {
             }
         }
     }
+    let now = TICKS.get() + 1;
+    TICKS.set(now);
+    if now % 200 == 0 {
+        FRESH.with(|f| f.borrow_mut().retain(|_, at| now - *at <= FRESH_TICKS));
+    }
     let n = QUEUE.with(|q| q.borrow().len()).min(PER_TICK);
     for _ in 0..n {
         let Some(chunk) = QUEUE.with(|q| q.borrow_mut().pop_front()) else {
             return;
         };
+        // Too long waiting for its surroundings: the chunk may have been built on since.
+        // (Forced chunks go on, for the checks in `place` to refuse.)
+        if !forced() && !fresh(chunk) {
+            continue;
+        }
         // The scan reaches up to 16 + 31 + 1 blocks past the corner, the template and its legs
         // a few more: the chunks from one before to three after on each axis.
         let ready = (chunk[0] - 1..=chunk[0] + 3)
@@ -99,6 +129,44 @@ pub(crate) fn tick(game: &mut Game<'_>) {
         }
         decorate(game, chunk);
     }
+}
+
+/// Whether `chunk` was generated new within `FRESH_TICKS`.
+fn fresh(chunk: [i32; 2]) -> bool {
+    let now = TICKS.get();
+    FRESH.with(|f| f.borrow().get(&chunk).is_some_and(|at| now - *at <= FRESH_TICKS))
+}
+
+/// What a bridge may write over: what Java's went over, generated terrain before the vegetal
+/// decoration. Air, water, replaceable plants and other vegetation, kelp and sugar cane, natural
+/// leaves (`persistent=false`), ice and `#overworld_carver_replaceables` (stone, dirt, sand,
+/// gravel, terracotta, ores...), never a block with a block entity. Logs, planks, glass and
+/// other built blocks are not.
+fn may_replace(game: &Game<'_>, p: [i32; 3]) -> bool {
+    if game.world.block_entities.get(&(p[0], p[1], p[2])).is_some() {
+        return false;
+    }
+    let f = facts(game, p);
+    let name = &*f.name;
+    if f.replaceable
+        || air(game, p)
+        || f.classes.iter().any(|c| &**c == "VegetationBlock")
+        || matches!(
+            name,
+            "minecraft:water" | "minecraft:bubble_column" | "minecraft:kelp" | "minecraft:kelp_plant"
+                | "minecraft:sugar_cane" | "minecraft:ice"
+        )
+        || in_tag(game, "minecraft:overworld_carver_replaceables", name)
+    {
+        return true;
+    }
+    in_tag(game, "minecraft:leaves", name)
+        && game
+            .pack
+            .assets
+            .registry
+            .state(game.world.block(p[0], p[1], p[2]))
+            .is_some_and(|s| s.properties.get("persistent").is_some_and(|v| v == "false"))
 }
 
 fn facts(game: &Game<'_>, p: [i32; 3]) -> horizon_client::blocks::StateFacts {
@@ -274,6 +342,9 @@ fn place(game: &mut Game<'_>, b: &Bridge, at: [i32; 3]) -> bool {
     let corner = [at[0], SEA_LEVEL, at[2]];
     let seed = i64::from(game.world.random.next_int());
     let settings = super::structure_blocks::load_settings(Mirror::None, rotation, 1.0, seed, false);
+    let Some(written) = preflight(game, template, &entry, corner, rotation, b.z_axis) else {
+        return false;
+    };
     let pos = horizon_core::position::BlockPos::new(corner[0], corner[1], corner[2]);
     if !game.place_template_entry(&entry, pos, settings, Mirror::None, rotation) {
         return false;
@@ -289,16 +360,81 @@ fn place(game: &mut Game<'_>, b: &Bridge, at: [i32; 3]) -> bool {
         })
         .collect();
     let biome = biome(game, corner);
-    Processors { game: &mut *game, biome: &biome }.run(&infos);
+    Processors { game: &mut *game, biome: &biome, written: &written }.run(&infos);
     if std::env::var_os("YUNGSBRIDGES_LOG").is_some() {
         eprintln!("yungsbridges: {} at {:?} (z axis {})", template.id, corner, b.z_axis);
     }
     true
 }
 
+/// Every block the bridge would write, checked before any is: the template's blocks (each
+/// palette's, as placed at `corner` with `rotation`) and the legs under its pillar markers, down
+/// through what is open now (or will be the template's). Returns the template's positions when
+/// all of them `may_replace` and are in loaded chunks generated new within `FRESH_TICKS`;
+/// otherwise None, and nothing is written.
+fn preflight(
+    game: &Game<'_>,
+    template: &Template,
+    entry: &TemplateEntry,
+    corner: [i32; 3],
+    rotation: horizon_world::worldgen::structure::Rotation,
+    z_axis: bool,
+) -> Option<HashSet<[i32; 3]>> {
+    use horizon_world::worldgen::structure::{Mirror, StructureTemplate};
+    let transforms = game.state_transforms()?;
+    let parsed = StructureTemplate::from_nbt(&entry.tag, game.pack.assets.registry, transforms);
+    let written: HashSet<[i32; 3]> = parsed
+        .palettes()
+        .iter()
+        .flat_map(|palette| palette.blocks())
+        .map(|info| {
+            let r = StructureTemplate::transform(info.pos, Mirror::None, rotation, [0; 3]);
+            [corner[0] + r[0], corner[1] + r[1], corner[2] + r[2]]
+        })
+        .chain(template.markers.iter().map(|(p, _)| rotated(corner, *p, z_axis)))
+        .collect();
+    let mut legs = Vec::new();
+    for (p, name) in template.markers {
+        if !LEG_MARKERS.contains(name) {
+            continue;
+        }
+        let p = rotated(corner, *p, z_axis);
+        let mut q = [p[0], p[1] - 1, p[2]];
+        while q[1] > 0 && (written.contains(&q) || open(game, q)) {
+            if !written.contains(&q) {
+                legs.push(q);
+            }
+            q[1] -= 1;
+        }
+    }
+    let refusal = || {
+        let all = || written.iter().chain(&legs).copied();
+        if let Some(q) = all().find(|q| !may_replace(game, *q)) {
+            return Some((7, q, name_at(game, q)));
+        }
+        all()
+            .find(|q| {
+                let chunk = [q[0] >> 4, q[2] >> 4];
+                !fresh(chunk) || !game.world.chunks.contains_key(&(chunk[0], chunk[1]))
+            })
+            .map(|q| (8, q, "an old chunk".to_owned()))
+    };
+    if let Some((why, at, what)) = refusal() {
+        stat(why);
+        if std::env::var_os("YUNGSBRIDGES_LOG").is_some() {
+            eprintln!("yungsbridges: {} at {corner:?} refused: {what} at {at:?}", template.id);
+        }
+        return None;
+    }
+    Some(written)
+}
+
 struct Processors<'a, 'g> {
     game: &'a mut Game<'g>,
     biome: &'a str,
+    /// The template's positions (see `preflight`): the only blocks besides checked legs the
+    /// processors touch.
+    written: &'a HashSet<[i32; 3]>,
 }
 
 /// Which wood ITemplateFeatureProcessor's biome variants pick: the mod's collections tags
@@ -374,7 +510,8 @@ impl Processors<'_, '_> {
         let r = replacement(self);
         self.set(p, r);
         let mut q = [p[0], p[1] - 1, p[2]];
-        while q[1] > 0 && open(self.game, q) {
+        // As `preflight` checked: through the template's own blocks, or what may be replaced.
+        while q[1] > 0 && open(self.game, q) && (self.written.contains(&q) || may_replace(self.game, q)) {
             let l = leg(self);
             self.set(q, l);
             q[1] -= 1;
@@ -490,6 +627,10 @@ impl Processors<'_, '_> {
 
     /// Sets a fence's `side` arm false, if it has it on.
     fn unhook(&mut self, p: [i32; 3], side: &str) {
+        // Only the bridge's own fences: a neighbour outside the template is left alone.
+        if !self.written.contains(&p) {
+            return;
+        }
         let reg = self.game.pack.assets.registry;
         let Some(mut state) = reg.state(self.game.world.block(p[0], p[1], p[2])).cloned() else { return };
         if state.properties.get(side).is_some_and(|v| v == "true") {

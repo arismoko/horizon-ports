@@ -190,46 +190,82 @@ fn deposit_all_from(game: &mut Game<'_>, sc: i32) {
 }
 
 /// ContainerScreenHelper.restockAllOfAKind(Iterator, int): fills `targets` up from the other side,
-/// taking from its last slots first.
+/// taking from its last slots first. A stack is only taken onto a target the menu merges it with
+/// (`same_item_same_components`, the full component equality a pickup click merges by: same_kind
+/// alone would let the click swap an enchanted or damaged stack in instead), and every click is
+/// checked against the slot and cursor it left before going on. What is still on the cursor at the
+/// end goes back where it came from.
 fn restock(game: &mut Game<'_>, targets: &[usize], comp: i32) {
     let takes: Vec<usize> = game.slots().into_iter().rev().collect();
     let mut takes = takes.into_iter();
     let mut take: Option<usize> = None;
-    let mut taking = 0i64;
-    for &target in targets {
-        let Some(stack) = game.slot_view(target) else {
-            continue;
-        };
-        let mut space = i64::from(game.max_stack(&stack)) - i64::from(stack.count);
-        while space > 0 {
-            if taking == 0 {
-                loop {
-                    let Some(t) = takes.next() else {
-                        return;
-                    };
-                    if scope(game, t, false) != Some(comp) {
-                        continue;
-                    }
-                    if let Some(v) = game.slot_view(t)
-                        && same_kind(&v, &stack)
-                    {
-                        taking = i64::from(v.count);
+    'targets: for &target in targets {
+        loop {
+            let Some(stack) = game.slot_view(target) else {
+                continue 'targets;
+            };
+            if stack.count >= game.max_stack(&stack) {
+                continue 'targets;
+            }
+            // A leftover from the last target that doesn't merge with this one goes back first.
+            if game.carried.as_ref().is_some_and(|c| !c.same_item_same_components(&stack)) {
+                if !put_back(game, take) {
+                    return;
+                }
+            }
+            if game.carried.is_none() {
+                let Some(t) = takes.find(|&t| {
+                    scope(game, t, false) == Some(comp)
+                        && game.slot_view(t).is_some_and(|v| v.same_item_same_components(&stack))
+                }) else {
+                    return;
+                };
+                click(game, t, 0, Input::Pickup);
+                match &game.carried {
+                    Some(c) if c.same_item_same_components(&stack) => take = Some(t),
+                    // The pickup took nothing: try the next slot.
+                    None => continue,
+                    // Not what the slot showed: put it back and stop.
+                    Some(_) => {
                         take = Some(t);
-                        click(game, t, 0, Input::Pickup);
-                        break;
+                        put_back(game, take);
+                        return;
                     }
                 }
             }
+            let held = game.carried.as_ref().map_or(0, |c| c.count);
             click(game, target, 0, Input::Pickup);
-            space -= taking;
-            taking = if space <= 0 { -space } else { 0 };
+            let merged = game
+                .slot_view(target)
+                .is_some_and(|v| v.same_item_same_components(&stack) && v.count > stack.count);
+            let cursor_ok = game
+                .carried
+                .as_ref()
+                .is_none_or(|c| c.same_item_same_components(&stack) && c.count < held);
+            if !(merged && cursor_ok) {
+                // The click didn't merge (a swap, or nothing moved): undo a swap, then stop with
+                // the cursor put back.
+                if game.slot_view(target).is_some_and(|v| !v.same_item_same_components(&stack)) {
+                    click(game, target, 0, Input::Pickup);
+                }
+                put_back(game, take);
+                return;
+            }
         }
     }
-    if taking > 0
-        && let Some(t) = take
-    {
+    put_back(game, take);
+}
+
+/// The cursor's stack back into `take`, the slot it was picked up from: true when the cursor is
+/// empty afterwards.
+fn put_back(game: &mut Game<'_>, take: Option<usize>) -> bool {
+    if game.carried.is_none() {
+        return true;
+    }
+    if let Some(t) = take {
         click(game, t, 0, Input::Pickup);
     }
+    game.carried.is_none()
 }
 
 fn restock_all_of_kind(game: &mut Game<'_>, reference: usize) {
