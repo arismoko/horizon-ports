@@ -1,8 +1,0 @@
-{
-    "parent": "hearth_and_home:block/template/lattice_left",
-    "textures": {
-        "main": "hearth_and_home:block/lattice/cherry",
-        "bar": "hearth_and_home:block/lattice/cherry_bar",
-        "particle": "#main"
-    }
-}

@@ -1,8 +1,0 @@
-{
-  "type": "minecraft:stonecutting",
-  "ingredient": "hearth_and_home:lime_tiles",
-  "result": {
-    "id": "hearth_and_home:lime_tile_slab"
-  },
-  "count": 2
-}

@@ -1,9 +1,0 @@
-{
-  "template": "minecraft:jungle_planks",
-  "components": {
-    "minecraft:cooking_fuel": {
-      "burn_time": 300,
-      "speed_multiplier": 1.0
-    }
-  }
-}

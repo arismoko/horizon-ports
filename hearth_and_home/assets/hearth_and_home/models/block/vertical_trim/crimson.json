@@ -1,7 +1,0 @@
-{
-    "parent": "hearth_and_home:block/template/vertical_trim",
-    "textures": {
-        "trim": "hearth_and_home:block/trim/crimson",
-        "plank": "minecraft:block/crimson_planks"
-    }
-}

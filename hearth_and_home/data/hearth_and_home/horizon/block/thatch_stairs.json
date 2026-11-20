@@ -1,9 +1,0 @@
-{
-  "template": "minecraft:oak_stairs",
-  "properties": {
-    "hardness": 0.5,
-    "explosion_resistance": 0.5,
-    "sounds": "minecraft:hay_block",
-    "requires_tool": false
-  }
-}

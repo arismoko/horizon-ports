@@ -1,8 +1,0 @@
-{
-    "parent": "minecraft:block/slab",
-    "textures": {
-        "bottom": "hearth_and_home:block/tiles/lime",
-        "side": "hearth_and_home:block/tiles/lime",
-        "top": "hearth_and_home:block/tiles/lime"
-    }
-}

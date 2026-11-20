@@ -51,4 +51,3 @@ Ports moved to the new single-package format are built with Horizon's exact-buil
 | [carryon](carryon/) | Pick up chests with their contents, and mobs, and carry them. | [Carry On](https://github.com/Tschipp/CarryOn) by Tschipp | LGPL-3.0 |
 | [toms_storage](toms_storage/) | Join chests into one network and reach it all from a storage terminal. | [Tom's Simple Storage](https://github.com/tom5454/Toms-Storage) by tom5454 | MIT |
 | [sophisticatedcore](sophisticatedcore/) | Sophisticated Backpacks and Sophisticated Storage in one package. | [Sophisticated Core](https://github.com/Salandora/SophisticatedCore), Backpacks and Storage (Fabric ports by Salandora; originals by P3pp3rF1y) | GPL-3.0 |
-| [hearth_and_home](hearth_and_home/) | Chimneys, lattices, columns, tile roofs and other cosy building blocks. | [Hearth & Home](https://github.com/starfish-studios/Hearth-and-Home) | MIT |
