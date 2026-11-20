@@ -1,0 +1,14 @@
+{
+  "type": "minecraft:crafting_shaped",
+  "pattern": [
+    "CC",
+    "CC"
+  ],
+  "key": {
+    "C": "minecraft:calcite"
+  },
+  "result": {
+    "count": 4,
+    "id": "hearth_and_home:polished_calcite"
+  }
+}

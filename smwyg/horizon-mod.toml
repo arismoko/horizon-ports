@@ -1,0 +1,58 @@
+# smwyg: Show Me What You Got 1.1.1 (Apace, MIT) for Horizon. In an inventory, Ctrl+T over an item
+# opens the chat with the item's name in it. Sending the message shows everyone the line with the
+# name as the item's hoverable `[name]`, as vanilla's ItemStack.getDisplayName shows it.
+#
+# The window's half is a game module (`crate::game::smwyg`) and two HEAD injections: the key (on
+# `Game::key_pressed`) and the send (on `Game::handle_chat_input`). The send goes to the server as the
+# mod message `smwyg:share`. The server's half is the trait mod in `api/`: it writes the line with
+# `tellraw @a`, the sender's name from the server's own player list where it has one.
+id = "smwyg"
+name = "smwyg"
+version = "0.4.0"
+description = ""
+authors = []
+# A native mod: Rust in src/, compiled by the launcher against the game build [native] pins, beside data/ and assets/.
+api = "0.2"
+side = "both"
+# registries: "May add blocks, items, mob effects and entity types to your worlds".
+capabilities = ["registries"]
+
+[native]
+game = "26.3"
+horizon = "dd67b76ff23e28c6d8e21859df600d31572f81a0"
+mixins = "e59da9094f0c2fdda6c627fe9eff22dec6a906f0"
+
+[[native.module]]
+id = "runtime"
+file = "crates/horizon-client/src/game.rs"
+name = "smwyg"
+source = "src/runtime.rs"
+
+[[native.mixin]]
+id = "key"
+kind = "HEAD"
+cancellable = true
+target = "horizon_client::game::play_keys::Game<'_>::key_pressed"
+helper = "src/mixins/key.rs"
+bindings = [
+  { name = "game", ty = "&mut Game<'_>", value = "self" },
+  { name = "key", ty = "KeyCode", value = "key" },
+]
+
+[[native.mixin]]
+id = "send"
+kind = "HEAD"
+cancellable = true
+target = "horizon_client::game::chat::Game<'_>::handle_chat_input"
+helper = "src/mixins/send.rs"
+bindings = [
+  { name = "game", ty = "&mut Game<'_>", value = "self" },
+  { name = "message", ty = "&str", value = "message" },
+]
+
+[[native.mixin]]
+id = "open"
+kind = "HEAD"
+target = "horizon_client::game::chat::Game<'_>::open_chat_method"
+helper = "src/mixins/open.rs"
+bindings = []

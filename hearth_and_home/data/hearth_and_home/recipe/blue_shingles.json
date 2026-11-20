@@ -1,0 +1,15 @@
+{
+  "type": "minecraft:crafting_shaped",
+  "group": "hearth_and_home:shingles",
+  "pattern": [
+    "T",
+    "T"
+  ],
+  "key": {
+    "T": "minecraft:blue_terracotta"
+  },
+  "result": {
+    "count": 2,
+    "id": "hearth_and_home:blue_shingles"
+  }
+}

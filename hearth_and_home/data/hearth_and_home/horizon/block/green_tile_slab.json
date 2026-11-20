@@ -1,0 +1,23 @@
+{
+  "template": "minecraft:stone_slab",
+  "properties": {
+    "hardness": 1.25,
+    "explosion_resistance": 4.2,
+    "sounds": "minecraft:green_terracotta",
+    "requires_tool": true
+  },
+  "state_properties": {
+    "facing": {
+      "type": "enum",
+      "values": [
+        "north",
+        "south",
+        "west",
+        "east"
+      ]
+    }
+  },
+  "default_state": {
+    "facing": "north"
+  }
+}

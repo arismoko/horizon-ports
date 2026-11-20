@@ -1,0 +1,16 @@
+{
+  "type": "minecraft:crafting_shaped",
+  "group": "hearth_and_home:chimneys",
+  "pattern": [
+    "C",
+    "B"
+  ],
+  "key": {
+    "C": "minecraft:campfire",
+    "B": "minecraft:red_sandstone"
+  },
+  "result": {
+    "count": 1,
+    "id": "hearth_and_home:red_sandstone_chimney"
+  }
+}

@@ -1,0 +1,19 @@
+{
+  "type": "minecraft:crafting_shapeless",
+  "group": "hearth_and_home:dyed_terracotta_bricks",
+  "ingredients": [
+    "hearth_and_home:terracotta_bricks",
+    "hearth_and_home:terracotta_bricks",
+    "hearth_and_home:terracotta_bricks",
+    "hearth_and_home:terracotta_bricks",
+    "minecraft:magenta_dye",
+    "hearth_and_home:terracotta_bricks",
+    "hearth_and_home:terracotta_bricks",
+    "hearth_and_home:terracotta_bricks",
+    "hearth_and_home:terracotta_bricks"
+  ],
+  "result": {
+    "count": 8,
+    "id": "hearth_and_home:magenta_terracotta_bricks"
+  }
+}

@@ -1,0 +1,30 @@
+# bebpm: a mixin bundle. As Better Enchanting Bookshelf Placement 1.0.0 (Cozy Studios) with
+# Homestead's config (radius 10 in every direction, line of sight OFF): every
+# `#minecraft:enchantment_power_provider` block within 10 blocks of the table counts, with
+# nothing needed in between. The menu still caps the power at 15 bookshelves.
+id = "bebpm"
+name = "bebpm"
+version = "0.4.0"
+description = ""
+authors = []
+# A native mod: Rust in src/, compiled by the launcher against the game build [native] pins, beside data/ and assets/.
+api = "0.2"
+side = "both"
+# registries: "May add blocks, items, mob effects and entity types to your worlds".
+capabilities = ["registries"]
+
+[native]
+game = "26.3"
+horizon = "dd67b76ff23e28c6d8e21859df600d31572f81a0"
+mixins = "e59da9094f0c2fdda6c627fe9eff22dec6a906f0"
+
+[[native.mixin]]
+id = "radius"
+kind = "HEAD"
+cancellable = true
+target = "horizon_client::game::bookshelves::Game<'_>::count_bookshelves"
+helper = "src/mixins/count.rs"
+bindings = [
+  { name = "game", ty = "&Game<'_>", value = "self" },
+  { name = "pos", ty = "[i32; 3]", value = "pos" },
+]

@@ -1,0 +1,23 @@
+{
+  "template": "minecraft:quartz_pillar",
+  "properties": {
+    "hardness": 0.75,
+    "explosion_resistance": 0.75,
+    "sounds": "minecraft:calcite",
+    "requires_tool": true
+  },
+  "state_properties": {
+    "type": {
+      "type": "enum",
+      "values": [
+        "top",
+        "middle",
+        "bottom",
+        "none"
+      ]
+    }
+  },
+  "default_state": {
+    "type": "none"
+  }
+}

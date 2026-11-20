@@ -1,0 +1,68 @@
+# elytraslot: Elytra Slot 6.4.4 (Illusive Soulworks, LGPL-3.0-or-later). An elytra worn in a trinket
+# slot (native/trinkets' cape slot) glides, wears and draws its wings. It reads native/trinkets'
+# `trinkets:worn` player attachment and needs none of its code.
+id = "elytraslot"
+name = "elytraslot"
+version = "0.4.0"
+description = ""
+authors = []
+# A native mod: Rust in src/, compiled by the launcher against the game build [native] pins, beside data/ and assets/.
+api = "0.2"
+side = "both"
+# registries: "May add blocks, items, mob effects and entity types to your worlds".
+capabilities = ["registries"]
+
+[native]
+game = "26.3"
+horizon = "dd67b76ff23e28c6d8e21859df600d31572f81a0"
+mixins = "e59da9094f0c2fdda6c627fe9eff22dec6a906f0"
+
+[[native.module]]
+id = "runtime"
+file = "crates/horizon-client/src/game.rs"
+name = "elytraslot"
+source = "src/runtime.rs"
+
+# Elytra Slot: an elytra worn in the cape slot glides (LivingEntity.canGlide).
+[[native.mixin]]
+id = "glider"
+kind = "RETURN"
+target = "horizon_client::game::held_items::Game<'_>::glider_worn"
+helper = "src/mixins/glider.rs"
+bindings = [
+  { name = "value", ty = "bool", value = "$value" },
+  { name = "game", ty = "&Game<'_>", value = "&*self" },
+]
+
+# ...and wears as the chest's would.
+[[native.mixin]]
+id = "wear_glider"
+kind = "HEAD"
+cancellable = true
+target = "horizon_client::game::held_items::Game<'_>::wear_glider"
+helper = "src/mixins/wear_glider.rs"
+bindings = [
+  { name = "game", ty = "&mut Game<'_>", value = "&mut *self" },
+  { name = "points", ty = "u32", value = "points" },
+]
+
+# ElytraSlotLayer: its wings on the window's own player.
+[[native.mixin]]
+id = "wings"
+kind = "HEAD"
+cancellable = true
+target = "horizon_client::game::perspective::Game<'_>::player_elytra_geometry"
+helper = "src/mixins/wings.rs"
+bindings = [
+  { name = "game", ty = "&Game<'_>", value = "&*self" },
+  { name = "m", ty = "&horizon_client::mobs::Mob", value = "m" },
+  { name = "chest", ty = "Option<&str>", value = "chest" },
+  { name = "camera", ty = "glam::DVec3", value = "camera" },
+  { name = "partial", ty = "f32", value = "partial" },
+  { name = "light", ty = "u32", value = "light" },
+  { name = "out", ty = "&mut Vec<horizon_client::mesher::Vertex>", value = "out" },
+]
+
+# Worn items live in native-next/trinkets' slots.
+[dependencies]
+trinkets = { version = "^0.4", reason = "The elytra is worn in Trinkets' cape slot: this mod reads the slots trinkets keeps (its trinkets:worn player attachment)." }

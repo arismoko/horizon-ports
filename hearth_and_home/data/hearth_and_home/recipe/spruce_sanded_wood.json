@@ -1,0 +1,18 @@
+{
+  "type": "minecraft:crafting_shapeless",
+  "ingredients": [
+    "minecraft:spruce_planks",
+    "minecraft:spruce_planks",
+    "minecraft:spruce_planks",
+    "minecraft:spruce_planks",
+    "minecraft:sand",
+    "minecraft:spruce_planks",
+    "minecraft:spruce_planks",
+    "minecraft:spruce_planks",
+    "minecraft:spruce_planks"
+  ],
+  "result": {
+    "count": 8,
+    "id": "hearth_and_home:spruce_sanded_wood"
+  }
+}

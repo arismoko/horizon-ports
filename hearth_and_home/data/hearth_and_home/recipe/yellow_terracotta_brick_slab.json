@@ -1,0 +1,14 @@
+{
+  "type": "minecraft:crafting_shaped",
+  "group": "hearth_and_home:terracotta_brick_slab",
+  "pattern": [
+    "TTT"
+  ],
+  "key": {
+    "T": "hearth_and_home:yellow_terracotta_bricks"
+  },
+  "result": {
+    "count": 6,
+    "id": "hearth_and_home:yellow_terracotta_brick_slab"
+  }
+}

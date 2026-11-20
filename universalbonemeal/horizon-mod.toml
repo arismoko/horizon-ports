@@ -1,0 +1,62 @@
+# universalbonemeal: Universal Bone Meal 8.0.1 (Fuzs, MPL-2.0) with Homestead's config (all on):
+# bone meal grows cactus, sugar cane, vines, nether wart, fruit stems, lily pads, dead bushes,
+# small flowers, corals, chorus, mycelium, dirt, podzol and spore blossoms (runtime.rs). The old
+# bundle's targets were the `native_*_bonemeal` dispatchers, which aren't replaceable now; the
+# mixins sit one level up, on GameLevel's LevelAccess methods that call them.
+id = "universalbonemeal"
+name = "universalbonemeal"
+version = "0.4.0"
+description = ""
+authors = []
+api = "0.2"
+side = "both"
+capabilities = ["registries"]
+
+[native]
+game = "26.3"
+horizon = "dd67b76ff23e28c6d8e21859df600d31572f81a0"
+mixins = "e59da9094f0c2fdda6c627fe9eff22dec6a906f0"
+
+[[native.module]]
+id = "runtime"
+file = "crates/horizon-client/src/game.rs"
+name = "universalbonemeal"
+source = "src/runtime.rs"
+
+# isValidBonemealTarget: claim the blocks Universal Bone Meal grows (both sides: a client
+# predicts the use with it).
+[[native.mixin]]
+id = "valid"
+kind = "RETURN"
+target = "horizon_client::game::level_access::<GameLevel<'_> as LevelAccess>::is_valid_bonemeal_target"
+helper = "src/mixins/valid.rs"
+bindings = [
+  { name = "value", ty = "Option<bool>", value = "$value" },
+  { name = "level", ty = "&GameLevel<'_>", value = "&*self" },
+  { name = "pos", ty = "BlockPos", value = "pos" },
+  { name = "state", ty = "BlockStateId", value = "state" },
+]
+
+[[native.mixin]]
+id = "success"
+kind = "RETURN"
+target = "horizon_client::game::level_access::<GameLevel<'_> as LevelAccess>::is_bonemeal_success"
+helper = "src/mixins/success.rs"
+bindings = [
+  { name = "value", ty = "bool", value = "$value" },
+  { name = "level", ty = "&mut GameLevel<'_>", value = "&mut *self" },
+  { name = "pos", ty = "BlockPos", value = "pos" },
+  { name = "state", ty = "BlockStateId", value = "state" },
+]
+
+[[native.mixin]]
+id = "perform"
+kind = "HEAD"
+target = "horizon_client::game::level_access::<GameLevel<'_> as LevelAccess>::perform_bonemeal"
+helper = "src/mixins/perform.rs"
+bindings = [
+  { name = "level", ty = "&mut GameLevel<'_>", value = "&mut *self" },
+  { name = "ticks", ty = "&mut Ticks", value = "&mut *ticks" },
+  { name = "pos", ty = "BlockPos", value = "pos" },
+  { name = "state", ty = "BlockStateId", value = "state" },
+]

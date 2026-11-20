@@ -1,0 +1,16 @@
+{
+  "type": "minecraft:crafting_shaped",
+  "group": "hearth_and_home:terracotta_brick_stairs",
+  "pattern": [
+    "T  ",
+    "TT ",
+    "TTT"
+  ],
+  "key": {
+    "T": "hearth_and_home:white_terracotta_bricks"
+  },
+  "result": {
+    "count": 4,
+    "id": "hearth_and_home:white_terracotta_brick_stairs"
+  }
+}

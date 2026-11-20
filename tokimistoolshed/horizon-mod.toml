@@ -1,0 +1,135 @@
+# tokimistoolshed: Tokimi's Toolshed 1.8 (Cozy Studios). One package: data/ and assets/ are the
+# content mod mods/tokimistoolshed (tools/tokimistoolshed_port.py), copied here because a content
+# package can't use a compiled mod's id. src/runtime.rs is the old bundle's rules (a module in
+# game.rs); each mixin below hands over to it.
+id = "tokimistoolshed"
+name = "Tokimi's Toolshed"
+version = "0.4.0"
+description = "Hammers, excavators, scythes, clippers, lumber axes, copper buckets, trowel, chisels, abacus (Tokimi's Toolshed 1.8 by Cozy Studios)"
+authors = []
+api = "0.2"
+side = "both"
+capabilities = ["registries"]
+
+[native]
+game = "26.3"
+horizon = "dd67b76ff23e28c6d8e21859df600d31572f81a0"
+mixins = "e59da9094f0c2fdda6c627fe9eff22dec6a906f0"
+
+[[native.module]]
+id = "runtime"
+file = "crates/horizon-client/src/game.rs"
+name = "tokimistoolshed"
+source = "src/runtime.rs"
+
+# LastBreakData.setFace (AttackBlockCallback): the face a block was hit on.
+[[native.mixin]]
+id = "face"
+kind = "HEAD"
+target = "horizon_client::game::native_hooks::base::Game<'_>::native_left_click_block"
+helper = "src/mixins/face.rs"
+bindings = [
+  { name = "at", ty = "[i32; 3]", value = "pos" },
+  { name = "side", ty = "[i32; 3]", value = "face" },
+]
+
+# HammerItem / ExcavatorItem / ScytheItem / ClippersItem / LumberAxeItem.postMine: the block
+# breaks (the call re-enters break_block), then the area or the tree.
+[[native.mixin]]
+id = "area"
+kind = "HEAD"
+cancellable = true
+target = "horizon_client::game::block_breaking::Game<'_>::break_block"
+helper = "src/mixins/area.rs"
+bindings = [
+  { name = "game", ty = "&mut Game<'_>", value = "&mut *self" },
+  { name = "at", ty = "[i32; 3]", value = "pos" },
+]
+
+# ScytheItem.useOnBlock: a till that worked tills the 3x3.
+[[native.mixin]]
+id = "till"
+kind = "HEAD"
+cancellable = true
+target = "horizon_client::game::Game<'_>::use_block_transformer"
+helper = "src/mixins/till.rs"
+bindings = [
+  { name = "game", ty = "&mut Game<'_>", value = "&mut *self" },
+  { name = "stack", ty = "&ItemStack", value = "stack" },
+  { name = "hit", ty = "&Hit", value = "hit" },
+]
+
+# CopperBucketItem.use and CopperBucketBehaviors' cauldrons: the vanilla bucket's use, with wear.
+[[native.mixin]]
+id = "bucket"
+kind = "HEAD"
+cancellable = true
+target = "horizon_client::game::Game<'_>::use_tool"
+helper = "src/mixins/bucket.rs"
+bindings = [
+  { name = "game", ty = "&mut Game<'_>", value = "&mut *self" },
+  { name = "stack", ty = "&ItemStack", value = "stack" },
+  { name = "allow", ty = "bool", value = "allow_block_actions" },
+]
+
+# CowMilkMixin: a copper bucket milks a cow. On Player.interactOn (`interact_entity`): the old
+# target `creatures::Game::interact_mob` can't be patched now (its body uses a private macro).
+[[native.mixin]]
+id = "milk"
+kind = "HEAD"
+cancellable = true
+target = "horizon_client::game::item_actions::Game<'_>::interact_entity"
+helper = "src/mixins/milk.rs"
+bindings = [
+  { name = "game", ty = "&mut Game<'_>", value = "&mut *self" },
+  { name = "target", ty = "Option<InteractTarget>", value = "target" },
+]
+
+# CopperMilkBucketItem.finishUsing: the bucket back with its wear.
+[[native.mixin]]
+id = "drink"
+kind = "HEAD"
+cancellable = true
+target = "horizon_client::game::consume::Game<'_>::finish_consuming"
+helper = "src/mixins/drink.rs"
+bindings = [
+  { name = "game", ty = "&mut Game<'_>", value = "&mut *self" },
+  { name = "info", ty = "&ItemInfo", value = "info" },
+  { name = "consumable", ty = "&ItemConsumable", value = "consumable" },
+  { name = "stack", ty = "&ItemStack", value = "stack" },
+]
+
+# ShearsLootMixin: clippers roll block loot as shears.
+[[native.mixin]]
+id = "loot"
+kind = "HEAD"
+cancellable = true
+target = "horizon_client::game::Game<'_>::block_loot_at"
+helper = "src/mixins/loot.rs"
+bindings = [
+  { name = "game", ty = "&mut Game<'_>", value = "&mut *self" },
+  { name = "at", ty = "[i32; 3]", value = "pos" },
+  { name = "state", ty = "BlockStateId", value = "state" },
+  { name = "held", ty = "Option<&ItemStack>", value = "held" },
+  { name = "entity", ty = "&Option<horizon_core::nbt::Tag>", value = "&block_entity" },
+]
+
+# TrowelItem, ChiselItem and AbacusItem.useOnBlock (and the chisel's mode switch).
+[[native.mixin]]
+id = "hand"
+kind = "HEAD"
+cancellable = true
+target = "horizon_client::game::use_hand::Game<'_>::use_hand"
+helper = "src/mixins/hand.rs"
+bindings = [
+  { name = "game", ty = "&mut Game<'_>", value = "&mut *self" },
+  { name = "hit", ty = "Option<&super::Hit>", value = "block_hit" },
+]
+
+# AbacusHudRenderer: the counts over the hotbar (after each player tick).
+[[native.mixin]]
+id = "abacus"
+kind = "HEAD"
+target = "horizon_client::game::native_hooks::base::Game<'_>::native_player_tick_post"
+helper = "src/mixins/abacus.rs"
+bindings = [{ name = "game", ty = "&mut Game<'_>", value = "&mut *self" }]

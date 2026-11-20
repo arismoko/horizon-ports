@@ -1,0 +1,46 @@
+# toocheap: Too Cheap 1.4.0 with Homestead's config (maxLevelCost 2147483647, every cost option
+# vanilla): the anvil has no "Too Expensive!" cap at 40 levels.
+# - src/lib.rs listens to `anvil_update`, so the game asks the anvil hooks at all (both sides).
+# - mixin `uncap`, HEAD on the game's hook dispatcher `api_anvil_update`: when vanilla's result was
+#   dropped by the cap, the result is made again without it (runtime.rs).
+# - mixin `label`: "Too Expensive!" reads "Enchantment Cost: N" (the line stays red).
+id = "toocheap"
+name = "toocheap"
+version = "0.4.0"
+description = ""
+authors = []
+api = "0.2"
+side = "both"
+capabilities = ["registries"]
+
+[native]
+game = "26.3"
+horizon = "dd67b76ff23e28c6d8e21859df600d31572f81a0"
+mixins = "e59da9094f0c2fdda6c627fe9eff22dec6a906f0"
+
+[[native.module]]
+id = "runtime"
+file = "crates/horizon-client/src/game.rs"
+name = "toocheap"
+source = "src/runtime.rs"
+
+[[native.mixin]]
+id = "uncap"
+kind = "HEAD"
+target = "horizon_client::game::api_values::super::Game<'_>::api_anvil_update"
+helper = "src/mixins/uncap.rs"
+bindings = [
+  { name = "game", ty = "&mut super::Game<'_>", value = "&mut *self" },
+  { name = "value", ty = "&mut crate::menu::AnvilUpdate", value = "value" },
+]
+
+[[native.mixin]]
+id = "label"
+kind = "HEAD"
+cancellable = true
+target = "horizon_client::game::stations::Game<'_>::translate_with_fallback"
+helper = "src/mixins/label.rs"
+bindings = [
+  { name = "game", ty = "&Game<'_>", value = "&*self" },
+  { name = "key", ty = "&str", value = "key" },
+]

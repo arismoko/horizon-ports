@@ -1,0 +1,9 @@
+{
+  "template": "minecraft:stone_slab",
+  "properties": {
+    "hardness": 0.75,
+    "explosion_resistance": 0.75,
+    "sounds": "minecraft:calcite",
+    "requires_tool": true
+  }
+}

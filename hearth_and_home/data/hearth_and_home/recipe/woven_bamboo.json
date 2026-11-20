@@ -1,0 +1,14 @@
+{
+  "type": "minecraft:crafting_shaped",
+  "pattern": [
+    "BB",
+    "BB"
+  ],
+  "key": {
+    "B": "minecraft:bamboo"
+  },
+  "result": {
+    "count": 1,
+    "id": "hearth_and_home:woven_bamboo"
+  }
+}

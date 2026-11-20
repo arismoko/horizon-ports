@@ -1,0 +1,13 @@
+{
+  "type": "minecraft:crafting_shaped",
+  "pattern": [
+    "TTT"
+  ],
+  "key": {
+    "T": "hearth_and_home:thatch"
+  },
+  "result": {
+    "count": 6,
+    "id": "hearth_and_home:thatch_slab"
+  }
+}

@@ -1,0 +1,8 @@
+{
+  "type": "minecraft:stonecutting",
+  "ingredient": "minecraft:terracotta",
+  "result": {
+    "id": "hearth_and_home:shingles"
+  },
+  "count": 1
+}

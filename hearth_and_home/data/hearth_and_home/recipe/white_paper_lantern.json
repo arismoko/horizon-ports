@@ -1,0 +1,17 @@
+{
+  "type": "minecraft:crafting_shaped",
+  "pattern": [
+    "PSP",
+    "P P",
+    "PTP"
+  ],
+  "key": {
+    "P": "minecraft:paper",
+    "S": "minecraft:stick",
+    "T": "minecraft:torch"
+  },
+  "result": {
+    "count": 1,
+    "id": "hearth_and_home:white_paper_lantern"
+  }
+}

@@ -1,0 +1,14 @@
+{
+  "type": "minecraft:crafting_shaped",
+  "group": "hearth_and_home:tile_slab",
+  "pattern": [
+    "WWW"
+  ],
+  "key": {
+    "W": "hearth_and_home:brown_tiles"
+  },
+  "result": {
+    "count": 6,
+    "id": "hearth_and_home:brown_tile_slab"
+  }
+}

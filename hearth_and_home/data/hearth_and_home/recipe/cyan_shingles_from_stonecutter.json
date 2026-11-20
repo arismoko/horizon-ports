@@ -1,0 +1,8 @@
+{
+  "type": "minecraft:stonecutting",
+  "ingredient": "minecraft:cyan_terracotta",
+  "result": {
+    "id": "hearth_and_home:cyan_shingles"
+  },
+  "count": 1
+}

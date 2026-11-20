@@ -1,11 +1,12 @@
-craftingpad for Horizon 26.3 (version 0.1.1)
+Crafting Pad for Horizon 26.3 (version 0.4.0)
 
 A port of Crafting Pad 1.0.12 by StrikerRocker, Giselbaer.
 Original source: https://github.com/StrikerRockers-Mods/CraftingPad
 Original licence: MIT
 
-Ported to Horizon by lavoide: the rules are re-implemented as a Horizon native mod (Rust), and
-the content (items, blocks, textures, models, data) is carried over from the original jar.
-This port is distributed under the same licence as the original (MIT); the licence text is
-in LICENSE (the original's own file where its jar has one). It needs Horizon at commit
-fdc87aecdbd116bf1e08adcd062fcbaea8c2e2ca.
+Ported to Horizon by lavoide: the rules are re-implemented in Rust as a Horizon native mod (the mod API plus
+the [[native.mixin]] patches and game modules listed in horizon-mod.toml; no Java code is included), and the
+content (items, blocks, textures, models, data) is carried over from the original jar. This port is distributed under the same licence as the original (MIT); the licence text is in LICENSE. Built
+against Horizon's exact-build SDK dd67b76ff23e28c6d8e21859df600d31572f81a0.
+
+LICENSE is the original jar's LICENSE_CraftingPad-fabric-1.20.1.

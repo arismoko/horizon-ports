@@ -1,0 +1,18 @@
+{
+  "type": "minecraft:crafting_shapeless",
+  "ingredients": [
+    "minecraft:crimson_planks",
+    "minecraft:crimson_planks",
+    "minecraft:crimson_planks",
+    "minecraft:crimson_planks",
+    "minecraft:sand",
+    "minecraft:crimson_planks",
+    "minecraft:crimson_planks",
+    "minecraft:crimson_planks",
+    "minecraft:crimson_planks"
+  ],
+  "result": {
+    "count": 8,
+    "id": "hearth_and_home:crimson_sanded_wood"
+  }
+}

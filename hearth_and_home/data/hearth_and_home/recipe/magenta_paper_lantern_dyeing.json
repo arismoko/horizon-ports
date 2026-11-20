@@ -1,0 +1,11 @@
+{
+  "type": "minecraft:crafting_shapeless",
+  "group": "paper_lanterns",
+  "ingredients": [
+    "minecraft:magenta_dye",
+    "#hearth_and_home:paper_lanterns"
+  ],
+  "result": {
+    "id": "hearth_and_home:magenta_paper_lantern"
+  }
+}

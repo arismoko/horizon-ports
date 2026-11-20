@@ -1,0 +1,18 @@
+{
+  "type": "minecraft:crafting_shapeless",
+  "ingredients": [
+    "minecraft:warped_planks",
+    "minecraft:warped_planks",
+    "minecraft:warped_planks",
+    "minecraft:warped_planks",
+    "minecraft:sand",
+    "minecraft:warped_planks",
+    "minecraft:warped_planks",
+    "minecraft:warped_planks",
+    "minecraft:warped_planks"
+  ],
+  "result": {
+    "count": 8,
+    "id": "hearth_and_home:warped_sanded_wood"
+  }
+}

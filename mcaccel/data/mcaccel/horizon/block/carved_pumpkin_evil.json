@@ -1,0 +1,10 @@
+{
+  "template": "minecraft:carved_pumpkin",
+  "components": {
+    "minecraft:equippable": {
+      "slot": "head",
+      "camera_overlay": "mcaccel:gui/pumpkin_blur_evil",
+      "swappable": false
+    }
+  }
+}

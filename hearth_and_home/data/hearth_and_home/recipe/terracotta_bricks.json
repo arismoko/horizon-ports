@@ -1,0 +1,14 @@
+{
+  "type": "minecraft:crafting_shaped",
+  "pattern": [
+    "TT",
+    "TT"
+  ],
+  "key": {
+    "T": "minecraft:terracotta"
+  },
+  "result": {
+    "count": 4,
+    "id": "hearth_and_home:terracotta_bricks"
+  }
+}
