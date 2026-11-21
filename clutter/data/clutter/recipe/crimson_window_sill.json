@@ -1,0 +1,17 @@
+{
+  "type": "minecraft:crafting_shaped",
+  "category": "misc",
+  "group": "window_sills",
+  "key": {
+    "P": "minecraft:flower_pot",
+    "S": "minecraft:crimson_slab"
+  },
+  "pattern": [
+    "P  ",
+    "SSS"
+  ],
+  "result": {
+    "id": "clutter:crimson_window_sill"
+  },
+  "show_notification": true
+}

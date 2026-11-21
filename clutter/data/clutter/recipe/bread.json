@@ -1,0 +1,11 @@
+{
+  "type": "minecraft:crafting_shapeless",
+  "ingredients": [
+    "minecraft:bread",
+    "minecraft:bread",
+    "minecraft:bread"
+  ],
+  "result": {
+    "id": "clutter:bread"
+  }
+}

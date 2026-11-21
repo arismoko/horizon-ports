@@ -1,0 +1,17 @@
+{
+  "type": "minecraft:crafting_shaped",
+  "group": "long_kitchen_curtains",
+  "pattern": [
+    "NNN",
+    "###",
+    "###"
+  ],
+  "key": {
+    "#": "minecraft:black_wool",
+    "N": "minecraft:iron_ingot"
+  },
+  "result": {
+    "count": 6,
+    "id": "clutter:long_black_kitchen_curtains"
+  }
+}

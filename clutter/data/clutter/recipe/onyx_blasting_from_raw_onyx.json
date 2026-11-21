@@ -1,0 +1,9 @@
+{
+  "type": "minecraft:blasting",
+  "ingredient": "clutter:raw_onyx",
+  "result": {
+    "id": "clutter:onyx"
+  },
+  "experience": 1.0,
+  "cookingtime": 100
+}

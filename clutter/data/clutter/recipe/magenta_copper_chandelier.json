@@ -1,0 +1,18 @@
+{
+  "type": "minecraft:crafting_shaped",
+  "group": "copper_chandeliers",
+  "pattern": [
+    " N ",
+    "CIC",
+    "CIC"
+  ],
+  "key": {
+    "I": "#c:copper_ingots",
+    "N": "#c:copper_nuggets",
+    "C": "minecraft:magenta_candle"
+  },
+  "result": {
+    "count": 1,
+    "id": "clutter:magenta_copper_chandelier"
+  }
+}

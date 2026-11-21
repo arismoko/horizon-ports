@@ -1,0 +1,16 @@
+{
+  "type": "minecraft:crafting_shaped",
+  "pattern": [
+    "S",
+    "H",
+    "H"
+  ],
+  "key": {
+    "S": "minecraft:string",
+    "H": "minecraft:honeycomb"
+  },
+  "result": {
+    "count": 1,
+    "id": "clutter:large_candle"
+  }
+}

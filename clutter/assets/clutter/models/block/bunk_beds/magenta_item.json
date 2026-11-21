@@ -1,0 +1,11 @@
+{
+	"parent": "clutter:block/bunk_beds/red_item",
+	"credit": "Made with Blockbench",
+	"ambientocclusion": false,
+	"texture_size": [64, 64],
+	"textures": {
+		"0": "clutter:block/bunk_bed",
+		"1": "clutter:block/bed/magenta",
+		"particle": "minecraft:block/oak_planks"
+	}
+}

@@ -1,0 +1,11 @@
+{
+  "template": "minecraft:tube_coral_wall_fan",
+  "properties": {
+    "hardness": 0.0,
+    "explosion_resistance": 0.0,
+    "sounds": "minecraft:horn_coral_wall_fan",
+    "requires_tool": false
+  },
+  "item": false,
+  "block_item": "clutter:cup_coral_fan"
+}

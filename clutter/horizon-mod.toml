@@ -1,0 +1,16 @@
+# clutter: Clutter 1.20-0.6.2 (EmilSG, MIT). data/ and assets/ are the content mod mods/clutter
+# (tools/clutter_port.py, merged by tools/build_next.py); src/classes.rs is written by the same generator. Everything
+# else is the mod API (src/lib.rs): no game module and no mixin.
+id = "clutter"
+name = "Clutter"
+version = "0.2.0"
+description = "Decorations by EmilSG: furniture you can sit on, candles, chandeliers and lamps that light up, curtains that open, cupboards, plushies, copper that weathers, silver and onyx, coral, plants and crops"
+authors = ["EmilSG"]
+api = "0.2"
+side = "both"
+capabilities = ["registries"]
+
+[native]
+game = "26.3"
+horizon = "dd67b76ff23e28c6d8e21859df600d31572f81a0"
+mixins = "e59da9094f0c2fdda6c627fe9eff22dec6a906f0"

@@ -1,0 +1,16 @@
+{
+  "type": "minecraft:crafting_shaped",
+  "group": "chimneys",
+  "pattern": [
+    "# #",
+    "# #",
+    "# #"
+  ],
+  "key": {
+    "#": "minecraft:nether_bricks"
+  },
+  "result": {
+    "count": 2,
+    "id": "clutter:nether_brick_chimney"
+  }
+}

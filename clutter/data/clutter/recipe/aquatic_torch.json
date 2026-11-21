@@ -1,0 +1,18 @@
+{
+  "type": "minecraft:crafting_shaped",
+  "category": "building",
+  "key": {
+    "C": "#minecraft:coals",
+    "I": "minecraft:copper_ingot",
+    "N": "#c:copper_nuggets"
+  },
+  "pattern": [
+    " N ",
+    "NCN",
+    " I "
+  ],
+  "result": {
+    "id": "clutter:aquatic_torch"
+  },
+  "show_notification": true
+}

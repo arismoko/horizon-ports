@@ -1,0 +1,6 @@
+{
+  "parent": "clutter:block/lamps/lamp_parent",
+  "textures": {
+    "4": "clutter:block/brown_lampshade"
+  }
+}

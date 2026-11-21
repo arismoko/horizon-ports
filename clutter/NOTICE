@@ -1,0 +1,12 @@
+Clutter for Horizon 26.3 (version 0.2.0)
+
+A port of Clutter 1.20-0.6.2 by EmilSG.
+Original source: https://github.com/EmilsGithub/Clutter-Mod-Repository
+Original licence: MIT
+
+Ported to Horizon by lavoide: the rules are re-implemented in Rust on Horizon's mod API, and the
+content (items, blocks, textures, models, data) is carried over from the original jar. This port is distributed under the same licence as the original (MIT); the licence text is in LICENSE. Built
+against Horizon's exact-build SDK dd67b76ff23e28c6d8e21859df600d31572f81a0.
+
+LICENSE is the original repository's file (the jar has none; the repository's LICENSE on main, "Copyright (c) 2023 EmilSG").
+The original's mobs, its two TerraBlender biomes, the brick kiln and some smaller features are left out of this port.

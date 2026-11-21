@@ -1,0 +1,64 @@
+{
+  "pools": [
+    {
+      "bonus_rolls": 0,
+      "condition": {
+        "type": "minecraft:survives_explosion"
+      },
+      "entries": [
+        {
+          "modifier": [
+            {
+              "condition": {
+                "block": "clutter:small_lily_pads",
+                "properties": {
+                  "pad_amount": "1"
+                },
+                "type": "minecraft:block_state_property"
+              },
+              "count": 1,
+              "type": "minecraft:set_count"
+            },
+            {
+              "condition": {
+                "block": "clutter:small_lily_pads",
+                "properties": {
+                  "pad_amount": "2"
+                },
+                "type": "minecraft:block_state_property"
+              },
+              "count": 2,
+              "type": "minecraft:set_count"
+            },
+            {
+              "condition": {
+                "block": "clutter:small_lily_pads",
+                "properties": {
+                  "pad_amount": "3"
+                },
+                "type": "minecraft:block_state_property"
+              },
+              "count": 3,
+              "type": "minecraft:set_count"
+            },
+            {
+              "condition": {
+                "block": "clutter:small_lily_pads",
+                "properties": {
+                  "pad_amount": "4"
+                },
+                "type": "minecraft:block_state_property"
+              },
+              "count": 4,
+              "type": "minecraft:set_count"
+            }
+          ],
+          "name": "clutter:small_lily_pads",
+          "type": "minecraft:item"
+        }
+      ],
+      "rolls": 1
+    }
+  ],
+  "type": "minecraft:block"
+}

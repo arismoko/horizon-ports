@@ -1,0 +1,11 @@
+{
+  "type": "minecraft:crafting_shapeless",
+  "category": "building",
+  "ingredients": [
+    "clutter:exposed_large_copper_chain",
+    "minecraft:honeycomb"
+  ],
+  "result": {
+    "id": "clutter:waxed_exposed_large_copper_chain"
+  }
+}

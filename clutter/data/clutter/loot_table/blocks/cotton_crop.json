@@ -1,0 +1,93 @@
+{
+  "modifier": [
+    {
+      "type": "minecraft:explosion_decay"
+    }
+  ],
+  "pools": [
+    {
+      "condition": {
+        "block": "clutter:cotton_crop",
+        "properties": {
+          "age": "7"
+        },
+        "type": "minecraft:block_state_property"
+      },
+      "entries": [
+        {
+          "name": "clutter:cotton_seeds",
+          "type": "minecraft:item"
+        }
+      ],
+      "rolls": {
+        "max": 1,
+        "min": 0,
+        "type": "minecraft:uniform"
+      }
+    },
+    {
+      "entries": [
+        {
+          "name": "clutter:cotton_seeds",
+          "type": "minecraft:item"
+        }
+      ],
+      "rolls": 1
+    },
+    {
+      "bonus_rolls": 0,
+      "entries": [
+        {
+          "children": [
+            {
+              "condition": {
+                "block": "clutter:cotton_crop",
+                "properties": {
+                  "age": "7"
+                },
+                "type": "minecraft:block_state_property"
+              },
+              "name": "clutter:cotton",
+              "type": "minecraft:item"
+            }
+          ],
+          "type": "minecraft:alternatives"
+        }
+      ],
+      "rolls": {
+        "max": 6,
+        "min": 2,
+        "type": "minecraft:uniform"
+      }
+    },
+    {
+      "bonus_rolls": 0,
+      "condition": {
+        "block": "clutter:cotton_crop",
+        "properties": {
+          "age": "7"
+        },
+        "type": "minecraft:block_state_property"
+      },
+      "entries": [
+        {
+          "modifier": [
+            {
+              "enchantment": "minecraft:fortune",
+              "formula": "minecraft:binomial_with_bonus_count",
+              "parameters": {
+                "extra": 3,
+                "probability": 0.5714286
+              },
+              "type": "minecraft:apply_bonus"
+            }
+          ],
+          "name": "clutter:cotton",
+          "type": "minecraft:item"
+        }
+      ],
+      "rolls": 1
+    }
+  ],
+  "type": "minecraft:block"
+}

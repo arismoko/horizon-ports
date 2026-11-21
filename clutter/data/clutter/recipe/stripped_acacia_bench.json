@@ -1,0 +1,20 @@
+{
+  "type": "minecraft:crafting_shaped",
+  "category": "misc",
+  "group": "benches",
+  "key": {
+    "L": "minecraft:stripped_acacia_log",
+    "P": "minecraft:acacia_planks",
+    "S": "minecraft:stick"
+  },
+  "pattern": [
+    "PSP",
+    "PPP",
+    "L L"
+  ],
+  "result": {
+    "count": 4,
+    "id": "clutter:stripped_acacia_bench"
+  },
+  "show_notification": true
+}

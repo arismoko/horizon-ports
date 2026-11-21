@@ -1,0 +1,56 @@
+{
+  "modifier": [
+    {
+      "type": "minecraft:explosion_decay"
+    }
+  ],
+  "pools": [
+    {
+      "entries": [
+        {
+          "condition": {
+            "term": {
+              "predicate": {
+                "enchantments": [
+                  {
+                    "enchantment": "minecraft:silk_touch"
+                  }
+                ]
+              },
+              "type": "minecraft:match_tool"
+            },
+            "type": "minecraft:inverted"
+          },
+          "modifier": [
+            {
+              "count": 4,
+              "type": "minecraft:set_count"
+            }
+          ],
+          "name": "clutter:sulphur",
+          "type": "minecraft:item"
+        }
+      ],
+      "rolls": 1
+    },
+    {
+      "condition": {
+        "predicate": {
+          "enchantments": [
+            {
+              "enchantment": "minecraft:silk_touch"
+            }
+          ]
+        },
+        "type": "minecraft:match_tool"
+      },
+      "entries": [
+        {
+          "name": "clutter:sulphur_block",
+          "type": "minecraft:item"
+        }
+      ],
+      "rolls": 1
+    }
+  ]
+}

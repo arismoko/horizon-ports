@@ -1,0 +1,10 @@
+{
+  "type": "minecraft:smithing_transform",
+  "addition": "minecraft:green_dye",
+  "base": "#clutter:elytron",
+  "result": {
+    "id": "clutter:green_butterfly_elytra",
+    "count": 1
+  },
+  "template": "clutter:decorated_elytra_smithing_template"
+}

@@ -1,0 +1,7 @@
+{
+  "parent": "minecraft:block/template_sign_rot_3",
+  "textures": {
+    "all": "clutter:block/redwood_sign",
+    "particle": "clutter:block/redwood_planks"
+  }
+}

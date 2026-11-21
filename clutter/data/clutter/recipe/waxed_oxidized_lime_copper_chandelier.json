@@ -1,0 +1,11 @@
+{
+  "type": "minecraft:crafting_shapeless",
+  "category": "building",
+  "ingredients": [
+    "clutter:oxidized_lime_copper_chandelier",
+    "minecraft:honeycomb"
+  ],
+  "result": {
+    "id": "clutter:waxed_oxidized_lime_copper_chandelier"
+  }
+}

@@ -1,0 +1,15 @@
+{
+  "template": "minecraft:elytra",
+  "components": {
+    "minecraft:max_damage": 432,
+    "minecraft:repairable": {
+      "items": "minecraft:bone"
+    },
+    "minecraft:equippable": {
+      "slot": "chest",
+      "asset_id": "clutter:soul_butterfly_elytra",
+      "equip_sound": "minecraft:item.armor.equip_elytra",
+      "damage_on_hurt": false
+    }
+  }
+}

@@ -1,0 +1,18 @@
+{
+  "type": "minecraft:crafting_shaped",
+  "category": "misc",
+  "group": "cupboards",
+  "key": {
+    "P": "minecraft:cherry_planks",
+    "S": "minecraft:cherry_slab"
+  },
+  "pattern": [
+    "PSP",
+    "PSP",
+    "PSP"
+  ],
+  "result": {
+    "id": "clutter:cherry_cupboard"
+  },
+  "show_notification": true
+}

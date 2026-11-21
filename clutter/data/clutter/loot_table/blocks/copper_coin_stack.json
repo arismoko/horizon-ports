@@ -1,0 +1,107 @@
+{
+  "pools": [
+    {
+      "condition": {
+        "type": "minecraft:survives_explosion"
+      },
+      "entries": [
+        {
+          "modifier": [
+            {
+              "condition": {
+                "block": "clutter:copper_coin_stack",
+                "properties": {
+                  "coin_layers": "8"
+                },
+                "type": "minecraft:block_state_property"
+              },
+              "count": 64,
+              "type": "minecraft:set_count"
+            },
+            {
+              "condition": {
+                "block": "clutter:copper_coin_stack",
+                "properties": {
+                  "coin_layers": "7"
+                },
+                "type": "minecraft:block_state_property"
+              },
+              "count": 56,
+              "type": "minecraft:set_count"
+            },
+            {
+              "condition": {
+                "block": "clutter:copper_coin_stack",
+                "properties": {
+                  "coin_layers": "6"
+                },
+                "type": "minecraft:block_state_property"
+              },
+              "count": 48,
+              "type": "minecraft:set_count"
+            },
+            {
+              "condition": {
+                "block": "clutter:copper_coin_stack",
+                "properties": {
+                  "coin_layers": "5"
+                },
+                "type": "minecraft:block_state_property"
+              },
+              "count": 40,
+              "type": "minecraft:set_count"
+            },
+            {
+              "condition": {
+                "block": "clutter:copper_coin_stack",
+                "properties": {
+                  "coin_layers": "4"
+                },
+                "type": "minecraft:block_state_property"
+              },
+              "count": 32,
+              "type": "minecraft:set_count"
+            },
+            {
+              "condition": {
+                "block": "clutter:copper_coin_stack",
+                "properties": {
+                  "coin_layers": "3"
+                },
+                "type": "minecraft:block_state_property"
+              },
+              "count": 24,
+              "type": "minecraft:set_count"
+            },
+            {
+              "condition": {
+                "block": "clutter:copper_coin_stack",
+                "properties": {
+                  "coin_layers": "2"
+                },
+                "type": "minecraft:block_state_property"
+              },
+              "count": 16,
+              "type": "minecraft:set_count"
+            },
+            {
+              "condition": {
+                "block": "clutter:copper_coin_stack",
+                "properties": {
+                  "coin_layers": "1"
+                },
+                "type": "minecraft:block_state_property"
+              },
+              "count": 8,
+              "type": "minecraft:set_count"
+            }
+          ],
+          "name": "clutter:copper_coin",
+          "type": "minecraft:item"
+        }
+      ],
+      "rolls": 1
+    }
+  ],
+  "type": "minecraft:block"
+}

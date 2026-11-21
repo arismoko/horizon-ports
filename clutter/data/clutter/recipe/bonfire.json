@@ -1,0 +1,16 @@
+{
+  "type": "minecraft:crafting_shaped",
+  "pattern": [
+    " L ",
+    "LCL",
+    "LLL"
+  ],
+  "key": {
+    "C": "minecraft:coal_block",
+    "L": "#minecraft:logs"
+  },
+  "result": {
+    "count": 1,
+    "id": "clutter:bonfire"
+  }
+}

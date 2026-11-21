@@ -1,0 +1,11 @@
+{
+  "type": "minecraft:crafting_shapeless",
+  "category": "building",
+  "ingredients": [
+    "clutter:light_blue_copper_wall_candle",
+    "minecraft:honeycomb"
+  ],
+  "result": {
+    "id": "clutter:waxed_light_blue_copper_wall_candle"
+  }
+}

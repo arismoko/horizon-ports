@@ -1,0 +1,18 @@
+{
+  "type": "minecraft:crafting_shaped",
+  "category": "misc",
+  "key": {
+    "C": "clutter:cardboard_box",
+    "P": "minecraft:paper",
+    "R": "minecraft:red_dye"
+  },
+  "pattern": [
+    "RPR",
+    "PCP",
+    "RPR"
+  ],
+  "result": {
+    "id": "clutter:red_present"
+  },
+  "show_notification": true
+}

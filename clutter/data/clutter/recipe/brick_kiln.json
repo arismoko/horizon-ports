@@ -1,0 +1,18 @@
+{
+  "type": "minecraft:crafting_shaped",
+  "category": "misc",
+  "key": {
+    "B": "minecraft:bricks",
+    "F": "minecraft:furnace",
+    "S": "minecraft:smooth_stone"
+  },
+  "pattern": [
+    "SSS",
+    "BFB",
+    "BBB"
+  ],
+  "result": {
+    "id": "clutter:brick_kiln"
+  },
+  "show_notification": true
+}

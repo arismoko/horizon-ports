@@ -1,0 +1,8 @@
+{
+  "type": "neoforge:add_features",
+  "biomes": "minecraft:beach",
+  "features": [
+    "clutter:beach_patch_placed"
+  ],
+  "step": "vegetal_decoration"
+}

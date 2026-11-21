@@ -1,0 +1,15 @@
+{
+  "template": "minecraft:elytra",
+  "components": {
+    "minecraft:max_damage": 459,
+    "minecraft:repairable": {
+      "items": "minecraft:quartz"
+    },
+    "minecraft:equippable": {
+      "slot": "chest",
+      "asset_id": "clutter:quartz_gemstone_elytra",
+      "equip_sound": "minecraft:item.armor.equip_elytra",
+      "damage_on_hurt": false
+    }
+  }
+}

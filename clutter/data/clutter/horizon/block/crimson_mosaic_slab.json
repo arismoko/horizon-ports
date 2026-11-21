@@ -1,0 +1,9 @@
+{
+  "template": "minecraft:crimson_slab",
+  "properties": {
+    "hardness": 2.0,
+    "explosion_resistance": 3.0,
+    "sounds": "minecraft:crimson_slab",
+    "requires_tool": false
+  }
+}

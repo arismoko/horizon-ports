@@ -1,0 +1,10 @@
+{
+  "template": "minecraft:stone_button",
+  "properties": {
+    "hardness": 0.5,
+    "explosion_resistance": 0.5,
+    "sounds": "minecraft:stone_button",
+    "requires_tool": false,
+    "random_ticks": true
+  }
+}

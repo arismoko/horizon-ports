@@ -1,0 +1,25 @@
+{
+  "pools": [
+    {
+      "bonus_rolls": 0.0,
+      "condition": {
+        "type": "minecraft:survives_explosion"
+      },
+      "entries": [
+        {
+          "condition": {
+            "block": "clutter:white_bunk_bed",
+            "properties": {
+              "part": "head"
+            },
+            "type": "minecraft:block_state_property"
+          },
+          "name": "clutter:white_bunk_bed",
+          "type": "minecraft:item"
+        }
+      ],
+      "rolls": 1.0
+    }
+  ],
+  "type": "minecraft:block"
+}

@@ -1,0 +1,32 @@
+{
+  "pools": [
+    {
+      "bonus_rolls": 0.0,
+      "entries": [
+        {
+          "modifier": [
+            {
+              "add": false,
+              "condition": {
+                "block": "clutter:cherry_mosaic_slab",
+                "properties": {
+                  "type": "double"
+                },
+                "type": "minecraft:block_state_property"
+              },
+              "count": 2.0,
+              "type": "minecraft:set_count"
+            },
+            {
+              "type": "minecraft:explosion_decay"
+            }
+          ],
+          "name": "clutter:cherry_mosaic_slab",
+          "type": "minecraft:item"
+        }
+      ],
+      "rolls": 1.0
+    }
+  ],
+  "type": "minecraft:block"
+}

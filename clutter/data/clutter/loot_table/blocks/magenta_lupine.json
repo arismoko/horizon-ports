@@ -1,0 +1,25 @@
+{
+  "pools": [
+    {
+      "bonus_rolls": 0.0,
+      "condition": {
+        "type": "minecraft:survives_explosion"
+      },
+      "entries": [
+        {
+          "condition": {
+            "block": "clutter:magenta_lupine",
+            "properties": {
+              "half": "lower"
+            },
+            "type": "minecraft:block_state_property"
+          },
+          "name": "clutter:magenta_lupine",
+          "type": "minecraft:item"
+        }
+      ],
+      "rolls": 1.0
+    }
+  ],
+  "type": "minecraft:block"
+}

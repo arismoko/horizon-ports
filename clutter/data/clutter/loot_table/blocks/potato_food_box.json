@@ -1,0 +1,83 @@
+{
+  "pools": [
+    {
+      "entries": [
+        {
+          "condition": {
+            "terms": [
+              {
+                "type": "minecraft:survives_explosion"
+              },
+              {
+                "term": {
+                  "predicate": {
+                    "enchantments": [
+                      {
+                        "enchantment": "minecraft:silk_touch"
+                      }
+                    ]
+                  },
+                  "type": "minecraft:match_tool"
+                },
+                "type": "minecraft:inverted"
+              }
+            ],
+            "type": "minecraft:all_of"
+          },
+          "name": "clutter:food_box",
+          "type": "minecraft:item"
+        }
+      ],
+      "rolls": 1
+    },
+    {
+      "condition": {
+        "terms": [
+          {
+            "type": "minecraft:survives_explosion"
+          },
+          {
+            "term": {
+              "predicate": {
+                "enchantments": [
+                  {
+                    "enchantment": "minecraft:silk_touch"
+                  }
+                ]
+              },
+              "type": "minecraft:match_tool"
+            },
+            "type": "minecraft:inverted"
+          }
+        ],
+        "type": "minecraft:all_of"
+      },
+      "entries": [
+        {
+          "name": "minecraft:potato",
+          "type": "minecraft:item"
+        }
+      ],
+      "rolls": 8
+    },
+    {
+      "condition": {
+        "predicate": {
+          "enchantments": [
+            {
+              "enchantment": "minecraft:silk_touch"
+            }
+          ]
+        },
+        "type": "minecraft:match_tool"
+      },
+      "entries": [
+        {
+          "name": "clutter:potato_food_box",
+          "type": "minecraft:item"
+        }
+      ],
+      "rolls": 1
+    }
+  ]
+}

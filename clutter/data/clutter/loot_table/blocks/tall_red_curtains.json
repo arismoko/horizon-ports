@@ -1,0 +1,25 @@
+{
+  "pools": [
+    {
+      "bonus_rolls": 0.0,
+      "condition": {
+        "type": "minecraft:survives_explosion"
+      },
+      "entries": [
+        {
+          "condition": {
+            "block": "clutter:tall_red_curtains",
+            "properties": {
+              "half": "lower"
+            },
+            "type": "minecraft:block_state_property"
+          },
+          "name": "clutter:tall_red_curtains",
+          "type": "minecraft:item"
+        }
+      ],
+      "rolls": 1.0
+    }
+  ],
+  "type": "minecraft:block"
+}

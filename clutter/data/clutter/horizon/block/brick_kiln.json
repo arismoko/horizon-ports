@@ -1,0 +1,40 @@
+{
+  "template": "minecraft:white_glazed_terracotta",
+  "properties": {
+    "hardness": 2.0,
+    "explosion_resistance": 6.0,
+    "sounds": "minecraft:bricks",
+    "requires_tool": true,
+    "light": 0,
+    "occludes": false
+  },
+  "state_properties": {
+    "lit": {
+      "type": "boolean"
+    }
+  },
+  "default_state": {
+    "lit": "false"
+  },
+  "state_light": {
+    "properties": [
+      "lit"
+    ],
+    "values": {
+      "true": 13
+    },
+    "default": 0
+  },
+  "shapes": {
+    "default": [
+      [
+        0.0,
+        0.0,
+        0.0,
+        1.0,
+        1.0,
+        1.0
+      ]
+    ]
+  }
+}

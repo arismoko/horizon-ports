@@ -1,0 +1,11 @@
+{
+  "template": "minecraft:potted_dandelion",
+  "properties": {
+    "hardness": 0.0,
+    "explosion_resistance": 0.0,
+    "sounds": "minecraft:flower_pot",
+    "requires_tool": false,
+    "occludes": false
+  },
+  "item": false
+}

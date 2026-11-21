@@ -1,0 +1,54 @@
+{
+  "modifier": [
+    {
+      "type": "minecraft:explosion_decay"
+    }
+  ],
+  "pools": [
+    {
+      "entries": [
+        {
+          "modifier": [
+            {
+              "condition": {
+                "block": "clutter:tall_bottle",
+                "properties": {
+                  "count": "2"
+                },
+                "type": "minecraft:block_state_property"
+              },
+              "count": 2,
+              "type": "minecraft:set_count"
+            },
+            {
+              "condition": {
+                "block": "clutter:tall_bottle",
+                "properties": {
+                  "count": "3"
+                },
+                "type": "minecraft:block_state_property"
+              },
+              "count": 3,
+              "type": "minecraft:set_count"
+            },
+            {
+              "condition": {
+                "block": "clutter:tall_bottle",
+                "properties": {
+                  "count": "4"
+                },
+                "type": "minecraft:block_state_property"
+              },
+              "count": 4,
+              "type": "minecraft:set_count"
+            }
+          ],
+          "name": "clutter:tall_bottle",
+          "type": "minecraft:item"
+        }
+      ],
+      "rolls": 1
+    }
+  ],
+  "type": "minecraft:block"
+}

@@ -1,0 +1,24 @@
+{
+  "template": "minecraft:stone",
+  "properties": {
+    "hardness": 4.0,
+    "explosion_resistance": 1200.0,
+    "sounds": "minecraft:obsidian",
+    "requires_tool": true,
+    "light": 0,
+    "occludes": false,
+    "random_ticks": true
+  },
+  "shapes": {
+    "default": [
+      [
+        0.0,
+        0.0,
+        0.0,
+        1.0,
+        1.0,
+        1.0
+      ]
+    ]
+  }
+}

@@ -1,0 +1,12 @@
+{
+  "type": "neoforge:add_features",
+  "biomes": [
+    "minecraft:swamp",
+    "minecraft:mangrove_swamp",
+    "minecraft:river"
+  ],
+  "features": [
+    "clutter:cattails_placed"
+  ],
+  "step": "vegetal_decoration"
+}

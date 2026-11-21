@@ -1,0 +1,15 @@
+{
+  "type": "minecraft:crafting_shaped",
+  "pattern": [
+    "O  ",
+    "OO ",
+    "OOO"
+  ],
+  "key": {
+    "O": "clutter:polished_onyx"
+  },
+  "result": {
+    "count": 4,
+    "id": "clutter:polished_onyx_stairs"
+  }
+}

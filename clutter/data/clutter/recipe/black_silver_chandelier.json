@@ -1,0 +1,18 @@
+{
+  "type": "minecraft:crafting_shaped",
+  "group": "silver_chandeliers",
+  "pattern": [
+    " N ",
+    "CIC",
+    "CIC"
+  ],
+  "key": {
+    "I": "#c:silver_ingots",
+    "N": "#c:silver_nuggets",
+    "C": "minecraft:black_candle"
+  },
+  "result": {
+    "count": 1,
+    "id": "clutter:black_silver_chandelier"
+  }
+}

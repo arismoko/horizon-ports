@@ -1,0 +1,10 @@
+{
+  "template": "minecraft:rose_bush",
+  "properties": {
+    "hardness": 0.0,
+    "explosion_resistance": 0.0,
+    "sounds": "minecraft:rose_bush",
+    "requires_tool": false,
+    "occludes": false
+  }
+}
