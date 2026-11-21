@@ -249,8 +249,13 @@ struct OpenHandler(Arc<Mutex<Vec<u128>>>);
 
 impl IPayloadHandler for OpenHandler {
     fn handle(&self, _payload: PayloadBytes, context: &mut dyn IPayloadContext) -> Result<(), PayloadHandleError> {
+        // One pending open per player, however often the key packet comes.
         if let Ok(p) = context.player() {
-            lock(&self.0).push(p.uuid());
+            let uuid = p.uuid();
+            let mut opens = lock(&self.0);
+            if !opens.contains(&uuid) {
+                opens.push(uuid);
+            }
         }
         Ok(())
     }
@@ -410,6 +415,11 @@ impl Hooks for Mod {
         }
         let opens = std::mem::take(&mut *lock(&self.opens));
         for uuid in opens {
+            // Already looking at it: don't rebuild the menu and resend the inventory.
+            let window = lock(&self.menus).get(&uuid).copied();
+            if window.is_some_and(|w| host.menu(uuid, w).is_some()) {
+                continue;
+            }
             self.open(host, uuid);
         }
     }
@@ -475,18 +485,69 @@ impl Hooks for Mod {
             return;
         }
         names.dedup();
+        // The key as the player bound it; no hint when it's unbound.
+        let hint = host
+            .mod_key("trinkets", "open")
+            .and_then(|(key, mods)| key_label(&key, mods.bits))
+            .map(|k| format!(" ({k})"))
+            .unwrap_or_default();
         let line = if names.len() == 1 {
-            format!("§7Equippable in the §9{}§7 trinket slot (G)", names[0])
+            format!("§7Equippable in the §9{}§7 trinket slot{hint}", names[0])
         } else {
-            format!("§7Equippable in the trinket slots: §9{}§7 (G)", names.join(", "))
+            format!("§7Equippable in the trinket slots: §9{}§7{hint}", names.join(", "))
         };
         event.lines.push((Text::literal(line), 0xFFAAAAAA));
     }
 }
 
+/// A key name for a tooltip from its saved form (`key.keyboard.g`, `key.keyboard.left.shift`, `key.mouse.4`) and
+/// GLFW modifier bits: `G`, `Left Shift`, `Mouse 4`, `Ctrl + G`. None when unbound.
+fn key_label(key: &str, mods: u32) -> Option<String> {
+    let (kind, rest) = if let Some(r) = key.strip_prefix("key.keyboard.") {
+        ("", r)
+    } else if let Some(r) = key.strip_prefix("key.mouse.") {
+        ("Mouse ", r)
+    } else {
+        return None;
+    };
+    if rest.is_empty() || rest == "unknown" {
+        return None;
+    }
+    let words: Vec<String> = rest
+        .split('.')
+        .map(|w| match w {
+            "keypad" => "Keypad".to_owned(),
+            w => {
+                let mut c = w.chars();
+                match c.next() {
+                    Some(f) => f.to_uppercase().chain(c).collect(),
+                    None => String::new(),
+                }
+            }
+        })
+        .collect();
+    let mut name = format!("{kind}{}", words.join(" "));
+    for (bit, m) in [(8, "Super"), (4, "Alt"), (1, "Shift"), (2, "Ctrl")] {
+        if mods & bit != 0 {
+            name = format!("{m} + {name}");
+        }
+    }
+    Some(name)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn key_labels() {
+        assert_eq!(key_label("key.keyboard.g", 0).as_deref(), Some("G"));
+        assert_eq!(key_label("key.keyboard.left.shift", 0).as_deref(), Some("Left Shift"));
+        assert_eq!(key_label("key.keyboard.keypad.1", 0).as_deref(), Some("Keypad 1"));
+        assert_eq!(key_label("key.mouse.4", 0).as_deref(), Some("Mouse 4"));
+        assert_eq!(key_label("key.keyboard.t", 2).as_deref(), Some("Ctrl + T"));
+        assert_eq!(key_label("key.keyboard.unknown", 0), None);
+    }
 
     #[test]
     fn inventory_slots_follow_the_menu() {
