@@ -35,7 +35,7 @@ use mod_api::{
     BlockKey, BlockPart, BlockUpdateFlags, Compound, Direction, EquipmentSlot, Hand, Hooks, HostBlockStates, Identifier,
     InteractionResult, ItemPart, ItemStack, LevelHost, LevelRef, LevelTicksHost, LevelWriteHost, LivingRef,
     ModContainer, NeighborChangedEvent, OnBlockPlacedByEvent, PerformBonemealEvent, PlayerRef, RandomTickEvent,
-    Registrar, RegistrationContext, ServerHost, ServerTickEvent, ServerTickPhase, SoundSource,
+    Registrar, RegistrationContext, ServerHost, ServerStartedEvent, ServerStoppingEvent, ServerTickEvent, ServerTickPhase, SoundSource,
     StateForPlacementEvent, Tag, TickBlockEvent, UpdateShapeEvent, UseItemOnEvent, UseWithoutItemEvent,
 };
 
@@ -543,6 +543,14 @@ fn sit(host: &mut dyn ServerHost, dim: &str, pos: [i32; 3], player: PlayerRef, o
     true
 }
 
+/// Forget the seats, saplings and tick count of the world that is closing or opening: they name runtime entity
+/// ids and positions of one world, and a second world in the same game process starts its ids again from 0.
+fn reset_world_state() {
+    lock(&SEATS).clear();
+    lock(&GROW).clear();
+    *lock(&TICKS) = 0;
+}
+
 fn tend_seats(host: &mut dyn ServerHost) {
     let now = *lock(&TICKS);
     let seats = std::mem::take(&mut *lock(&SEATS));
@@ -550,6 +558,10 @@ fn tend_seats(host: &mut dyn ServerHost) {
     for s in seats {
         let reader: &dyn ServerHost = &*host;
         let Some(stand) = host.entity(s.stand) else { continue };
+        // Entity ids are reused: only ever discard the stand this seat summoned.
+        if !stand.tags(reader).is_some_and(|t| t.iter().any(|t| t == SEAT_TAG)) {
+            continue;
+        }
         let ridden = stand.passengers(reader).is_some_and(|p| !p.is_empty());
         let block = host.level(&s.dim).and_then(|l| host_look(reader, l)(s.block));
         let seat = block.is_some_and(|b| seat_offset(b.class()).is_some());
@@ -1395,6 +1407,14 @@ impl Hooks for Mod {
                 eprintln!("[clutter] block entity part {be} refused: {e:?}");
             }
         }
+    }
+
+    fn server_started(&self, _host: &mut dyn ServerHost, _event: &mut ServerStartedEvent) {
+        reset_world_state();
+    }
+
+    fn server_stopping(&self, _host: &mut dyn ServerHost, _event: &mut ServerStoppingEvent) {
+        reset_world_state();
     }
 
     fn server_tick(&self, host: &mut dyn ServerHost, event: &mut ServerTickEvent<'_>) {
