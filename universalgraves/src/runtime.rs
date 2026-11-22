@@ -14,6 +14,8 @@ const GRAVE_BLOCK: &str = "minecraft:skeleton_skull";
 /// (Universal Graves' Trinkets compatibility) are kept apart, by their slot id.
 const ARMOR: u8 = 100;
 const OFFHAND: u8 = 200;
+/// `EQUIP + n`: the player's `EquipmentSlot` ordinal n kept in `Game::equipment` (body 6, saddle 7).
+const EQUIP: u8 = 150;
 
 #[derive(Clone)]
 pub(crate) struct UgGrave {
@@ -287,6 +289,7 @@ pub(crate) fn bury(game: &mut Game<'_>, entity: u32) -> bool {
     let any = game.inventory.iter().flatten().any(|s| !cursed(s))
         || game.armor.iter().flatten().any(|s| !cursed(s))
         || game.offhand.as_ref().is_some_and(|s| !cursed(s))
+        || game.equipment.iter().flatten().any(|s| !cursed(s))
         || worn_trinkets(game, owner).iter().any(|(_, s)| !cursed(s));
     if !any {
         return false;
@@ -307,6 +310,13 @@ pub(crate) fn bury(game: &mut Game<'_>, entity: u32) -> bool {
     }
     if let Some(s) = game.offhand.take() {
         items.push((OFFHAND, s));
+    }
+    // Body and saddle (Inventory.dropAll drops `equipment` too).
+    for i in 0..8u8 {
+        if let Some(s) = game.equipment.get(usize::from(i)).cloned() {
+            game.equipment.set(usize::from(i), None);
+            items.push((EQUIP + i, s));
+        }
     }
     let mut trinkets = worn_trinkets(game, owner);
     // Trinkets that can't be taken off stay worn rather than also going into the grave.
@@ -465,6 +475,14 @@ pub(crate) fn open(game: &mut Game<'_>) -> bool {
         rest.extend(g.trinkets.iter().map(|(_, s)| s.clone()));
     }
     for (slot, s) in g.items {
+        if (EQUIP..OFFHAND).contains(&slot) {
+            let i = usize::from(slot - EQUIP);
+            if game.equipment.get(i).is_none() && game.equipment.set(i, Some(s.clone())) {
+                continue;
+            }
+            rest.push(s);
+            continue;
+        }
         let free = match slot {
             OFFHAND => game.offhand.is_none().then_some(&mut game.offhand),
             a if a >= ARMOR => game
