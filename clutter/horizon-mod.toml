@@ -3,7 +3,7 @@
 # else is the mod API (src/lib.rs): no game module and no mixin.
 id = "clutter"
 name = "Clutter"
-version = "0.2.1"
+version = "0.2.2"
 description = "Decorations by EmilSG: furniture you can sit on, candles, chandeliers and lamps that light up, curtains that open, cupboards, plushies, copper that weathers, silver and onyx, coral, plants and crops"
 authors = ["EmilSG"]
 api = "0.2"

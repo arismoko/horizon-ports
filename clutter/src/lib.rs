@@ -1116,12 +1116,18 @@ fn grow_tree(host: &mut dyn ServerHost, dim: &str, pos: [i32; 3]) {
     let at = if n == 3 { [at[0] + 1, at[1], at[2] + 1] } else { at };
     let cmd = format!("execute in {dim} run place feature {NS}{feature} {} {} {}", at[0], at[1], at[2]);
     host.commands().run_command(&cmd);
-    // The command reports success either way; a tree that went in stands on the first cell.
-    let placed = host_look(&*host, level)(cells[0]).is_some_and(|s| s.id != "minecraft:air");
-    if !placed {
-        for c in &cells {
-            let _ = level.set_block(host, *c, sapling, BlockUpdateFlags::CLIENTS);
-        }
+    // The command reports success either way; a tree that went in has its trunk at the feature's origin `at`
+    // (the 3x3's middle cell, not its corner). On a failure only cells still empty get their sapling back, so a
+    // tree is never overwritten.
+    let look = host_look(&*host, level);
+    let air_at = |c: [i32; 3]| look(c).is_none_or(|s| s.id == "minecraft:air");
+    if !air_at(at) {
+        return;
+    }
+    let empty: Vec<[i32; 3]> = cells.iter().copied().filter(|&c| air_at(c)).collect();
+    drop(look);
+    for c in empty {
+        let _ = level.set_block(host, c, sapling, BlockUpdateFlags::CLIENTS);
     }
 }
 
