@@ -229,8 +229,8 @@ fn spot_ok(game: &Game<'_>, p: [i32; 3]) -> bool {
     facts.is_air(s) || matches!(&*facts.get(s).name, "minecraft:short_grass" | "minecraft:fern")
 }
 /// GraveUtils.findGravePosition, simply: the nearest free (air or grass) block within 8 of
-/// where the player died, the death height kept inside the world.
-fn find_spot(game: &Game<'_>, feet: [i32; 3]) -> Option<[i32; 3]> {
+/// where the player died that holds no grave record, the death height kept inside the world.
+fn find_spot(game: &Game<'_>, feet: [i32; 3], taken: &[[i32; 3]]) -> Option<[i32; 3]> {
     let min = game.world.shape.min_y;
     let max = game.world.shape.max_y() - 1;
     let c = [feet[0], feet[1].clamp(min, max), feet[2]];
@@ -248,7 +248,9 @@ fn find_spot(game: &Game<'_>, feet: [i32; 3]) -> Option<[i32; 3]> {
                 if best.is_some_and(|(b, _)| key >= b) {
                     continue;
                 }
-                if game.world.chunks.contains_key(&(p[0] >> 4, p[2] >> 4)) && spot_ok(game, p) {
+                // A block that still has a grave record (its skull blown up, not yet spilled) isn't free:
+                // a new grave there would replace the old one and lose its items.
+                if game.world.chunks.contains_key(&(p[0] >> 4, p[2] >> 4)) && spot_ok(game, p) && !taken.contains(&p) {
                     best = Some((key, p));
                 }
             }
@@ -289,7 +291,8 @@ pub(crate) fn bury(game: &mut Game<'_>, entity: u32) -> bool {
     if !any {
         return false;
     }
-    let Some(pos) = find_spot(game, feet) else { return false };
+    let taken: Vec<[i32; 3]> = load(game).0.iter().map(|g| g.pos).collect();
+    let Some(pos) = find_spot(game, feet, &taken) else { return false };
     let Some(skull) = skull_state(game, game.yaw) else { return false };
     let mut items = Vec::new();
     for (i, s) in game.inventory.iter_mut().enumerate() {
@@ -306,8 +309,9 @@ pub(crate) fn bury(game: &mut Game<'_>, entity: u32) -> bool {
         items.push((OFFHAND, s));
     }
     let mut trinkets = worn_trinkets(game, owner);
-    if !trinkets.is_empty() {
-        let _ = set_trinkets(game, owner, &[]);
+    // Trinkets that can't be taken off stay worn rather than also going into the grave.
+    if !trinkets.is_empty() && !set_trinkets(game, owner, &[]) {
+        trinkets.clear();
     }
     items.retain(|(_, s)| !cursed(s));
     trinkets.retain(|(_, s)| !cursed(s));
@@ -321,7 +325,6 @@ pub(crate) fn bury(game: &mut Game<'_>, entity: u32) -> bool {
     }
     let count: u32 = items.iter().map(|(_, s)| s.count).chain(trinkets.iter().map(|(_, s)| s.count)).sum();
     let mut graves = load(game);
-    graves.0.retain(|g| g.pos != pos);
     graves.0.push(UgGrave {
         pos,
         owner,
@@ -521,10 +524,18 @@ fn spill(game: &mut Game<'_>, g: UgGrave) {
 /// Once a tick: a grave whose skull is gone (an explosion, a piston, a command) drops what it
 /// held there, as the grave block's removal does in the original, and its owner hears of it.
 pub(crate) fn watch(game: &mut Game<'_>) {
-    static LAST: std::sync::atomic::AtomicI64 = std::sync::atomic::AtomicI64::new(i64::MIN);
+    // Once a tick per dimension: game time is the same in every dimension, so keyed on it alone the
+    // first dimension to tick would starve the others.
+    static LAST: std::sync::Mutex<Vec<(&'static str, i64)>> = std::sync::Mutex::new(Vec::new());
     let now = game.world.game_time;
-    if LAST.swap(now, std::sync::atomic::Ordering::Relaxed) == now {
-        return;
+    let dim = game.dim.id();
+    {
+        let mut last = LAST.lock().unwrap_or_else(|e| e.into_inner());
+        match last.iter_mut().find(|(d, _)| *d == dim) {
+            Some((_, t)) if *t == now => return,
+            Some((_, t)) => *t = now,
+            None => last.push((dim, now)),
+        }
     }
     if !GRAVES.has(game, mod_api::Holder::Level).unwrap_or(false) {
         return;
