@@ -432,6 +432,13 @@ pub fn drop_roll(entity: u32, pos: [f64; 3]) -> f64 {
     .unit()
 }
 
+/// Whether `entity` carries the spawn tag of a backpack bearer.
+pub fn is_bearer(host: &dyn Host, entity: mod_api::EntityRef) -> bool {
+    entity
+        .tags(host)
+        .is_some_and(|t| (0..6).any(|i| t.contains(&format!("{TIER_TAG}{i}"))))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -514,11 +521,4 @@ mod tests {
         assert_eq!(health_bonus(20.0, 2), Some(40.0));
         assert_eq!(health_bonus(20.0, 0), None);
     }
-}
-
-/// Whether `entity` carries the spawn tag of a backpack bearer.
-pub fn is_bearer(host: &dyn Host, entity: mod_api::EntityRef) -> bool {
-    entity
-        .tags(host)
-        .is_some_and(|t| (0..6).any(|i| t.contains(&format!("{TIER_TAG}{i}"))))
 }
