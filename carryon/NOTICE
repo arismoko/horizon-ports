@@ -9,3 +9,5 @@ content (items, blocks, textures, models, data) is carried over from the origina
 against Horizon's exact-build SDK dd67b76ff23e28c6d8e21859df600d31572f81a0.
 
 LICENSE is the original's LICENSE_carryon (GNU LGPL v3); COPYING is the GNU GPL v3 text the LGPL builds on.
+
+Ported to Sunrise by arismoko (version 0.4.0), on the Sunrise mod API, under the same licence.

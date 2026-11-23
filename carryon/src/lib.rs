@@ -19,26 +19,29 @@
 //!   is drawn over the hotbar in first person (the API draws a living entity only in a screen or the HUD) and
 //!   as its spawn egg on players seen in third person.
 //!
-//! The values are Homestead's `config/carryon-common.json`. Not ported: picking up players (a player can't be
+//! The values are the original's default config (`carryon-common.json`). Not ported: picking up players (a player can't be
 //! a vehicle on this engine), the raised arms (the arm pose hooks aren't asked for an empty hand), custom
 //! pickup scripts and conditions (off in Homestead), the model overrides.
 use std::collections::HashMap;
+use std::ops::ControlFlow;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, OnceLock};
 
 use mod_api::{
-    ActiveEffect, AttachmentCodec, HostBlockStates, AttachmentType, AttackEntityEvent, BlockUpdateFlags, BreakBlockEvent, ClientHost,
-    Compound, EntityInteractEvent, EntityRef, Flow, GameMode, GuiEntity, GuiEntityLook, GuiEntityView,
-    GuiRenderPostEvent, Hand, Holder, Host, HostSide, Hooks, IPayloadContext, IPayloadHandler, InteractionResult,
-    ItemDisplayContext, ItemKey, ItemStack, LeftClickBlockEvent, LivingDeathEvent, LivingRef, MobCategory,
-    MouseScrollingEvent, PayloadBytes, PayloadHandleError, PayloadId, PlayerRef, PlayerSwitchHotbarSlotPreEvent,
-    Registrar, RegistrationContext, RemovalReason, RenderHandEvent, RenderPlayerPostEvent, RightClickBlockEvent,
-    ServerHost, ServerTickEvent, ServerTickPhase, SoundSource, Tag,
+    ActiveEffect, AttachmentCodec, AttachmentType, AttackEntityEvent, BlockUpdateFlags,
+    BreakBlockEvent, ClientHost, Compound, EntityInteractEvent, EntityRef, Flow, GameMode,
+    GuiEntity, GuiEntityLook, GuiEntityView, GuiRenderPostEvent, Hand, Holder, Hooks, Host,
+    HostBlockStates, HostSide, IPayloadContext, IPayloadHandler, InteractionResult,
+    ItemDisplayContext, ItemKey, ItemStack, LeftClickBlockEvent, LivingDeathEvent, LivingRef,
+    MobCategory, MouseScrollingEvent, PayloadBytes, PayloadHandleError, PayloadId, PlayerRef,
+    PlayerSwitchHotbarSlotPreEvent, Registrar, RegistrationContext, RemovalReason, RenderHandEvent,
+    RenderPlayerPostEvent, RightClickBlockEvent, ServerHost, ServerTickEvent, ServerTickPhase,
+    SoundSource, Tag,
 };
 
 const CHANNEL: &str = "carryon:carried";
 
-// Homestead's config/carryon-common.json.
+// The original's default config (`CarryConfig`, `carryon-common.json`).
 const MAX_DISTANCE: f64 = 2.5;
 const MAX_ENTITY_WIDTH: f64 = 1.5;
 const MAX_ENTITY_HEIGHT: f64 = 2.5;
@@ -50,25 +53,210 @@ const PICKUP_HOSTILE: bool = false;
 const PICKUP_UNBREAKABLE: bool = false;
 const STACKABLE_ENTITIES: bool = true;
 const SIZE_MATTERS_STACKING: bool = true;
+// The original's default lists (`CarryConfig`): an id with `*` wildcards, or `#` and a tag.
 const FORBIDDEN_TILES: &[&str] = &[
-    "vinery:*_wine_rack_small", "vinery:*_wine_rack_mid", "vinery:*_wine_rack_big", "minecraft:end_portal",
-    "minecraft:piston_head", "minecraft:end_gateway", "minecraft:tall_grass", "minecraft:large_fern",
-    "minecraft:peony", "minecraft:rose_bush", "minecraft:lilac", "minecraft:sunflower", "minecraft:*_bed",
-    "minecraft:*_door", "minecraft:big_dripleaf_stem", "minecraft:waterlily", "minecraft:cake",
-    "minecraft:nether_portal", "minecraft:tall_seagrass", "colossalchests:*", "create:*", "ftbquests:*",
-    "waystones:*", "framedblocks:*", "copycats:*", "spudaciousshops:*", "connectiblechains:*", "hexalia:*",
-    "sophisticatedstorage:*", "sophisticatedbackpacks:*", "sophisticatedcore:*", "brewery:*_brewingstation",
-    "brewery:brew_kettle", "brewery:brew_oven", "brewery:brew_timer", "brewery:brew_whistle",
-    "cookingforblockheads:*", "advancementtrophies:trophy", "storagedrawers:framingtable", "refinedstorage:*",
-    "enderstorage:*", "securitycraft:*",
+    "#forge:immovable",
+    "#forge:relocation_not_supported",
+    "#neoforge:immovable",
+    "#neoforge:relocation_not_supported",
+    "minecraft:end_portal",
+    "minecraft:piston_head",
+    "#c:relocation_not_supported",
+    "minecraft:end_gateway",
+    "minecraft:tall_grass",
+    "minecraft:large_fern",
+    "minecraft:peony",
+    "minecraft:rose_bush",
+    "minecraft:lilac",
+    "minecraft:sunflower",
+    "minecraft:*_bed",
+    "minecraft:*_door",
+    "minecraft:big_dripleaf_stem",
+    "minecraft:waterlily",
+    "minecraft:cake",
+    "minecraft:nether_portal",
+    "minecraft:tall_seagrass",
+    "animania:block_trough",
+    "animania:block_invisiblock",
+    "colossalchests:*",
+    "ic2:*",
+    "bigreactors:*",
+    "forestry:*",
+    "tconstruct:*",
+    "rustic:*",
+    "botania:*",
+    "astralsorcery:*",
+    "quark:colored_bed_*",
+    "immersiveengineering:*",
+    "embers:block_furnace",
+    "embers:ember_bore",
+    "embers:ember_activator",
+    "embers:mixer",
+    "embers:heat_coil",
+    "embers:large_tank",
+    "embers:crystal_cell",
+    "embers:alchemy_pedestal",
+    "embers:boiler",
+    "embers:combustor",
+    "embers:catalzyer",
+    "embers:field_chart",
+    "embers:inferno_forge",
+    "storagedrawers:framingtable",
+    "skyresources:*",
+    "lootbags:*",
+    "exsartagine:*",
+    "aquamunda:tank",
+    "opencomputers:*",
+    "malisisdoors:*",
+    "industrialforegoing:*",
+    "minecolonies:*",
+    "thaumcraft:pillar*",
+    "thaumcraft:infernal_furnace",
+    "thaumcraft:placeholder*",
+    "thaumcraft:infusion_matrix",
+    "thaumcraft:golem_builder",
+    "thaumcraft:thaumatorium*",
+    "magneticraft:oil_heater",
+    "magneticraft:solar_panel",
+    "magneticraft:steam_engine",
+    "magneticraft:shelving_unit",
+    "magneticraft:grinder",
+    "magneticraft:sieve",
+    "magneticraft:solar_tower",
+    "magneticraft:solar_mirror",
+    "magneticraft:container",
+    "magneticraft:pumpjack",
+    "magneticraft:refinery",
+    "magneticraft:hydraulic_press",
+    "magneticraft:multiblock_gap",
+    "refinedstorage:*",
+    "mcmultipart:*",
+    "enderstorage:*",
+    "betterstorage:*",
+    "practicallogistics2:*",
+    "wearablebackpacks:*",
+    "rftools:screen",
+    "rftools:creative_screen",
+    "create:*",
+    "magic_doorknob:*",
+    "iceandfire:*",
+    "ftbquests:*",
+    "waystones:*",
+    "contact:*",
+    "framedblocks:*",
+    "securitycraft:*",
+    "forgemultipartcbe:*",
+    "integrateddynamics:cable",
+    "mekanismgenerators:wind_generator",
+    "cookingforblockheads:cabinet",
+    "cookingforblockheads:corner",
+    "cookingforblockheads:counter",
+    "cookingforblockheads:oven",
+    "cookingforblockheads:toaster",
+    "cookingforblockheads:milk_jar",
+    "cookingforblockheads:cow_jar",
+    "cookingforblockheads:fruit_basket",
+    "cookingforblockheads:cooking_table",
+    "cookingforblockheads:fridge",
+    "cookingforblockheads:sink",
+    "chipped:*",
+    "irons_spellbooks:*",
+    "create*:*",
+    "simple_pipes:*",
+    "libmultipart:*",
+    "quark:tiny_potato",
+    "ait:*",
+    "vampirism:*",
+    "extrastorage:*",
+    "relics:researching_table",
+    "sophisticatedstorage:*chest",
+    "powah:*",
+    "advancementtrophies:trophy",
+    "mekanismgenerators:heat_generator",
+    "mna:filler_block",
+    "create_enchantment_industry:*",
+    "graveyard:*",
+    "immersivepetroleum:*",
+    "tardis:interior_door",
+    "cuffed:*",
+    "littletiles:*",
+    "butchersdelight:*",
+    "extended_drawers:*",
+    "functionalstorage:*",
+    "sophisticatedstorage:*",
+    "farmersdelight:*",
+    "modern_industrialization:*_cable",
+    "modern_industrialization:item_pipe",
+    "modern_industrialization:*_item_pipe",
+    "modern_industrialization:fluid_pipe",
+    "modern_industrialization:*_fluid_pipe",
+    "yigd:*",
+    "domum_ornamentum:*",
+    "connectiblechains:*",
+    "cobblemon:*",
+    "snowrealmagic:*",
+    "forbidden_arcanus:black_hole",
+    "sgjourney:*",
+    "copycats:*",
+    "expandedstorage:*",
+    "replication:*",
+    "coloreditemframes:*",
 ];
 const FORBIDDEN_ENTITIES: &[&str] = &[
-    "minecraft:end_crystal", "minecraft:ender_dragon", "minecraft:ghast", "minecraft:shulker",
-    "minecraft:leash_knot", "minecraft:armor_stand", "minecraft:item_frame", "minecraft:painting",
-    "minecraft:shulker_bullet", "securitycraft:*", "taterzens:npc", "easy_npc:*", "bodiesbodies:dead_body",
-    "spawn:hamster", "connectiblechains:*",
+    "#c:capturing_not_supported",
+    "#c:teleporting_not_supported",
+    "minecraft:end_crystal",
+    "minecraft:ender_dragon",
+    "minecraft:ghast",
+    "minecraft:fireball",
+    "minecraft:small_fireball",
+    "minecraft:whither_skull",
+    "minecraft:shulker",
+    "minecraft:leash_knot",
+    "minecraft:armor_stand",
+    "minecraft:whither_skull_dangerous",
+    "minecraft:dragon_fireball",
+    "minecraft:item_frame",
+    "minecraft:painting",
+    "minecraft:shulker_bullet",
+    "minecraft:evoker_fangs",
+    "minecraft:glow_item_frame",
+    "minecraft:tnt",
+    "minecraft:trident",
+    "minecraft:arrow",
+    "minecraft:spectral_arrow",
+    "minecraft:interaction",
+    "minecraft:marker",
+    "minecraft:block_display",
+    "minecraft:item_display",
+    "minecraft:text_display",
+    "minecraft:cushion",
+    "animania:hamster",
+    "animania:ferret*",
+    "animania:hedgehog*",
+    "animania:cart",
+    "animania:wagon",
+    "mynko:*",
+    "pixelmon:*",
+    "mocreatures:*",
+    "quark:totem",
+    "vehicle:*",
+    "securitycraft:*",
+    "taterzens:npc",
+    "easy_npc:*",
+    "bodiesbodies:dead_body",
+    "littletiles:*",
+    "connectiblechains:*",
+    "cobblemon:*",
+    "create:*",
+    "swem:*",
+    "toms_mobs:*",
+    "simulated:*",
+    "aeronautics:*",
+    "offroad:*",
+    "coloreditemframes:*",
 ];
-const FORBIDDEN_STACKING: &[&str] = &["minecraft:horse"];
+const FORBIDDEN_STACKING: &[&str] = &["minecraft:horse", "minecraft:ender_dragon"];
 
 /// What a player carries, as the jar's `CarryOnData` (saved with the player): empty when nothing.
 /// `type` "block" with `block` (the state string) and `tile` (the block entity's data), or "entity" with `kind`,
@@ -77,7 +265,10 @@ static CARRY: AttachmentType<Compound> = AttachmentType {
     namespace: "carryon",
     name: "carry",
     default: Compound::new,
-    codec: Some(AttachmentCodec { encode: |c| Ok(c.clone()), decode: |c| Ok(c.clone()) }),
+    codec: Some(AttachmentCodec {
+        encode: |c| Ok(c.clone()),
+        decode: |c| Ok(c.clone()),
+    }),
     copy_on_death: true,
     sync: false,
 };
@@ -111,7 +302,10 @@ fn wildcard(name: &str, pattern: &str) -> bool {
         return name == pattern;
     }
     let (first, last) = (parts[0], parts[parts.len() - 1]);
-    if !name.starts_with(first) || !name[first.len()..].ends_with(last) || name.len() < first.len() + last.len() {
+    if !name.starts_with(first)
+        || !name[first.len()..].ends_with(last)
+        || name.len() < first.len() + last.len()
+    {
         return false;
     }
     let mut rest = &name[first.len()..name.len() - last.len()];
@@ -124,8 +318,12 @@ fn wildcard(name: &str, pattern: &str) -> bool {
     true
 }
 
-fn listed(name: &str, list: &[&str]) -> bool {
-    list.iter().any(|p| wildcard(name, p))
+/// Whether `name` matches an entry of `list`: an id pattern, or a `#tag` that `in_tag` answers.
+fn listed(name: &str, list: &[&str], in_tag: &dyn Fn(&str) -> bool) -> bool {
+    list.iter().any(|p| match p.strip_prefix('#') {
+        Some(tag) => in_tag(tag),
+        None => wildcard(name, p),
+    })
 }
 
 /// `ns:block[k=v,...]` as its id and properties, in order.
@@ -155,7 +353,10 @@ fn set_prop(props: &mut [(String, String)], key: &str, value: &str) {
 }
 
 fn prop<'a>(props: &'a [(String, String)], key: &str) -> Option<&'a str> {
-    props.iter().find(|(k, _)| k == key).map(|(_, v)| v.as_str())
+    props
+        .iter()
+        .find(|(k, _)| k == key)
+        .map(|(_, v)| v.as_str())
 }
 
 /// `Direction.fromYRot`: where a player turned `yaw` looks.
@@ -205,8 +406,14 @@ fn nearest_looking(yaw: f32, pitch: f32) -> &'static str {
 /// block with a block entity faces the placer horizontally (a Farmer's Delight cabinet has six facings but is
 /// placed by the horizontal look).
 const SIX_WAY: &[&str] = &[
-    "minecraft:barrel", "minecraft:dispenser", "minecraft:dropper", "minecraft:observer", "minecraft:crafter",
-    "minecraft:command_block", "minecraft:chain_command_block", "minecraft:repeating_command_block",
+    "minecraft:barrel",
+    "minecraft:dispenser",
+    "minecraft:dropper",
+    "minecraft:observer",
+    "minecraft:crafter",
+    "minecraft:command_block",
+    "minecraft:chain_command_block",
+    "minecraft:repeating_command_block",
 ];
 
 /// Click and look of a placement, for `getPlacementState`.
@@ -233,7 +440,11 @@ fn placement_state(host: &dyn ServerHost, carried: &str, p: &Placement) -> Strin
             host.block_state_id(&state_text(&id, &t)).is_some()
         };
         let want = if id == "minecraft:hopper" {
-            if p.face[1] != 0 { "down".to_string() } else { opposite(face).to_string() }
+            if p.face[1] != 0 {
+                "down".to_string()
+            } else {
+                opposite(face).to_string()
+            }
         } else if id.ends_with("shulker_box") {
             face.to_string()
         } else if SIX_WAY.contains(&id.as_str()) {
@@ -263,7 +474,11 @@ fn placement_state(host: &dyn ServerHost, carried: &str, p: &Placement) -> Strin
         set_prop(&mut props, "type", "single");
     }
     if prop(&props, "waterlogged").is_some() {
-        set_prop(&mut props, "waterlogged", if p.in_water { "true" } else { "false" });
+        set_prop(
+            &mut props,
+            "waterlogged",
+            if p.in_water { "true" } else { "false" },
+        );
     }
     state_text(&id, &props)
 }
@@ -279,27 +494,53 @@ fn dist(a: [f64; 3], b: [f64; 3]) -> f64 {
 /// UUID ints as NBT stores them.
 fn uuid_of(tag: Option<&Tag>) -> Option<u128> {
     match tag {
-        Some(Tag::IntArray(v)) if v.len() == 4 => {
-            Some(v.iter().fold(0u128, |acc, i| (acc << 32) | u128::from(*i as u32)))
-        }
+        Some(Tag::IntArray(v)) if v.len() == 4 => Some(
+            v.iter()
+                .fold(0u128, |acc, i| (acc << 32) | u128::from(*i as u32)),
+        ),
         _ => None,
     }
 }
 
 enum Job {
-    PickBlock { uuid: u128, dim: String, pos: [i32; 3] },
-    PickEntity { uuid: u128, entity: u32 },
-    Place { uuid: u128, dim: String, pos: [i32; 3], face: [i32; 3] },
-    Stack { uuid: u128, target: u32 },
+    PickBlock {
+        uuid: u128,
+        dim: String,
+        pos: [i32; 3],
+    },
+    PickEntity {
+        uuid: u128,
+        entity: u32,
+    },
+    Place {
+        uuid: u128,
+        dim: String,
+        pos: [i32; 3],
+        face: [i32; 3],
+    },
+    Stack {
+        uuid: u128,
+        target: u32,
+    },
     /// Set down what a dead player carried, where they died.
-    Drop { dim: String, at: [f64; 3], carry: Compound },
+    Drop {
+        dim: String,
+        at: [f64; 3],
+        carry: Compound,
+    },
 }
 
 /// What a client draws for one carrying player.
 #[derive(Clone)]
 enum Shown {
-    Block { id: String, props: Vec<(String, String)> },
-    Entity { kind: String, data: Compound },
+    Block {
+        id: String,
+        props: Vec<(String, String)>,
+    },
+    Entity {
+        kind: String,
+        data: Compound,
+    },
 }
 
 fn shown() -> &'static Mutex<HashMap<u32, Shown>> {
@@ -314,8 +555,9 @@ fn spawn_eggs(host: &dyn Host) -> &'static HashMap<String, ItemKey> {
         host.item_keys()
             .into_iter()
             .filter_map(|k| {
-                let id = k.id(host);
-                id.strip_suffix("_spawn_egg").map(|kind| (kind.to_string(), k))
+                let id = k.id(host)?;
+                id.strip_suffix("_spawn_egg")
+                    .map(|kind| (kind.to_string(), k))
             })
             .collect()
     })
@@ -326,7 +568,11 @@ struct CarriedHandler;
 impl IPayloadHandler for CarriedHandler {
     /// `[entity id u32, kind u8 (0 block, 1 entity), length u32, bytes]` repeated: a block's state string, or a
     /// mob's type, a 0 byte and its data as network NBT. The whole list each time.
-    fn handle(&self, payload: PayloadBytes, _context: &mut dyn IPayloadContext) -> Result<(), PayloadHandleError> {
+    fn handle(
+        &self,
+        payload: PayloadBytes,
+        _context: &mut dyn IPayloadContext,
+    ) -> Result<(), PayloadHandleError> {
         let b = &payload.0;
         let mut map = HashMap::new();
         let mut i = 0;
@@ -366,7 +612,11 @@ struct Mod {
 }
 
 fn carry_of(host: &mut dyn ServerHost, uuid: u128) -> Compound {
-    CARRY.get_existing(host, Holder::Player(uuid)).ok().flatten().unwrap_or_default()
+    CARRY
+        .get_existing(host, Holder::Player(uuid))
+        .ok()
+        .flatten()
+        .unwrap_or_default()
 }
 
 fn carrying(host: &mut dyn ServerHost, uuid: u128) -> bool {
@@ -381,7 +631,11 @@ fn set_carry(host: &mut dyn ServerHost, uuid: u128, c: Compound) {
 
 fn hands_empty(host: &dyn Host, player: PlayerRef) -> bool {
     let living = LivingRef::new(player.entity());
-    [Hand::Main, Hand::Off].into_iter().all(|h| living.hand_item(host, h).is_none_or(|s| s.count() == 0))
+    [Hand::Main, Hand::Off].into_iter().all(|h| {
+        living
+            .with_hand_item(host, h, |s| s.count())
+            .is_none_or(|n| n == 0)
+    })
 }
 
 /// PickupHandler.canCarryGeneral, but for the key (sneaking) and distance.
@@ -390,7 +644,10 @@ fn may_pick(host: &mut dyn ServerHost, player: PlayerRef) -> bool {
     if player.entity().is_shift_key_down(reader) != Some(true) || !hands_empty(reader, player) {
         return false;
     }
-    if matches!(player.game_mode(reader), Some(GameMode::Adventure) | Some(GameMode::Spectator)) {
+    if matches!(
+        player.game_mode(reader),
+        Some(GameMode::Adventure) | Some(GameMode::Spectator)
+    ) {
         return false;
     }
     !carrying(host, player.uuid())
@@ -404,14 +661,25 @@ fn air(host: &dyn Host) -> Option<mod_api::BlockState> {
     host.block_state_id("minecraft:air")
 }
 
-fn sound_at(host: &mut dyn ServerHost, dim: &str, sound: &str, at: [f64; 3], source: SoundSource, volume: f32, pitch: f32) {
+fn sound_at(
+    host: &mut dyn ServerHost,
+    dim: &str,
+    sound: &str,
+    at: [f64; 3],
+    source: SoundSource,
+    volume: f32,
+    pitch: f32,
+) {
     if let Some(level) = host.level(dim) {
-        level.play_sound(host, sound, at, source, volume, pitch);
+        level.play_sound(host, sound, at, source, volume, pitch, None);
     }
 }
 
 fn entity_kind(host: &dyn Host, e: EntityRef) -> String {
-    e.kind(host).map(|k| k.id(host)).unwrap_or_default()
+    e.kind(host)
+        .and_then(|k| k.id(host))
+        .map(|n| n.as_str().to_owned())
+        .unwrap_or_default()
 }
 
 impl Mod {
@@ -420,23 +688,46 @@ impl Mod {
     }
 
     /// PickupHandler.tryPickUpBlock, the checks the click can make.
-    fn block_pickable(host: &mut dyn ServerHost, player: PlayerRef, dim: &str, pos: [i32; 3]) -> bool {
-        let Some(level) = host.level(dim) else { return false };
+    fn block_pickable(
+        host: &mut dyn ServerHost,
+        player: PlayerRef,
+        dim: &str,
+        pos: [i32; 3],
+    ) -> bool {
+        let Some(level) = host.level(dim) else {
+            return false;
+        };
         let reader: &dyn ServerHost = &*host;
         let center = pos.map(|c| f64::from(c) + 0.5);
-        let Some(feet) = player.entity().position(reader) else { return false };
+        let Some(feet) = player.entity().position(reader) else {
+            return false;
+        };
         if dist(feet, center) > MAX_DISTANCE {
             return false;
         }
-        let Some(state) = level.block_state(reader, pos) else { return false };
-        let Some(block) = level.block(reader, pos).map(|k| k.id(reader)) else { return false };
-        if block == "minecraft:air" || listed(&block, FORBIDDEN_TILES) {
+        let Some(state) = level.block_state(reader, pos) else {
+            return false;
+        };
+        let Some(block) = level.block(reader, pos).and_then(|k| k.id(reader)) else {
+            return false;
+        };
+        let block_key = level.block(reader, pos);
+        let in_tag = |tag: &str| block_key.and_then(|k| reader.block_in_tag(k, tag)) == Some(true);
+        if block == "minecraft:air" || listed(block, FORBIDDEN_TILES, &in_tag) {
             return false;
         }
-        if reader.block_states().destroy_speed(state).is_some_and(|s| s < 0.0) && !creative(reader, player) && !PICKUP_UNBREAKABLE {
+        if reader
+            .block_states()
+            .destroy_speed(state)
+            .is_some_and(|s| s < 0.0)
+            && !creative(reader, player)
+            && !PICKUP_UNBREAKABLE
+        {
             return false;
         }
-        let Some(be) = reader.block_entity(level, pos) else { return false };
+        let Some(be) = reader.block_entity(level, pos) else {
+            return false;
+        };
         // A locked container stays.
         if be.lock(reader).is_some_and(|l| !l.is_empty()) {
             return false;
@@ -445,21 +736,35 @@ impl Mod {
     }
 
     fn pick_block(&self, host: &mut dyn ServerHost, uuid: u128, dim: &str, pos: [i32; 3]) {
-        let Some(player) = host.player(uuid) else { return };
+        let Some(player) = host.player(uuid) else {
+            return;
+        };
         if !may_pick(host, player) || !Self::block_pickable(host, player, dim, pos) {
             return;
         }
         let Some(level) = host.level(dim) else { return };
         let reader: &dyn ServerHost = &*host;
-        let Some(state) = level.block_state(reader, pos) else { return };
-        let Some(text) = reader.block_state_string(state) else { return };
-        let tile = reader.block_entity(level, pos).and_then(|be| be.data(reader));
+        let Some(state) = level.block_state(reader, pos) else {
+            return;
+        };
+        let Some(text) = reader.block_state_string(state) else {
+            return;
+        };
+        let tile = reader
+            .block_entity(level, pos)
+            .and_then(|be| be.data(reader));
         let (id, mut props) = parse_state(&text);
         // CarryOnData.setBlock: a powered block is carried unpowered.
         set_prop(&mut props, "powered", "false");
         let water = prop(&props, "waterlogged") == Some("true");
         let sound = reader.block_states().sound(state);
-        let Some(left) = (if water { reader.block_state_id("minecraft:water") } else { air(reader) }) else { return };
+        let Some(left) = (if water {
+            reader.block_state_id("minecraft:water")
+        } else {
+            air(reader)
+        }) else {
+            return;
+        };
         let slot = player.selected_slot(reader).unwrap_or(0) as i32;
         let mut c = Compound::new();
         c.insert("type".into(), s("block"));
@@ -469,8 +774,10 @@ impl Mod {
         }
         c.insert("selected".into(), Tag::Int(slot));
         // The block entity goes with the player: no drops, no container spill.
-        let flags = BlockUpdateFlags::NEIGHBORS | BlockUpdateFlags::CLIENTS
-            | BlockUpdateFlags::SKIP_BLOCK_ENTITY_SIDE_EFFECTS | BlockUpdateFlags::SUPPRESS_DROPS;
+        let flags = BlockUpdateFlags::NEIGHBORS
+            | BlockUpdateFlags::CLIENTS
+            | BlockUpdateFlags::SKIP_BLOCK_ENTITY_SIDE_EFFECTS
+            | BlockUpdateFlags::SUPPRESS_DROPS;
         match level.set_block(host, pos, left, flags) {
             Ok(true) => {}
             other => {
@@ -480,7 +787,15 @@ impl Mod {
         }
         set_carry(host, uuid, c);
         if let Some(snd) = sound {
-            sound_at(host, dim, &snd.hit, pos.map(|v| f64::from(v) + 0.5), SoundSource::Blocks, 1.0, 0.5);
+            sound_at(
+                host,
+                dim,
+                &snd.hit,
+                pos.map(|v| f64::from(v) + 0.5),
+                SoundSource::Blocks,
+                1.0,
+                0.5,
+            );
         }
     }
 
@@ -488,10 +803,17 @@ impl Mod {
     fn entity_pickable(host: &mut dyn ServerHost, player: PlayerRef, e: EntityRef) -> bool {
         let reader: &dyn ServerHost = &*host;
         let kind = entity_kind(reader, e);
-        if kind.is_empty() || kind == "minecraft:player" || listed(&kind, FORBIDDEN_ENTITIES) {
+        if kind.is_empty()
+            || kind == "minecraft:player"
+            || listed(&kind, FORBIDDEN_ENTITIES, &|tag| {
+                reader.entity_type_in_tag(&kind, tag)
+            })
+        {
             return false;
         }
-        let (Some(feet), Some(at)) = (player.entity().position(reader), e.position(reader)) else { return false };
+        let (Some(feet), Some(at)) = (player.entity().position(reader), e.position(reader)) else {
+            return false;
+        };
         if dist(feet, at) > MAX_DISTANCE {
             return false;
         }
@@ -499,10 +821,10 @@ impl Mod {
             if !PICKUP_HOSTILE && e.classification(reader) == Some(MobCategory::Monster) {
                 return false;
             }
-            if let Some([w, h]) = e.dimensions(reader) {
-                if w > MAX_ENTITY_WIDTH || h > MAX_ENTITY_HEIGHT {
-                    return false;
-                }
+            if let Some([w, h]) = e.dimensions(reader)
+                && (w > MAX_ENTITY_WIDTH || h > MAX_ENTITY_HEIGHT)
+            {
+                return false;
             }
         }
         // Someone else's pet stays.
@@ -511,7 +833,9 @@ impl Mod {
     }
 
     fn pick_entity(&self, host: &mut dyn ServerHost, uuid: u128, id: u32) {
-        let Some(player) = host.player(uuid) else { return };
+        let Some(player) = host.player(uuid) else {
+            return;
+        };
         let Some(e) = host.entity(id) else { return };
         if !may_pick(host, player) || !Self::entity_pickable(host, player, e) {
             return;
@@ -534,7 +858,10 @@ impl Mod {
         c.insert("type".into(), s("entity"));
         c.insert("kind".into(), s(&kind));
         c.insert("entity".into(), Tag::Compound(data));
-        c.insert("size".into(), Tag::List(vec![Tag::Double(w.to_bits()), Tag::Double(h.to_bits())]));
+        c.insert(
+            "size".into(),
+            Tag::List(vec![Tag::Double(w.to_bits()), Tag::Double(h.to_bits())]),
+        );
         c.insert("selected".into(), Tag::Int(slot));
         set_carry(host, uuid, c);
         if let Some(ent) = host.player(uuid).map(|p| p.entity()) {
@@ -542,13 +869,31 @@ impl Mod {
         }
     }
 
-    fn place(&self, host: &mut dyn ServerHost, uuid: u128, dim: &str, clicked: [i32; 3], face: [i32; 3]) {
-        let Some(player) = host.player(uuid) else { return };
+    fn place(
+        &self,
+        host: &mut dyn ServerHost,
+        uuid: u128,
+        dim: &str,
+        clicked: [i32; 3],
+        face: [i32; 3],
+    ) {
+        let Some(player) = host.player(uuid) else {
+            return;
+        };
         let carry = carry_of(host, uuid);
         let Some(level) = host.level(dim) else { return };
         let reader: &dyn ServerHost = &*host;
-        let replaceable = |pos| level.block_state(reader, pos).and_then(|st| reader.block_states().replaceable(st)) == Some(true);
-        let pos = if replaceable(clicked) { clicked } else { add(clicked, face) };
+        let replaceable = |pos| {
+            level
+                .block_state(reader, pos)
+                .and_then(|st| reader.block_states().replaceable(st))
+                == Some(true)
+        };
+        let pos = if replaceable(clicked) {
+            clicked
+        } else {
+            add(clicked, face)
+        };
         let fail = |host: &mut dyn ServerHost| {
             if let Some(ent) = host.player(uuid).map(|p| p.entity()) {
                 ent.play_sound(host, "minecraft:block.note_block.bass", 0.5, 0.5);
@@ -562,19 +907,41 @@ impl Mod {
                 // Level.isUnobstructed: no mob or player in the way.
                 let lo = pos.map(f64::from);
                 let hi = pos.map(|v| f64::from(v) + 1.0);
-                let blocked = level.entities_in(reader, lo, hi).unwrap_or_default().into_iter().any(|e| {
-                    let k = entity_kind(reader, e);
-                    !matches!(k.as_str(), "minecraft:item" | "minecraft:experience_orb" | "minecraft:arrow")
-                });
+                let blocked = level
+                    .visit_entities_in(reader, lo, hi, &mut |e| {
+                        let k = entity_kind(reader, e);
+                        if matches!(
+                            k.as_str(),
+                            "minecraft:item" | "minecraft:experience_orb" | "minecraft:arrow"
+                        ) {
+                            ControlFlow::Continue(())
+                        } else {
+                            ControlFlow::Break(())
+                        }
+                    })
+                    .is_ok_and(|flow| flow.is_break());
                 if blocked {
                     return fail(host);
                 }
                 let [yaw, pitch] = player.entity().rotation(reader).unwrap_or([0.0, 0.0]);
-                let in_water = level.block(reader, pos).map(|k| k.id(reader)).as_deref() == Some("minecraft:water")
+                let in_water = level.block(reader, pos).and_then(|k| k.id(reader))
+                    == Some("minecraft:water")
                     && level.block_property(reader, pos, "level").as_deref() == Some("0");
                 let carried = get_str(&carry, "block").unwrap_or_default();
-                let text = placement_state(reader, &carried, &Placement { face, yaw, pitch, in_water });
-                let Some(state) = reader.block_state_id(&text).or_else(|| reader.block_state_id(&carried)) else {
+                let text = placement_state(
+                    reader,
+                    &carried,
+                    &Placement {
+                        face,
+                        yaw,
+                        pitch,
+                        in_water,
+                    },
+                );
+                let Some(state) = reader
+                    .block_state_id(&text)
+                    .or_else(|| reader.block_state_id(&carried))
+                else {
                     eprintln!("[carryon] unknown carried state {carried}");
                     return fail(host);
                 };
@@ -590,12 +957,22 @@ impl Mod {
                                 eprintln!("[carryon] block entity data at {pos:?} refused: {e:?}");
                             }
                         }
-                        None => eprintln!("[carryon] no block entity at {pos:?} for the carried data"),
+                        None => {
+                            eprintln!("[carryon] no block entity at {pos:?} for the carried data")
+                        }
                     }
                 }
                 set_carry(host, uuid, Compound::new());
                 if let Some(snd) = sound {
-                    sound_at(host, dim, &snd.place, pos.map(|v| f64::from(v) + 0.5), SoundSource::Blocks, 1.0, 0.5);
+                    sound_at(
+                        host,
+                        dim,
+                        &snd.place,
+                        pos.map(|v| f64::from(v) + 0.5),
+                        SoundSource::Blocks,
+                        1.0,
+                        0.5,
+                    );
                 }
             }
             Some("entity") => {
@@ -604,7 +981,11 @@ impl Mod {
                     Some(Tag::Compound(c)) => c.clone(),
                     _ => Compound::new(),
                 };
-                let at = [f64::from(pos[0]) + 0.5, f64::from(pos[1]), f64::from(pos[2]) + 0.5];
+                let at = [
+                    f64::from(pos[0]) + 0.5,
+                    f64::from(pos[1]),
+                    f64::from(pos[2]) + 0.5,
+                ];
                 if host.summon(dim, &kind, at, data).is_none() {
                     eprintln!("[carryon] {kind} not summoned at {at:?}");
                     return fail(host);
@@ -624,8 +1005,12 @@ impl Mod {
         if get_str(&carry, "type").as_deref() != Some("entity") {
             return;
         }
-        let Some(player) = host.player(uuid) else { return };
-        let Some(clicked) = host.entity(target) else { return };
+        let Some(player) = host.player(uuid) else {
+            return;
+        };
+        let Some(clicked) = host.entity(target) else {
+            return;
+        };
         let reader: &dyn ServerHost = &*host;
         let mut top = clicked.root_vehicle(reader).unwrap_or(clicked);
         let mut count = 0;
@@ -638,13 +1023,21 @@ impl Mod {
                 ent.play_sound(host, "minecraft:block.note_block.bass", 0.5, 0.5);
             }
         };
-        if count + 1 >= MAX_ENTITY_STACK || listed(&entity_kind(reader, top), FORBIDDEN_STACKING) {
+        if count + 1 >= MAX_ENTITY_STACK
+            || listed(&entity_kind(reader, top), FORBIDDEN_STACKING, &|_| false)
+        {
             return fail(host);
         }
         let size = match carry.get(&"size".into()) {
             Some(Tag::List(v)) => v
                 .iter()
-                .filter_map(|t| if let Tag::Double(d) = t { Some(f64::from_bits(*d)) } else { None })
+                .filter_map(|t| {
+                    if let Tag::Double(d) = t {
+                        Some(f64::from_bits(*d))
+                    } else {
+                        None
+                    }
+                })
                 .product::<f64>(),
             _ => 0.36,
         };
@@ -652,16 +1045,22 @@ impl Mod {
         if SIZE_MATTERS_STACKING && size > top_size {
             return fail(host);
         }
-        let Some(at) = top.position(reader) else { return };
-        let Some(dim) = player.dimension(reader).map(|d| d.to_string()) else { return };
+        let Some(at) = top.position(reader) else {
+            return;
+        };
+        let Some(dim) = player.dimension(reader).map(|d| d.to_string()) else {
+            return;
+        };
         let kind = get_str(&carry, "kind").unwrap_or_default();
         let data = match carry.get(&"entity".into()) {
             Some(Tag::Compound(c)) => c.clone(),
             _ => Compound::new(),
         };
-        let Some(id) = host.summon(&dim, &kind, [at[0], at[1] + 2.6, at[2]], data) else { return fail(host) };
+        let Some(id) = host.summon(&dim, &kind, [at[0], at[1] + 2.6, at[2]], data) else {
+            return fail(host);
+        };
         if let Some(e) = host.entity(id) {
-            e.start_riding(host, top, true);
+            let _ = e.start_riding(host, top, true);
         }
         set_carry(host, uuid, Compound::new());
         if let Some(ent) = host.player(uuid).map(|p| p.entity()) {
@@ -685,9 +1084,14 @@ impl Mod {
                         }
                     }
                 }
-                spots.sort_by_key(|p| (p[0] - base[0]).pow(2) + (p[1] - base[1]).pow(2) + (p[2] - base[2]).pow(2));
+                spots.sort_by_key(|p| {
+                    (p[0] - base[0]).pow(2) + (p[1] - base[1]).pow(2) + (p[2] - base[2]).pow(2)
+                });
                 let free = spots.into_iter().find(|p| {
-                    level.block_state(reader, *p).and_then(|st| reader.block_states().replaceable(st)) == Some(true)
+                    level
+                        .block_state(reader, *p)
+                        .and_then(|st| reader.block_states().replaceable(st))
+                        == Some(true)
                 });
                 let Some(pos) = free else {
                     eprintln!("[carryon] no free spot near {at:?}");
@@ -704,7 +1108,9 @@ impl Mod {
                     eprintln!("[carryon] {carried} not set down at {pos:?}: {r:?}");
                     return;
                 }
-                if let (Some(Tag::Compound(tile)), Some(be)) = (carry.get(&"tile".into()), host.block_entity(level, pos)) {
+                if let (Some(Tag::Compound(tile)), Some(be)) =
+                    (carry.get(&"tile".into()), host.block_entity(level, pos))
+                {
                     let _ = be.replace_data(host, tile.clone());
                 }
             }
@@ -722,7 +1128,12 @@ impl Mod {
         match job {
             Job::PickBlock { uuid, dim, pos } => self.pick_block(host, uuid, &dim, pos),
             Job::PickEntity { uuid, entity } => self.pick_entity(host, uuid, entity),
-            Job::Place { uuid, dim, pos, face } => self.place(host, uuid, &dim, pos, face),
+            Job::Place {
+                uuid,
+                dim,
+                pos,
+                face,
+            } => self.place(host, uuid, &dim, pos, face),
             Job::Stack { uuid, target } => self.stack(host, uuid, target),
             Job::Drop { dim, at, carry } => self.drop_carried(host, &dim, at, &carry),
         }
@@ -746,35 +1157,46 @@ impl Mod {
                 let size = match carry.get(&"size".into()) {
                     Some(Tag::List(v)) => v
                         .iter()
-                        .filter_map(|t| if let Tag::Double(d) = t { Some(f64::from_bits(*d)) } else { None })
+                        .filter_map(|t| {
+                            if let Tag::Double(d) = t {
+                                Some(f64::from_bits(*d))
+                            } else {
+                                None
+                            }
+                        })
                         .product::<f64>(),
                     _ => 1.0,
                 };
                 ((size as i32).min(4) as f64 * ENTITY_SLOWNESS) as i32
             } else {
-                let len = Tag::Compound(carry.clone()).to_network_bytes().map_or(0, |b| b.len());
+                let len = Tag::Compound(carry.clone())
+                    .to_network_bytes()
+                    .map_or(0, |b| b.len());
                 (((len / 500) as i32).min(4) as f64 * BLOCK_SLOWNESS) as i32
             };
-            if let Some(id) = slowness {
-                if SLOWNESS_IN_CREATIVE || !creative(reader, player) {
-                    let effect = ActiveEffect::new(id, 3, level, false, false, false);
-                    LivingRef::new(player.entity()).add_effect(host, &effect);
-                }
+            if let Some(id) = slowness
+                && (SLOWNESS_IN_CREATIVE || !creative(reader, player))
+            {
+                let effect = ActiveEffect::new(id, 3, level, false, false, false);
+                LivingRef::new(player.entity()).add_effect(host, &effect);
             }
             // The hotbar slot stays where it was picked up, and stays empty.
             let selected = get_int(&carry, "selected").unwrap_or(0).clamp(0, 8) as usize;
             if player.selected_slot(&*host) != Some(selected) {
                 player.set_selected_slot(host, selected);
             }
-            let held = LivingRef::new(player.entity()).hand_item(&*host, Hand::Main).filter(|s| s.count() > 0);
+            let held = LivingRef::new(player.entity())
+                .with_hand_item(&*host, Hand::Main, |s| s.project())
+                .flatten();
             if let Some(stack) = held {
-                // `inventory_slots` is None when a slot holds an item the game can't hand to a mod (a mod that isn't
-                // installed): no slot can be trusted to be free then, so the held stack is dropped, not written over
-                // one.
-                let free = player.inventory_slots(&*host).and_then(|slots| {
-                    let used: Vec<u32> = slots.into_iter().map(|(i, _)| i).collect();
-                    (0..36u32).find(|i| *i as usize != selected && !used.contains(i))
-                });
+                // With the inventory unreadable no slot can be trusted to be free, so the held stack is dropped, not
+                // written over one.
+                let free = player
+                    .with_inventory(&*host, |inventory| {
+                        let used: Vec<u32> = inventory.iter().map(|(i, _)| i).collect();
+                        (0..36u32).find(|i| *i as usize != selected && !used.contains(i))
+                    })
+                    .flatten();
                 let _ = player.set_inventory_slot(host, selected as u32, None);
                 match free {
                     Some(i) => {
@@ -788,7 +1210,10 @@ impl Mod {
             if send {
                 let id = player.entity().id();
                 let (k, body) = if kind == "block" {
-                    (0u8, get_str(&carry, "block").unwrap_or_default().into_bytes())
+                    (
+                        0u8,
+                        get_str(&carry, "block").unwrap_or_default().into_bytes(),
+                    )
                 } else {
                     let mut b = get_str(&carry, "kind").unwrap_or_default().into_bytes();
                     b.push(0);
@@ -833,10 +1258,10 @@ fn local_shown(host: &dyn ClientHost) -> Option<Shown> {
 fn block_props(props: &[(String, String)], facing: &str) -> Vec<(String, String)> {
     let mut p = props.to_vec();
     for k in ["facing", "horizontal_facing"] {
-        if let Some(cur) = prop(&p, k) {
-            if !matches!(cur, "up" | "down") {
-                set_prop(&mut p, k, facing);
-            }
+        if let Some(cur) = prop(&p, k)
+            && !matches!(cur, "up" | "down")
+        {
+            set_prop(&mut p, k, facing);
         }
     }
     p
@@ -844,9 +1269,19 @@ fn block_props(props: &[(String, String)], facing: &str) -> Vec<(String, String)
 
 /// CarryRenderHelper.renderBakedModel draws the block's item (a chest's block model is empty: its item has the
 /// chest renderer); a block with no item is drawn as its block model, its front to +z.
-fn draw_block(host: &dyn Host, draw: &mut dyn mod_api::BlockEntityDrawContext, id: &str, props: &[(String, String)]) {
-    let Some(key) = host.block_key(id) else { return };
-    let item = host.block_item(key).filter(|k| k.id(host) != "minecraft:air").and_then(|k| ItemStack::new(k, 1));
+fn draw_block(
+    host: &dyn Host,
+    draw: &mut dyn mod_api::BlockEntityDrawContext,
+    id: &str,
+    props: &[(String, String)],
+) {
+    let Some(key) = host.block_key(id) else {
+        return;
+    };
+    let item = host
+        .block_item(key)
+        .filter(|k| k.id(host) != Some("minecraft:air"))
+        .and_then(|k| ItemStack::new(k, 1));
     if let Some(stack) = item {
         draw.push();
         draw.translate([0.5, 0.5, 0.5]);
@@ -856,13 +1291,16 @@ fn draw_block(host: &dyn Host, draw: &mut dyn mod_api::BlockEntityDrawContext, i
             return;
         }
     }
-    let pairs: Vec<(&str, &str)> = props.iter().map(|(k, v)| (k.as_str(), v.as_str())).collect();
+    let pairs: Vec<(&str, &str)> = props
+        .iter()
+        .map(|(k, v)| (k.as_str(), v.as_str()))
+        .collect();
     if !draw.block(key, &pairs) {
         draw.block(key, &[]);
     }
 }
 
-#[mod_api::horizon_mod]
+#[mod_api::sunrise_mod]
 impl Hooks for Mod {
     fn register(&self, r: &mut dyn Registrar, _cx: &RegistrationContext) {
         r.payload_handlers()
@@ -881,7 +1319,7 @@ impl Hooks for Mod {
         for job in jobs {
             self.run(host, job);
         }
-        self.carry_tick(host, changed || tick % 10 == 0);
+        self.carry_tick(host, changed || tick.is_multiple_of(10));
     }
 
     /// The UseBlockCallback: pick up, or set down what is carried.
@@ -889,17 +1327,33 @@ impl Hooks for Mod {
         let click = event.click;
         match host {
             HostSide::Server(host) => {
-                let Some(player) = host.player(click.player) else { return Flow::Continue };
+                let Some(player) = host.player(click.player) else {
+                    return Flow::Continue;
+                };
                 let dim = click.dimension.key().id().to_string();
                 if carrying(host, click.player) {
                     if matches!(click.hand, Hand::Main) {
                         let mut jobs = lock(&self.jobs);
-                        if !jobs.iter().any(|j| matches!(j, Job::Place { uuid, .. } if *uuid == click.player)) {
-                            jobs.push(Job::Place { uuid: click.player, dim, pos: click.pos, face: click.hit.face });
+                        if !jobs
+                            .iter()
+                            .any(|j| matches!(j, Job::Place { uuid, .. } if *uuid == click.player))
+                        {
+                            jobs.push(Job::Place {
+                                uuid: click.player,
+                                dim,
+                                pos: click.pos,
+                                face: click.hit.face,
+                            });
                         }
                     }
-                } else if may_pick(host, player) && Self::block_pickable(host, player, &dim, click.pos) {
-                    self.queue(Job::PickBlock { uuid: click.player, dim, pos: click.pos });
+                } else if may_pick(host, player)
+                    && Self::block_pickable(host, player, &dim, click.pos)
+                {
+                    self.queue(Job::PickBlock {
+                        uuid: click.player,
+                        dim,
+                        pos: click.pos,
+                    });
                 } else {
                     return Flow::Continue;
                 }
@@ -917,7 +1371,11 @@ impl Hooks for Mod {
     }
 
     /// The UseEntityCallback: pick up a mob, or stack the carried one on it.
-    fn entity_interact(&self, host: HostSide<'_>, event: &mut EntityInteractEvent<'_>) -> Option<InteractionResult> {
+    fn entity_interact(
+        &self,
+        host: HostSide<'_>,
+        event: &mut EntityInteractEvent<'_>,
+    ) -> Option<InteractionResult> {
         let HostSide::Server(host) = host else {
             return None;
         };
@@ -940,14 +1398,21 @@ impl Hooks for Mod {
             return None;
         }
         let mut jobs = lock(&self.jobs);
-        if !jobs.iter().any(|j| matches!(j, Job::PickEntity { uuid: u, .. } if *u == uuid)) {
+        if !jobs
+            .iter()
+            .any(|j| matches!(j, Job::PickEntity { uuid: u, .. } if *u == uuid))
+        {
             jobs.push(Job::PickEntity { uuid, entity: id });
         }
         Some(InteractionResult::Success)
     }
 
     /// `hitWhileCarrying` false: no mining while carrying.
-    fn left_click_block(&self, host: &mut dyn ServerHost, _event: &mut LeftClickBlockEvent) -> Flow {
+    fn left_click_block(
+        &self,
+        host: &mut dyn ServerHost,
+        _event: &mut LeftClickBlockEvent,
+    ) -> Flow {
         match host.players().acting_player() {
             Some(p) if carrying(host, p.uuid()) => Flow::Cancel,
             _ => Flow::Continue,
@@ -969,12 +1434,24 @@ impl Hooks for Mod {
     }
 
     /// InventoryMixin / onCarryTick: the hotbar slot can't change while carrying.
-    fn player_switch_hotbar_slot_pre(&self, host: &mut dyn ServerHost, event: &mut PlayerSwitchHotbarSlotPreEvent) -> Flow {
-        if carrying(host, event.player) { Flow::Cancel } else { Flow::Continue }
+    fn player_switch_hotbar_slot_pre(
+        &self,
+        host: &mut dyn ServerHost,
+        event: &mut PlayerSwitchHotbarSlotPreEvent,
+    ) -> Flow {
+        if carrying(host, event.player) {
+            Flow::Cancel
+        } else {
+            Flow::Continue
+        }
     }
 
     fn mouse_scrolling(&self, host: &mut dyn ClientHost, _event: &mut MouseScrollingEvent) -> Flow {
-        if local_shown(&*host).is_some() { Flow::Cancel } else { Flow::Continue }
+        if local_shown(&*host).is_some() {
+            Flow::Cancel
+        } else {
+            Flow::Continue
+        }
     }
 
     /// placeCarriedOnDeath: kept with keepInventory (the attachment is copied to the respawned player), else set
@@ -983,7 +1460,9 @@ impl Hooks for Mod {
         if event.kind != "minecraft:player" {
             return Flow::Continue;
         }
-        let Some(e) = host.entity(event.entity) else { return Flow::Continue };
+        let Some(e) = host.entity(event.entity) else {
+            return Flow::Continue;
+        };
         let Some(uuid) = e.uuid(host) else {
             eprintln!("[carryon] dead player {} has no uuid", event.entity);
             return Flow::Continue;
@@ -993,36 +1472,53 @@ impl Hooks for Mod {
             return Flow::Continue;
         }
         let reader: &dyn ServerHost = &*host;
-        let Some(level) = e.level(reader) else { return Flow::Continue };
-        let keep = matches!(level.game_rule(reader, "minecraft:keep_inventory"), Ok(Some(mod_api::GameRuleValue::Bool(true))));
+        let Some(level) = e.level(reader) else {
+            return Flow::Continue;
+        };
+        let keep = matches!(
+            level.game_rule(reader, "minecraft:keep_inventory"),
+            Ok(Some(mod_api::GameRuleValue::Bool(true)))
+        );
         if keep {
             return Flow::Continue;
         }
-        let (Some(at), Some(dim)) = (e.position(reader), host.player(uuid).and_then(|p| p.dimension(reader))) else {
+        let (Some(at), Some(dim)) = (
+            e.position(reader),
+            host.player(uuid).and_then(|p| p.dimension(reader)),
+        ) else {
             eprintln!("[carryon] dead player {uuid:x}: no position or dimension");
             return Flow::Continue;
         };
         set_carry(host, uuid, Compound::new());
-        self.queue(Job::Drop { dim: dim.to_string(), at, carry });
+        self.queue(Job::Drop {
+            dim: dim.to_string(),
+            at,
+            carry,
+        });
         Flow::Continue
     }
 
     /// CarriedObjectRender.drawFirstPerson: the carried block in both hands, in place of the hands.
     fn render_hand(&self, host: &dyn ClientHost, event: &mut RenderHandEvent<'_, '_>) -> Flow {
-        let Some(what) = lock(shown()).get(&(event.render.player_entity_id as u32)).cloned() else { return Flow::Continue };
-        if matches!(event.render.hand, Hand::Main) {
-            if let Shown::Block { id, props } = what {
-                let draw = &mut *event.draw;
-                draw.push();
-                // Low in front, the front turned to the player (facePlayer false draws a chest's lid side out,
-                // the rest facing in), tipped a little as the jar does.
-                let size = 0.85;
-                draw.translate([-size / 2.0, -1.12, -1.7]);
-                draw.scale([size, size, size]);
-                draw.rotate_about([1.0, 0.0, 0.0], 8.0, [0.5, 0.5, 0.5]);
-                draw_block(host, draw, &id, &block_props(&props, "south"));
-                draw.pop();
-            }
+        let Some(what) = lock(shown())
+            .get(&(event.render.player_entity_id as u32))
+            .cloned()
+        else {
+            return Flow::Continue;
+        };
+        if matches!(event.render.hand, Hand::Main)
+            && let Shown::Block { id, props } = what
+        {
+            let draw = &mut *event.draw;
+            draw.push();
+            // Low in front, the front turned to the player (facePlayer false draws a chest's lid side out,
+            // the rest facing in), tipped a little as the jar does.
+            let size = 0.85;
+            draw.translate([-size / 2.0, -1.12, -1.7]);
+            draw.scale([size, size, size]);
+            draw.rotate_about([1.0, 0.0, 0.0], 8.0, [0.5, 0.5, 0.5]);
+            draw_block(host, draw, &id, &block_props(&props, "south"));
+            draw.pop();
         }
         event.cancelled = true;
         Flow::Cancel
@@ -1030,7 +1526,9 @@ impl Hooks for Mod {
 
     /// CarriedObjectRender.drawThirdPerson: the carried block in front of a player's chest.
     fn render_player_post(&self, host: &dyn ClientHost, event: &mut RenderPlayerPostEvent<'_>) {
-        let Some(what) = lock(shown()).get(&event.player.id).cloned() else { return };
+        let Some(what) = lock(shown()).get(&event.player.id).cloned() else {
+            return;
+        };
         let draw = &mut *event.draw;
         draw.push();
         match what {
@@ -1041,7 +1539,10 @@ impl Hooks for Mod {
                 draw_block(host, draw, &id, &block_props(&props, "south"));
             }
             Shown::Entity { kind, .. } => {
-                if let Some(stack) = spawn_eggs(host).get(&kind).and_then(|k| ItemStack::new(*k, 1)) {
+                if let Some(stack) = spawn_eggs(host)
+                    .get(&kind)
+                    .and_then(|k| ItemStack::new(*k, 1))
+                {
                     draw.translate([0.0, 1.25, 0.45]);
                     draw.scale([0.6, 0.6, 0.6]);
                     draw.item(&stack, ItemDisplayContext::Fixed, None, 0);
@@ -1056,13 +1557,27 @@ impl Hooks for Mod {
         if event.gui_hidden || !host.camera_type().is_first_person() {
             return;
         }
-        let Some(Shown::Entity { kind, data }) = local_shown(host) else { return };
+        let Some(Shown::Entity { kind, data }) = local_shown(host) else {
+            return;
+        };
         let [w, h] = event.batch.size();
         let rect = [w / 2.0 - 45.0, h - 125.0, w / 2.0 + 45.0, h - 30.0];
-        let view = GuiEntityView::new(rect, 30.0, 0.0625, GuiEntityLook::Turned { yaw: 180.0, pitch: 0.0 });
+        let view = GuiEntityView::new(
+            rect,
+            30.0,
+            0.0625,
+            GuiEntityLook::Turned {
+                yaw: 180.0,
+                pitch: 0.0,
+            },
+        );
         let mut data = data;
         data.insert("id".into(), s(&kind));
-        if event.batch.entity(&GuiEntity::with_data(kind.clone(), data), view).is_err() {
+        if event
+            .batch
+            .entity(&GuiEntity::with_data(kind.clone(), data), view)
+            .is_err()
+        {
             let _ = event.batch.entity(&GuiEntity::kind(kind), view);
         }
     }
@@ -1077,7 +1592,10 @@ mod tests {
         assert!(wildcard("minecraft:red_bed", "minecraft:*_bed"));
         assert!(!wildcard("minecraft:bedrock", "minecraft:*_bed"));
         assert!(wildcard("create:anything", "create:*"));
-        assert!(wildcard("vinery:oak_wine_rack_small", "vinery:*_wine_rack_small"));
+        assert!(wildcard(
+            "vinery:oak_wine_rack_small",
+            "vinery:*_wine_rack_small"
+        ));
         assert!(!wildcard("minecraft:chest", "minecraft:*_door"));
     }
 
