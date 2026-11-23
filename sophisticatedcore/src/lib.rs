@@ -18,8 +18,8 @@
 //!   `chestLootEnabled = true`) and the crafting kinds (`crafting`).
 //!
 //! Not ported: the jar's own screen (tabs, sorting buttons, the memory and no-sort slot settings), the furnace,
-//! jukebox, tank, battery, pump, XP pump, anvil, inception, everlasting and
-//! infinity upgrades (they sit in their slot and do nothing), the filter upgrade (it filters automation, and a
+//! jukebox, tank, battery, pump, XP pump, anvil, inception and everlasting
+//! upgrades (they sit in their slot and do nothing), the filter upgrade (it filters automation, and a
 //! placed backpack offers none), the backpack's render on the player's back, mobs spawning with backpacks.
 // Menus and inventories here are addressed by slot number, which these loops keep explicit.
 #![allow(clippy::needless_range_loop, clippy::type_complexity)]
@@ -34,6 +34,7 @@ mod fluid_view;
 mod fluids;
 mod hopper;
 mod hopper_view;
+mod infinity;
 mod jukebox;
 mod liquid_caps;
 mod menu;
@@ -727,6 +728,16 @@ fn pick_up(host: &mut dyn ServerHost, uuid: u128, dim: &str, pos: [i32; 3]) -> b
     let Some(level) = host.level(dim) else {
         return false;
     };
+    if let Some(kind) = storage_items::by_item(&contents::item_id(&*host, &st))
+        && infinity::guards(&*host, player, kind, &st)
+    {
+        places::message(
+            host,
+            uuid,
+            "Only an operator can pick up a backpack with an infinity upgrade",
+        );
+        return false;
+    }
     if !places::write(host, uuid, &loc, None) {
         return false;
     }
@@ -1633,7 +1644,18 @@ impl Hooks for Mod {
         let Some(level) = host.level(&dim) else {
             return Flow::Continue;
         };
-        if storage::kind_of_block(&storage::block_id(&*host, level, event.pos)).is_some() {
+        if let Some(kind) = storage::kind_of_block(&storage::block_id(&*host, level, event.pos)) {
+            if let Some(st) = storage::read_be(&*host, level, event.pos)
+                && infinity::guards(&*host, player, kind, &st)
+            {
+                let _ = player.action_bar(
+                    host,
+                    mod_api::Text::literal(
+                        "Only an operator can break a backpack with an infinity upgrade",
+                    ),
+                );
+                return Flow::Cancel;
+            }
             storage::broken(host, player, level, event.pos);
         }
         Flow::Continue

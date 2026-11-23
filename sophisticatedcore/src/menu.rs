@@ -505,6 +505,7 @@ pub fn may_add_upgrade(
             return Err("No more upgrades of this kind fit");
         }
     }
+    crate::infinity::may_add(host, c, matches!(u.kind, Kind::Infinity(_)))?;
     if u.kind == Kind::Compression {
         crate::compression::may_add(host, kind, c)?;
     }
@@ -600,7 +601,7 @@ pub fn may_remove_upgrade(
 
 /// Merges equal stacks and sorts by item id, then by count (the jar's sort by name, close enough).
 pub fn sort(host: &dyn Host, kind: &StorageItem, c: &mut Contents) {
-    if kind.family == Family::LimitedBarrel {
+    if kind.family == Family::LimitedBarrel || crate::infinity::level(host, &c.upgrades).is_some() {
         return;
     }
     let m = upgrades::multiplier(host, kind, &c.upgrades);
@@ -722,7 +723,22 @@ fn click_main(
             }
         }
         let want = if right { 1 } else { st.count() };
-        let went = c.add(&*host, s.kind, &st, want);
+        let went = if let Some(need) = crate::infinity::level(&*host, &c.upgrades) {
+            // Only an empty slot takes a stack, and only from a player with the upgrade's permission.
+            if !crate::infinity::permits(player.permission_level(&*host), need) {
+                return (
+                    Outcome::Nothing,
+                    Some("You can't put items into an infinity storage"),
+                );
+            }
+            if crate::infinity::put(&mut c.slots, &st) {
+                want
+            } else {
+                0
+            }
+        } else {
+            c.add(&*host, s.kind, &st, want)
+        };
         if went == 0 {
             return (Outcome::Nothing, Some("It's full"));
         }
@@ -805,6 +821,12 @@ fn click_main(
                 },
             };
             return (Outcome::View(view), None);
+        }
+        if !crate::infinity::allowed(&*host, player, &c.upgrades) {
+            return (
+                Outcome::Nothing,
+                Some("Only an operator can remove the infinity upgrade"),
+            );
         }
         if let Err(e) = may_remove_upgrade(&*host, s.kind, &c, j) {
             return (Outcome::Nothing, Some(e));

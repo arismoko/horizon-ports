@@ -21,6 +21,8 @@ pub enum Kind {
     ToolSwapper,
     /// The stonecutter and smithing upgrades (see `station`).
     Stonecutter,
+    /// The infinity upgrades, with the permission level that fills, empties and removes them.
+    Infinity(u8),
     Smithing,
     Void,
     Restock,
@@ -83,6 +85,8 @@ pub fn upgrade(id: &str) -> Option<Upgrade> {
         "deposit_upgrade" => u(Kind::Deposit, f, false),
         "refill_upgrade" => u(Kind::Refill, f, true),
         "crafting_upgrade" => u(Kind::Crafting, 0, false),
+        "infinity_upgrade" => u(Kind::Infinity(2), 0, false),
+        "survival_infinity_upgrade" => u(Kind::Infinity(0), 0, false),
         "stonecutter_upgrade" => u(Kind::Stonecutter, 0, false),
         "smithing_upgrade" => u(Kind::Smithing, 0, false),
         "jukebox_upgrade" => u(Kind::Jukebox, 0, false),

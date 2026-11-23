@@ -770,6 +770,9 @@ impl Contents {
         stack: &ItemStack,
         amount: u32,
     ) -> u32 {
+        if crate::infinity::level(host, &self.upgrades).is_some() {
+            return 0;
+        }
         let banks = Banks::of(host, kind, self);
         let lim = upgrades::limit(host, stack, banks.mult);
         if banks.is_empty() {
@@ -790,6 +793,13 @@ impl Contents {
         stack: &ItemStack,
         amount: u32,
     ) -> u32 {
+        if crate::infinity::level(host, &self.upgrades).is_some() {
+            return if crate::infinity::has(&self.slots, stack) {
+                amount
+            } else {
+                0
+            };
+        }
         let banks = Banks::of(host, kind, self);
         if banks.is_empty() {
             return contents::extract(&mut self.slots, stack, amount);
@@ -800,6 +810,9 @@ impl Contents {
 
     /// What each slot shows: the stacks, except in a compression range.
     pub fn visible(&self, host: &dyn Host, kind: &StorageItem) -> Vec<Option<ItemStack>> {
+        if crate::infinity::level(host, &self.upgrades).is_some() {
+            return crate::infinity::shown(&self.slots);
+        }
         let banks = Banks::of(host, kind, self);
         if banks.is_empty() {
             return self.slots.clone();
@@ -811,6 +824,12 @@ impl Contents {
 
     /// What slot `slot` shows.
     pub fn shown_at(&self, host: &dyn Host, kind: &StorageItem, slot: usize) -> Option<ItemStack> {
+        if crate::infinity::level(host, &self.upgrades).is_some() {
+            return crate::infinity::shown(&self.slots)
+                .get(slot)
+                .cloned()
+                .flatten();
+        }
         let banks = Banks::of(host, kind, self);
         if banks.covers(slot) {
             banks.shown(self, slot)
@@ -827,6 +846,13 @@ impl Contents {
         slot: usize,
         amount: u32,
     ) -> u32 {
+        if crate::infinity::level(host, &self.upgrades).is_some() {
+            return if self.slots.get(slot).is_some_and(Option::is_some) {
+                amount
+            } else {
+                0
+            };
+        }
         let banks = Banks::of(host, kind, self);
         if banks.covers(slot) {
             return banks.take_at(self, slot, amount);
