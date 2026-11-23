@@ -1,8 +1,8 @@
 //! The tank, battery, pump and XP pump upgrades' views (their upgrade-tab screens): the container slots, the
 //! tank's and the battery's level, the pump's modes and fluid filter, the XP pump's levels and buttons.
 //!
-//! Cells are laid out from the top row, and any past the menu's control row are left out when a storage shows
-//! only one row.
+//! Controls are numbered from 0 and laid out from the top row; past the first page row they continue in the
+//! control row's free cells (the ones between Back and the upgrade), so a one-row storage shows seven more.
 
 use mod_api::{
     FluidResource, Host, HostTransaction, ItemPlace, ItemStack, PlayerRef, ResourceHandler,
@@ -14,6 +14,23 @@ use crate::fluids::{self, Limits, Tank, XP_FLUID};
 use crate::menu::{Outcome, Session, View, button, filler, inventory_slot};
 use crate::places;
 use crate::upgrades::{self, Kind};
+
+/// The menu cell of control `n`: the cells below `base`, then those after the Back cell.
+fn cell(base: usize, n: usize) -> usize {
+    if n < base { n } else { n + 1 }
+}
+
+/// The control at menu cell `i`, none for Back, the upgrade cell and beyond.
+fn control(base: usize, i: usize) -> Option<usize> {
+    match i {
+        _ if i < base => Some(i),
+        _ if i == base || i > base + 7 => None,
+        _ => Some(i - 1),
+    }
+}
+
+/// The first of the pump's fluid filter controls.
+const FILTERS: usize = 5;
 
 /// The most a level target or a level count goes to.
 const MAX_LEVEL: i32 = 100;
@@ -47,12 +64,13 @@ pub fn render(
     let Some(u) = upgrades::of(&*host, &up) else {
         return;
     };
-    for cell in out.iter_mut().take(base + 9) {
-        *cell = fill.clone();
+    for c in out.iter_mut().take(base + 9) {
+        *c = fill.clone();
     }
     let l = fluids::limits(&*host, s.kind, c);
     let put = |out: &mut [Option<ItemStack>], at: usize, st: Option<ItemStack>| {
-        if at < base {
+        let at = cell(base, at);
+        if at < base + 8 {
             out[at] = st;
         }
     };
@@ -212,7 +230,7 @@ pub fn render(
                         &["Right-click a container with fluid in your inventory to add it"],
                     ),
                 };
-                put(out, 9 + i, st);
+                put(out, FILTERS + i, st);
             }
         }
         Kind::XpPump => {
@@ -437,15 +455,15 @@ pub fn click(
             _ => return (Outcome::Nothing, None),
         }
     } else {
-        let Ok(i) = usize::try_from(slot) else {
+        let Ok(raw) = usize::try_from(slot) else {
             return (Outcome::Nothing, None);
         };
-        if i == base {
+        if raw == base {
             return (Outcome::View(View::Main { page: 0 }), None);
         }
-        if i >= base {
+        let Some(i) = control(base, raw) else {
             return (Outcome::Nothing, None);
-        }
+        };
         match u.kind {
             Kind::Tank | Kind::Battery if i < 2 => {
                 let mut slots = fluids::read_slots(&*host, &up);
@@ -462,9 +480,9 @@ pub fn click(
                     0 => set.input = !set.input,
                     1 => set.hand = !set.hand,
                     2 => set.world = !set.world,
-                    9.. if i - 9 < n => {
+                    FILTERS.. if i - FILTERS < n => {
                         let mut filters = fluids::read_pump_filters(&*host, &up, n);
-                        if filters[i - 9].take().is_none() {
+                        if filters[i - FILTERS].take().is_none() {
                             return (Outcome::Nothing, None);
                         }
                         fluids::write_pump_filters(&mut up, &filters);
@@ -542,3 +560,23 @@ fn xp_button(
 
 /// `ALL_LEVELS`: the level "give all" stops at.
 const MAX_LEVEL_ALL: i32 = 10_000;
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn controls_skip_the_back_cell() {
+        // A one-row storage: nine page cells, Back at 9, the upgrade at 17.
+        assert_eq!(cell(9, 8), 8);
+        assert_eq!(cell(9, 9), 10);
+        assert_eq!(cell(9, 15), 16);
+        for n in 0..16 {
+            assert_eq!(control(9, cell(9, n)), Some(n));
+        }
+        assert_eq!(control(9, 9), None);
+        assert_eq!(control(9, 17), None);
+        // Bigger menus keep the same controls where they were.
+        assert_eq!(cell(27, 14), 14);
+    }
+}
