@@ -22,6 +22,7 @@
 // Menus and inventories here are addressed by slot number, which these loops keep explicit.
 #![allow(clippy::needless_range_loop, clippy::type_complexity)]
 
+mod chest_render;
 mod compression;
 mod contents;
 mod cooking;

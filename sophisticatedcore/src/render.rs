@@ -13,6 +13,7 @@ use mod_api::{
 use crate::contents::{
     INVENTORY, Nbt, UPGRADES, custom_data, get_bool, get_int, get_long, put, read_items,
 };
+use crate::places;
 use crate::storage;
 use crate::storage_items::{self, Family};
 use crate::upgrades;
@@ -67,7 +68,17 @@ pub fn update_tag(entity: &ModBlockEntity) -> Option<Compound> {
         None => empty,
     };
     put(&mut tag, SLOTS, slots);
+    put(
+        &mut tag,
+        "double",
+        Tag::Byte(i8::from(
+            get_bool(&data, crate::contents::DOUBLE) == Some(true),
+        )),
+    );
     for (k, default) in [
+        ("locked", false),
+        ("showLock", true),
+        ("showTier", true),
         ("showCounts", true),
         ("showUpgrades", false),
         ("showFillLevels", false),
@@ -302,6 +313,12 @@ pub fn submit(
     };
     let barrel = matches!(kind.family, Family::Barrel | Family::LimitedBarrel);
     draw.level_light();
+    if matches!(kind.family, Family::Chest | Family::ShulkerBox) {
+        if get_bool(nbt, storage::PACKED) != Some(true) {
+            chest_or_shulker(host, state, kind.family, &facing, nbt, (main, accent), draw);
+        }
+        return;
+    }
     if barrel && (main.is_some() || accent.is_some()) {
         paint(draw, &facing, main, accent);
     }
@@ -368,6 +385,71 @@ pub fn submit(
 
     if flag("showCounts", true) {
         counts(draw, &facing, &items, slots);
+    }
+}
+
+/// The stack in the local player's selected slot.
+pub fn held_stack(host: &dyn ClientHost) -> Option<ItemStack> {
+    let local = host.local_player()?;
+    let host: &dyn Host = host;
+    let (inv, _) = places::readable(host, local)?;
+    inv.get(local.selected_slot(host)?).cloned().flatten()
+}
+
+/// The storage tool in the player's main hand, with its mode.
+fn held_tool(host: &dyn ClientHost) -> Option<crate::tool::Mode> {
+    let held = held_stack(host)?;
+    (crate::contents::item_id(host, &held) == crate::tool::TOOL).then(|| crate::tool::mode(&held))
+}
+
+fn chest_or_shulker(
+    host: &dyn ClientHost,
+    state: BlockState,
+    family: Family,
+    facing: &str,
+    nbt: &Compound,
+    paint: (Option<i32>, Option<i32>),
+    draw: &mut dyn BlockEntityDrawContext,
+) {
+    use crate::chest_render as cr;
+    use crate::tool::Mode;
+    let prop = |k: &str| {
+        state
+            .property(&host.block_states(), k)
+            .ok()
+            .flatten()
+            .map(str::to_string)
+    };
+    let flag = |k: &str, d: bool| get_bool(nbt, k).unwrap_or(d);
+    let held = held_tool(host);
+    let join = cr::Join::parse(prop("type").as_deref().unwrap_or("single"));
+    let (base, tint_main, tint_accent) = if family == Family::Chest {
+        let wood = prop("wood").unwrap_or_else(|| "oak".into());
+        cr::chest_sprites(join, &wood)
+    } else {
+        (
+            cr::SHULKER_BASE.into(),
+            cr::SHULKER_MAIN.into(),
+            cr::SHULKER_ACCENT.into(),
+        )
+    };
+    let look = cr::Look {
+        main: paint.0,
+        accent: paint.1,
+        locked: flag("locked", false),
+        show_lock: flag("showLock", true),
+        show_tier: flag("showTier", true),
+        tool_shows_lock: matches!(held, Some(Mode::Lock | Mode::LockDisplay)),
+        tool_shows_tier: held == Some(Mode::TierDisplay),
+        base: &base,
+        tint_main: &tint_main,
+        tint_accent: &tint_accent,
+    };
+    if family == Family::Chest {
+        let main_half = join == cr::Join::Single || flag("double", false);
+        cr::draw_chest(draw, facing, join, &look, main_half);
+    } else {
+        cr::draw_shulker(draw, facing, &look);
     }
 }
 

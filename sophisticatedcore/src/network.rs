@@ -722,11 +722,8 @@ pub fn debug_view(
     let Some(local) = host.local_player() else {
         return;
     };
+    let held = crate::render::held_stack(host);
     let host: &dyn Host = host;
-    let held = local
-        .selected_slot(host)
-        .zip(places::readable(host, local))
-        .and_then(|(slot, (inv, _))| inv.get(slot).cloned().flatten());
     if held.is_none_or(|h| crate::contents::item_id(host, &h) != DEBUG_TOOL) {
         return;
     }
