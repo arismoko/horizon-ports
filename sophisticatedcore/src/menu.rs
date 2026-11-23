@@ -23,8 +23,18 @@ pub enum View {
     Main {
         page: usize,
     },
-    Settings {
+    /// One filter of an upgrade (see `filter_view`): `key` names which, empty for the upgrade's own.
+    Filter {
         slot: usize,
+        key: &'static str,
+        page: usize,
+    },
+    /// The tags of a filter, with the item whose tags are offered.
+    Tags {
+        slot: usize,
+        key: &'static str,
+        pick: Option<ItemStack>,
+        page: usize,
     },
     Crafting {
         slot: usize,
@@ -224,127 +234,8 @@ pub fn render(host: &mut dyn ServerHost, s: &Session, c: &Contents) -> Vec<Optio
                 );
             }
         }
-        View::Settings { slot } => {
-            let Some(up) = c.upgrades.get(*slot).cloned().flatten() else {
-                return out;
-            };
-            let Some(u) = upgrades::of(&*host, &up) else {
-                return out;
-            };
-            let f = upgrades::filters(&*host, &up, u.filters);
-            for (i, x) in f.iter().enumerate() {
-                out[i] = match x {
-                    Some(x) => Some(x.clone()),
-                    None => button(
-                        &*host,
-                        "minecraft:white_stained_glass_pane",
-                        "Filter slot",
-                        &["Click an item in your inventory to add it"],
-                    ),
-                };
-            }
-            for i in f.len()..base {
-                out[i] = fill.clone();
-            }
-            for i in base..base + 9 {
-                out[i] = fill.clone();
-            }
-            out[base] = button(&*host, "minecraft:arrow", "Back", &[]);
-            if u.kind != Kind::Refill {
-                out[base + 2] = if upgrades::allow_list(&up, &u) {
-                    button(
-                        &*host,
-                        "minecraft:white_wool",
-                        "Allow list",
-                        &["Only listed items match", "Click: switch to a block list"],
-                    )
-                } else {
-                    button(
-                        &*host,
-                        "minecraft:black_wool",
-                        "Block list",
-                        &[
-                            "Listed items don't match; an empty list matches everything",
-                            "Click: switch to an allow list",
-                        ],
-                    )
-                };
-                out[base + 3] = if upgrades::match_mod(&up) {
-                    button(
-                        &*host,
-                        "minecraft:book",
-                        "Match by mod",
-                        &["Click: match by item"],
-                    )
-                } else {
-                    button(
-                        &*host,
-                        "minecraft:paper",
-                        "Match by item",
-                        &["Click: match by mod"],
-                    )
-                };
-            }
-            match u.kind {
-                Kind::Void => {
-                    out[base + 4] = if upgrades::void_overflow(&u, &up) {
-                        button(
-                            &*host,
-                            "minecraft:lava_bucket",
-                            "Void overflow",
-                            &[
-                                "Matching items are voided only when they don't fit",
-                                "Click: void every matching item",
-                            ],
-                        )
-                    } else {
-                        button(
-                            &*host,
-                            "minecraft:bucket",
-                            "Void all matching",
-                            &[
-                                "Matching items are voided as they are picked up",
-                                "Click: void only what doesn't fit",
-                            ],
-                        )
-                    };
-                }
-                Kind::Magnet => {
-                    out[base + 4] = if upgrades::flag(&up, "pickupItems", true) {
-                        button(
-                            &*host,
-                            "minecraft:hopper",
-                            "Picks up items",
-                            &["Click: don't pick up items"],
-                        )
-                    } else {
-                        button(
-                            &*host,
-                            "minecraft:barrier",
-                            "Doesn't pick up items",
-                            &["Click: pick up items"],
-                        )
-                    };
-                    out[base + 5] = if upgrades::flag(&up, "pickupXp", true) {
-                        button(
-                            &*host,
-                            "minecraft:experience_bottle",
-                            "Pulls experience",
-                            &["Click: don't pull experience orbs"],
-                        )
-                    } else {
-                        button(
-                            &*host,
-                            "minecraft:glass_bottle",
-                            "Doesn't pull experience",
-                            &["Click: pull experience orbs"],
-                        )
-                    };
-                }
-                _ => {}
-            }
-            out[base + 8] = Some(up.clone());
-        }
+        View::Filter { .. } => crate::filter_view::render(host, s, c, &s.view, &mut out),
+        View::Tags { .. } => crate::filter_view::render_tags(host, s, c, &s.view, &mut out),
         View::Cooking { slot } => render_cooking(host, s, c, *slot, &mut out),
         View::Fluid { slot } => crate::fluid_view::render(host, s, c, *slot, &mut out),
         View::Hopper { slot } => crate::hopper_view::render(host, s, c, *slot, &mut out),
@@ -718,9 +609,13 @@ pub fn click(
     let shift = ev.mode == 1;
     let right = ev.button == 1;
     CRAFT_PLAYER.with(|cp| cp.set(uuid));
-    match s.view.clone() {
+    let view = s.view.clone();
+    match view {
         View::Main { page } => click_main(host, player, s, c, ev.slot, page, shift, right),
-        View::Settings { slot } => click_settings(host, player, s, c, ev.slot, slot),
+        View::Filter { .. } => crate::filter_view::click(host, player, s, c, ev.slot, &view, right),
+        View::Tags { .. } => {
+            crate::filter_view::click_tags(host, player, s, c, ev.slot, &view, right)
+        }
         View::Jukebox { slot } => click_jukebox(host, player, s, c, ev.slot, slot, uuid),
         View::Cooking { slot } => click_cooking(host, player, s, c, ev.slot, slot, right),
         View::Hopper { slot } => {
@@ -847,7 +742,11 @@ fn click_main(
                 Kind::Cooking(_) => View::Cooking { slot: j },
                 Kind::Hopper => View::Hopper { slot: j },
                 Kind::Tank | Kind::Battery | Kind::Pump | Kind::XpPump => View::Fluid { slot: j },
-                _ => View::Settings { slot: j },
+                _ => View::Filter {
+                    slot: j,
+                    key: "",
+                    page: 0,
+                },
             };
             return (Outcome::View(view), None);
         }
@@ -861,93 +760,6 @@ fn click_main(
         return (Outcome::Changed(c), None);
     }
     (Outcome::Nothing, None)
-}
-
-fn click_settings(
-    host: &mut dyn ServerHost,
-    player: PlayerRef,
-    s: &Session,
-    c: &Contents,
-    slot: i32,
-    j: usize,
-) -> (Outcome, Option<&'static str>) {
-    let mut c = c.clone();
-    let base = s.control();
-    let Some(mut up) = c.upgrades.get(j).cloned().flatten() else {
-        return (Outcome::View(View::Main { page: 0 }), None);
-    };
-    let Some(u) = upgrades::of(&*host, &up) else {
-        return (Outcome::View(View::Main { page: 0 }), None);
-    };
-    let mut f = upgrades::filters(&*host, &up, u.filters);
-    if let Some(inv) = inventory_slot(s, slot) {
-        let invs = places::inventory(host, player);
-        let Some(st) = invs[inv as usize].clone() else {
-            return (Outcome::Nothing, None);
-        };
-        if f.iter().flatten().any(|x| x.same_item(&st)) {
-            return (Outcome::Nothing, Some("Already in the filter"));
-        }
-        let Some(free) = f.iter().position(Option::is_none) else {
-            return (Outcome::Nothing, Some("The filter is full"));
-        };
-        f[free] = contents::with_count(&st, 1);
-        upgrades::set_filters(&*host, &mut up, &f);
-    } else {
-        let Ok(i) = usize::try_from(slot) else {
-            return (Outcome::Nothing, None);
-        };
-        if i < f.len() {
-            if f[i].is_none() {
-                return (Outcome::Nothing, None);
-            }
-            f[i] = None;
-            upgrades::set_filters(&*host, &mut up, &f);
-        } else if i == base {
-            return (Outcome::View(View::Main { page: 0 }), None);
-        } else if i == base + 2 && u.kind != Kind::Refill {
-            let v = !upgrades::allow_list(&up, &u);
-            upgrades::set_flag(&mut up, "isAllowList", v);
-        } else if i == base + 3 && u.kind != Kind::Refill {
-            let v = if upgrades::match_mod(&up) {
-                "item"
-            } else {
-                "mod"
-            };
-            upgrades::set_str(&mut up, "primaryMatch", v);
-        } else if i == base + 4 && u.kind == Kind::Void {
-            // `setShouldVoidOverflow`: "void all" is refused when the setting turns it off.
-            let v = !upgrades::void_overflow(&u, &up);
-            if v || crate::options::tune().void_anything[usize::from(u.advanced)] {
-                upgrades::set_flag(&mut up, "shouldVoidOverflow", v);
-            }
-        } else if i == base + 4 && u.kind == Kind::Magnet {
-            let v = !upgrades::flag(&up, "pickupItems", true);
-            upgrades::set_flag(&mut up, "pickupItems", v);
-        } else if i == base + 5 && u.kind == Kind::Magnet {
-            let v = !upgrades::flag(&up, "pickupXp", true);
-            upgrades::set_flag(&mut up, "pickupXp", v);
-        } else {
-            return (Outcome::Nothing, None);
-        }
-    }
-    c.upgrades[j] = Some(up);
-    (Outcome::Changed(c), None)
-}
-
-/// Where the filters of an automatic cooking view start: the input filter's first cell, then the fuel filter's
-/// (each on rows of its own), and the cells that fit above the control row.
-fn cooking_layout(base: usize, k: crate::cooking::Cooking) -> (usize, usize, usize, usize) {
-    let n = crate::options::tune().cook_filters[usize::from(k.recipe)];
-    let input_at = 9;
-    let fuel_at = input_at + n[0].div_ceil(9) * 9;
-    let shown = |at: usize, n: usize| n.min(base.saturating_sub(at));
-    (
-        input_at,
-        shown(input_at, n[0]),
-        fuel_at,
-        shown(fuel_at, n[1]),
-    )
 }
 
 fn render_cooking(
@@ -1023,22 +835,8 @@ fn render_cooking(
                     "minecraft:red_dye"
                 },
                 &name,
-                &["Click: switch between allow and block list"],
+                &["Click: edit the filter"],
             );
-        }
-        let (ia, ish, fa, fsh) = cooking_layout(base, k);
-        for (at, shown, f) in [(ia, ish, &fi), (fa, fsh, &ff)] {
-            for i in 0..shown {
-                out[at + i] = match f.items.get(i).cloned().flatten() {
-                    Some(x) => Some(x),
-                    None => button(
-                        &*host,
-                        "minecraft:white_stained_glass_pane",
-                        "Filter slot",
-                        &["Right-click an item in your inventory to add it"],
-                    ),
-                };
-            }
         }
     }
     out[base] = button(&*host, "minecraft:arrow", "Back", &[]);
@@ -1132,7 +930,6 @@ fn click_cooking(
         let Ok(i) = usize::try_from(slot) else {
             return (Outcome::Nothing, None);
         };
-        let (ia, ish, fa, fsh) = cooking_layout(base, k);
         if i <= OUTPUT {
             let Some(st) = cook.slots[i].take() else {
                 return (Outcome::Nothing, None);
@@ -1140,25 +937,15 @@ fn click_cooking(
             places::give_or_drop(host, player, &st);
             crate::cooking::write(&*host, &mut up, &cook);
         } else if k.auto && (6..=7).contains(&i) {
-            let (f, key) = if i == 6 {
-                (&mut fi, "inputFilter")
-            } else {
-                (&mut ff, "fuelFilter")
-            };
-            f.allow = !f.allow;
-            f.write(&*host, &mut up, key);
-        } else if k.auto && (ia..ia + ish).contains(&i) {
-            if fi.items.get(i - ia).cloned().flatten().is_none() {
-                return (Outcome::Nothing, None);
-            }
-            fi.items[i - ia] = None;
-            fi.write(&*host, &mut up, "inputFilter");
-        } else if k.auto && (fa..fa + fsh).contains(&i) {
-            if ff.items.get(i - fa).cloned().flatten().is_none() {
-                return (Outcome::Nothing, None);
-            }
-            ff.items[i - fa] = None;
-            ff.write(&*host, &mut up, "fuelFilter");
+            let key = if i == 6 { "inputFilter" } else { "fuelFilter" };
+            return (
+                Outcome::View(View::Filter {
+                    slot: j,
+                    key,
+                    page: 0,
+                }),
+                None,
+            );
         } else if i == base {
             return (Outcome::View(View::Main { page: 0 }), None);
         } else {

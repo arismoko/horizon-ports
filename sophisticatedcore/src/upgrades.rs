@@ -5,8 +5,9 @@
 use mod_api::{Compound, Host, ItemStack, Tag};
 
 use crate::contents::{
-    self, Nbt, custom_data, get_bool, get_str, put, read_items, set_custom_data, write_items,
+    self, Nbt, custom_data, get_bool, put, read_items, set_custom_data, write_items,
 };
+use crate::filter::Filter;
 use crate::storage_items::{Family, StorageItem};
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -200,20 +201,6 @@ pub fn filters(host: &dyn Host, upgrade: &ItemStack, n: usize) -> Vec<Option<Ite
     read_items(host, custom_data(upgrade).at("filters"), n)
 }
 
-pub fn set_filters(host: &dyn Host, upgrade: &mut ItemStack, f: &[Option<ItemStack>]) {
-    let mut d = custom_data(upgrade);
-    put(&mut d, "filters", write_items(host, f));
-    set_custom_data(upgrade, d);
-}
-
-pub fn allow_list(upgrade: &ItemStack, u: &Upgrade) -> bool {
-    get_bool(&custom_data(upgrade), "isAllowList").unwrap_or(u.allow_default)
-}
-
-pub fn match_mod(upgrade: &ItemStack) -> bool {
-    get_str(&custom_data(upgrade), "primaryMatch").as_deref() == Some("mod")
-}
-
 pub fn flag(upgrade: &ItemStack, key: &str, default: bool) -> bool {
     get_bool(&custom_data(upgrade), key).unwrap_or(default)
 }
@@ -224,14 +211,8 @@ pub fn set_flag(upgrade: &mut ItemStack, key: &str, v: bool) {
     set_custom_data(upgrade, d);
 }
 
-pub fn set_str(upgrade: &mut ItemStack, key: &str, v: &str) {
-    let mut d = custom_data(upgrade);
-    put(&mut d, key, Tag::String(v.into()));
-    set_custom_data(upgrade, d);
-}
-
-/// FilterLogic.matchesFilter: an allow list matches what it lists (an empty one matches nothing), a block list
-/// what it doesn't list (an empty one matches everything). Items match by item, or by mod.
+/// FilterLogic.matchesFilter for an upgrade with a filter of its own (see [`crate::filter::Filter`]); one with no
+/// filter slots lets everything through.
 pub fn matches(host: &dyn Host, upgrade: &ItemStack, u: &Upgrade, stack: &ItemStack) -> bool {
     // The stand-in of an unknown item is never fed, compacted, deposited, voided or pulled.
     if contents::is_unknown(stack) {
@@ -240,23 +221,7 @@ pub fn matches(host: &dyn Host, upgrade: &ItemStack, u: &Upgrade, stack: &ItemSt
     if u.filters == 0 {
         return true;
     }
-    let f = filters(host, upgrade, u.filters);
-    let by_mod = match_mod(upgrade);
-    let ns = |s: &ItemStack| {
-        contents::item_id(host, s)
-            .split(':')
-            .next()
-            .unwrap_or("")
-            .to_string()
-    };
-    let hit = f.iter().flatten().any(|x| {
-        if by_mod {
-            ns(x) == ns(stack)
-        } else {
-            x.same_item(stack)
-        }
-    });
-    if allow_list(upgrade, u) { hit } else { !hit }
+    Filter::read(host, upgrade, "", u.filters, u.allow_default).matches(host, stack)
 }
 
 /// The crafting upgrade's grid (CraftingUpgradeWrapper keeps it in the upgrade: `craftingInventory`).
@@ -276,6 +241,10 @@ pub fn _settings_keys(c: &mut Compound) {
         "filters",
         "isAllowList",
         "primaryMatch",
+        "matchDurability",
+        "matchNbt",
+        "tags",
+        "matchAnyTag",
         "shouldVoidOverflow",
         "pickupItems",
         "pickupXp",

@@ -16,6 +16,7 @@ use mod_api::{Compound, Host, Identifier, ItemStack, LevelRef, RecipeInput, Tag}
 use crate::contents::{
     self, Contents, Nbt, custom_data, put, read_items, set_custom_data, write_items,
 };
+use crate::filter::Filter;
 use crate::upgrades;
 
 pub const INPUT: usize = 0;
@@ -221,114 +222,6 @@ impl<S: Clone + PartialEq> Cook<S> {
 }
 
 // ---- the automatic upgrades ----
-
-/// A filter of an automatic cooking upgrade (FilterLogic under `inputFilter` or `fuelFilter`).
-#[derive(Clone, Debug)]
-pub struct Filter {
-    pub items: Vec<Option<ItemStack>>,
-    pub allow: bool,
-    pub by_mod: bool,
-    /// The fuel filter: an empty allow list lets everything through.
-    pub empty_allows_all: bool,
-    /// A hopper upgrade's contents mode (`filterByStorage`): items match by what the inventory already holds.
-    pub by_storage: bool,
-}
-
-impl Filter {
-    pub fn read(host: &dyn Host, up: &ItemStack, key: &str, n: usize) -> Self {
-        let fuel = key == "fuelFilter";
-        let d = custom_data(up);
-        let sub = match d.at(key) {
-            Some(Tag::Compound(c)) => c.clone(),
-            _ => Compound::new(),
-        };
-        Self {
-            items: read_items(host, sub.at("filters"), n),
-            allow: contents::get_bool(&sub, "isAllowList").unwrap_or(fuel),
-            by_mod: contents::get_str(&sub, "primaryMatch").as_deref() == Some("mod"),
-            empty_allows_all: fuel,
-            by_storage: contents::get_bool(&sub, "filterByStorage").unwrap_or(false),
-        }
-    }
-
-    pub fn write(&self, host: &dyn Host, up: &mut ItemStack, key: &str) {
-        let mut d = custom_data(up);
-        let mut sub = match d.at(key) {
-            Some(Tag::Compound(c)) => c.clone(),
-            _ => Compound::new(),
-        };
-        put(&mut sub, "filters", write_items(host, &self.items));
-        put(&mut sub, "isAllowList", Tag::Byte(i8::from(self.allow)));
-        put(
-            &mut sub,
-            "primaryMatch",
-            Tag::String(if self.by_mod { "mod" } else { "item" }.into()),
-        );
-        if self.by_storage {
-            put(&mut sub, "filterByStorage", Tag::Byte(1));
-        } else {
-            sub.del("filterByStorage");
-        }
-        put(&mut d, key, Tag::Compound(sub));
-        set_custom_data(up, d);
-    }
-
-    /// ContentsFilterLogic.matchesFilter: in contents mode a stack matches when it is the item (or from the mod) of
-    /// one `held` in the inventory the filter watches; otherwise the list decides.
-    pub fn matches_contents<'a>(
-        &self,
-        host: &dyn Host,
-        stack: &ItemStack,
-        held: impl IntoIterator<Item = &'a ItemStack>,
-    ) -> bool {
-        if !self.by_storage {
-            return self.matches(host, stack);
-        }
-        if contents::is_unknown(stack) {
-            return false;
-        }
-        let ns = |s: &ItemStack| {
-            contents::item_id(host, s)
-                .split(':')
-                .next()
-                .unwrap_or("")
-                .to_owned()
-        };
-        held.into_iter().any(|x| {
-            if self.by_mod {
-                ns(x) == ns(stack)
-            } else {
-                x.same_item(stack)
-            }
-        })
-    }
-
-    pub fn matches(&self, host: &dyn Host, stack: &ItemStack) -> bool {
-        if contents::is_unknown(stack) {
-            return false;
-        }
-        let empty = self.items.iter().all(Option::is_none);
-        let ns = |s: &ItemStack| {
-            contents::item_id(host, s)
-                .split(':')
-                .next()
-                .unwrap_or("")
-                .to_owned()
-        };
-        let hit = self.items.iter().flatten().any(|x| {
-            if self.by_mod {
-                ns(x) == ns(stack)
-            } else {
-                x.same_item(stack)
-            }
-        });
-        if self.allow {
-            (empty && self.empty_allows_all) || hit
-        } else {
-            empty || !hit
-        }
-    }
-}
 
 /// What an automatic upgrade keeps between ticks (the jar's fields, lost with the server).
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
@@ -608,8 +501,8 @@ pub fn rates(k: Cooking) -> Rates {
 pub fn filters(host: &dyn Host, up: &ItemStack, k: Cooking) -> (Filter, Filter) {
     let n = crate::options::tune().cook_filters[usize::from(k.recipe)];
     (
-        Filter::read(host, up, "inputFilter", n[0]),
-        Filter::read(host, up, "fuelFilter", n[1]),
+        Filter::read(host, up, "inputFilter", n[0], false),
+        Filter::read(host, up, "fuelFilter", n[1], true),
     )
 }
 

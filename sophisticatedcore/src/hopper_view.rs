@@ -1,14 +1,15 @@
 //! The hopper upgrades' view (their upgrade-tab screen): the six sides' modes (the advanced upgrade), and an input
-//! and an output filter, each with its type (allow list, block list, or what the inventory already holds) and, on
-//! the advanced upgrade, whether it matches by item or by mod.
+//! and an output filter, each with its type (allow list, block list, or what the inventory already holds) and a
+//! button that opens the filter itself (`filter_view`: its items, what it matches on). Clicking an item in the
+//! inventory adds it to the input filter, right-clicking to the output filter.
 //!
 //! Controls are numbered from 0 and laid out from the top row; past the first page row they continue in the
-//! control row's free cells, as in the fluid views.
+//! control row's free cells, as in the fluid views. Eleven fit even the smallest storage.
 
 use mod_api::{Host, ItemStack, PlayerRef, ServerHost};
 
 use crate::contents::{self, Contents};
-use crate::cooking::Filter;
+use crate::filter::{Filter, Primary};
 use crate::fluid_view::{cell, control};
 use crate::hopper::{self, INPUT, Io, Mode, OUTPUT, SIDES};
 use crate::menu::{Outcome, Session, View, button, filler, inventory_slot};
@@ -20,36 +21,20 @@ use crate::upgrades::{self, Kind};
 pub struct Layout {
     pub sides: Option<usize>,
     pub in_type: usize,
-    pub in_match: Option<usize>,
-    pub in_slots: usize,
+    pub in_open: usize,
     pub out_type: usize,
-    pub out_match: Option<usize>,
-    pub out_slots: usize,
+    pub out_open: usize,
 }
 
-/// The advanced upgrade has the sides and the match buttons; the basic one only the filters' types.
-pub fn layout(advanced: bool, n_in: usize, n_out: usize) -> Layout {
-    let mut at = 0;
-    let mut take = |n: usize| {
-        let start = at;
-        at += n;
-        start
-    };
-    let sides = advanced.then(|| take(6));
-    let in_type = take(1);
-    let in_match = advanced.then(|| take(1));
-    let in_slots = take(n_in);
-    let out_type = take(1);
-    let out_match = advanced.then(|| take(1));
-    let out_slots = take(n_out);
+/// The advanced upgrade has the sides; both have each filter's type and its opener.
+pub fn layout(advanced: bool) -> Layout {
+    let first = if advanced { 6 } else { 0 };
     Layout {
-        sides,
-        in_type,
-        in_match,
-        in_slots,
-        out_type,
-        out_match,
-        out_slots,
+        sides: advanced.then_some(0),
+        in_type: first,
+        in_open: first + 1,
+        out_type: first + 2,
+        out_open: first + 3,
     }
 }
 
@@ -78,7 +63,7 @@ fn io_button(host: &dyn Host, side: &str, dir: &str, io: Io) -> Option<ItemStack
     )
 }
 
-fn type_button(host: &dyn Host, f: &Filter, input: bool) -> Option<ItemStack> {
+pub(crate) fn type_button(host: &dyn Host, f: &Filter, input: bool) -> Option<ItemStack> {
     let what = if input { "input" } else { "output" };
     match hopper::mode(f) {
         Mode::Allow => button(
@@ -112,22 +97,19 @@ fn type_button(host: &dyn Host, f: &Filter, input: bool) -> Option<ItemStack> {
     }
 }
 
-fn match_button(host: &dyn Host, f: &Filter) -> Option<ItemStack> {
-    if f.by_mod {
-        button(
-            host,
-            "minecraft:book",
-            "Match by mod",
-            &["Click: match by item"],
-        )
-    } else {
-        button(
-            host,
-            "minecraft:paper",
-            "Match by item",
-            &["Click: match by mod"],
-        )
-    }
+fn open_button(host: &dyn Host, f: &Filter, input: bool) -> Option<ItemStack> {
+    let what = if input { "input" } else { "output" };
+    let shown = match f.primary {
+        Primary::Item => "by item",
+        Primary::Mod => "by mod",
+        Primary::Tags => "by tags",
+    };
+    button(
+        host,
+        "minecraft:writable_book",
+        &format!("Edit the {what} filter"),
+        &[&format!("Matches {shown}"), "Click: items, match and tags"],
+    )
 }
 
 pub fn render(
@@ -149,7 +131,7 @@ pub fn render(
         *cell = fill.clone();
     }
     let (input, output) = hopper::filters(&*host, &up, u.advanced);
-    let l = layout(u.advanced, input.items.len(), output.items.len());
+    let l = layout(u.advanced);
     let mut put = |n: usize, st: Option<ItemStack>| {
         let at = cell(base, n);
         if at < base + 8 {
@@ -167,46 +149,10 @@ pub fn render(
             );
         }
     }
-    let slots = |f: &Filter, hint: &'static str| -> Vec<Option<ItemStack>> {
-        f.items
-            .iter()
-            .map(|x| match x {
-                Some(x) => Some(x.clone()),
-                None => button(
-                    &*host,
-                    "minecraft:white_stained_glass_pane",
-                    "Filter slot",
-                    &[hint],
-                ),
-            })
-            .collect()
-    };
     put(l.in_type, type_button(&*host, &input, true));
-    if let Some(at) = l.in_match {
-        put(at, match_button(&*host, &input));
-    }
-    for (i, st) in slots(
-        &input,
-        "Click an item in your inventory to add it to the input filter",
-    )
-    .into_iter()
-    .enumerate()
-    {
-        put(l.in_slots + i, st);
-    }
+    put(l.in_open, open_button(&*host, &input, true));
     put(l.out_type, type_button(&*host, &output, false));
-    if let Some(at) = l.out_match {
-        put(at, match_button(&*host, &output));
-    }
-    for (i, st) in slots(
-        &output,
-        "Right-click an item in your inventory to add it to the output filter",
-    )
-    .into_iter()
-    .enumerate()
-    {
-        put(l.out_slots + i, st);
-    }
+    put(l.out_open, open_button(&*host, &output, false));
     out[base] = button(&*host, "minecraft:arrow", "Back", &[]);
     out[base + 8] = Some(up);
 }
@@ -257,7 +203,7 @@ pub fn click(
         let Some(i) = control(base, raw) else {
             return (Outcome::Nothing, None);
         };
-        let l = layout(u.advanced, input.items.len(), output.items.len());
+        let l = layout(u.advanced);
         if let Some(first) = l.sides.filter(|f| (*f..*f + 6).contains(&i)) {
             let facing = session_facing(&*host, s);
             let dir = hopper::side_dir(SIDES[i - first], &facing);
@@ -271,22 +217,16 @@ pub fn click(
         } else if i == l.out_type {
             hopper::cycle(&mut output);
             output.write(&*host, &mut up, OUTPUT);
-        } else if l.in_match == Some(i) {
-            input.by_mod = !input.by_mod;
-            input.write(&*host, &mut up, INPUT);
-        } else if l.out_match == Some(i) {
-            output.by_mod = !output.by_mod;
-            output.write(&*host, &mut up, OUTPUT);
-        } else if (l.in_slots..l.in_slots + input.items.len()).contains(&i) {
-            if input.items[i - l.in_slots].take().is_none() {
-                return (Outcome::Nothing, None);
-            }
-            input.write(&*host, &mut up, INPUT);
-        } else if (l.out_slots..l.out_slots + output.items.len()).contains(&i) {
-            if output.items[i - l.out_slots].take().is_none() {
-                return (Outcome::Nothing, None);
-            }
-            output.write(&*host, &mut up, OUTPUT);
+        } else if i == l.in_open || i == l.out_open {
+            let key = if i == l.in_open { INPUT } else { OUTPUT };
+            return (
+                Outcome::View(View::Filter {
+                    slot: j,
+                    key,
+                    page: 0,
+                }),
+                None,
+            );
         } else {
             return (Outcome::Nothing, None);
         }
@@ -300,25 +240,18 @@ mod tests {
     use super::*;
 
     #[test]
-    fn groups_follow_one_another() {
-        let l = layout(true, 4, 3);
+    fn controls_follow_one_another() {
         assert_eq!(
-            l,
+            layout(true),
             Layout {
                 sides: Some(0),
                 in_type: 6,
-                in_match: Some(7),
-                in_slots: 8,
-                out_type: 12,
-                out_match: Some(13),
-                out_slots: 14,
+                in_open: 7,
+                out_type: 8,
+                out_open: 9,
             }
         );
-        let b = layout(false, 2, 2);
-        assert_eq!((b.sides, b.in_match, b.out_match), (None, None, None));
-        assert_eq!(
-            (b.in_type, b.in_slots, b.out_type, b.out_slots),
-            (0, 1, 3, 4)
-        );
+        let b = layout(false);
+        assert_eq!((b.sides, b.in_type, b.out_open), (None, 0, 3));
     }
 }

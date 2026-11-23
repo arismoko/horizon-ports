@@ -11,7 +11,7 @@ use mod_api::{
 };
 
 use crate::contents::{self, Contents, Nbt, custom_data, put, set_custom_data};
-use crate::cooking::Filter;
+use crate::filter::Filter;
 use crate::storage::{self, add, dir_of, dir_vec};
 use crate::storage_items::StorageItem;
 use crate::upgrades::{self, Upgrade};
@@ -234,8 +234,8 @@ pub fn cycle(f: &mut Filter) {
 pub fn filters(host: &dyn Host, up: &ItemStack, advanced: bool) -> (Filter, Filter) {
     let n = crate::options::tune().hopper_filters[usize::from(advanced)];
     (
-        Filter::read(host, up, INPUT, n[0]),
-        Filter::read(host, up, OUTPUT, n[1]),
+        Filter::read(host, up, INPUT, n[0], false),
+        Filter::read(host, up, OUTPUT, n[1], false),
     )
 }
 
@@ -395,6 +395,7 @@ pub fn run(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::filter::Primary;
 
     #[test]
     fn sides_follow_the_blocks_facing() {
@@ -450,7 +451,11 @@ mod tests {
         let mut f = Filter {
             items: vec![None; 2],
             allow: true,
-            by_mod: false,
+            primary: Primary::Item,
+            durability: false,
+            components: false,
+            tags: Vec::new(),
+            any_tag: true,
             empty_allows_all: false,
             by_storage: false,
         };

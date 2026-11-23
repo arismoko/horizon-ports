@@ -27,6 +27,8 @@
 mod contents;
 mod cooking;
 mod crafting;
+mod filter;
+mod filter_view;
 mod fluid_view;
 mod fluids;
 mod hopper;
