@@ -1477,7 +1477,7 @@ pub fn tick(host: &mut dyn ServerHost, placed: &Placed, n: u64) {
             .collect();
         for (up, k) in &hoppers {
             if n.is_multiple_of(tune.hopper_ticks[usize::from(k.advanced)] as u64) {
-                changed |= crate::hopper::run(host, level, pos, kind, &mut c, up, k, n);
+                changed |= crate::hopper::run(host, level, pos, kind, &mut c, up, k);
             }
         }
         if kinds.iter().any(|k| matches!(k.kind, Kind::Cooking(_))) {

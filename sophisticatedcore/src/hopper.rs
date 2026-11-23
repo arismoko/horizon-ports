@@ -327,13 +327,7 @@ fn push(
 }
 
 /// The inventories next to `pos` on `dir`: the block's, then (when it has none) a container entity's.
-fn neighbours(
-    host: &mut dyn ServerHost,
-    level: LevelRef,
-    pos: [i32; 3],
-    dir: &str,
-    tick: u64,
-) -> Vec<Items> {
+fn neighbours(host: &mut dyn ServerHost, level: LevelRef, pos: [i32; 3], dir: &str) -> Vec<Items> {
     let at = add(pos, dir_vec(dir));
     if same_storage(&*host, level, pos, at) {
         return Vec::new();
@@ -352,16 +346,19 @@ fn neighbours(
         .filter_map(|e| e.capability(host, &mod_api::ENTITY_AUTOMATION, Some(side)))
         .collect();
     if boxes.len() > 1 {
-        // Which of several is picked is shuffled in the original; rotate through them instead.
-        let k = (tick % boxes.len() as u64) as usize;
-        boxes.rotate_left(k);
+        // One of several minecarts, at random.
+        let n = i32::try_from(boxes.len()).unwrap_or(i32::MAX);
+        let k = level
+            .with_random(host, |r| r.next_int_bound(n))
+            .unwrap_or(0);
+        let last = boxes.len() - 1;
+        boxes.swap(0, usize::try_from(k).unwrap_or(0).min(last));
     }
     boxes.truncate(1);
     boxes
 }
 
 /// One transfer round of a hopper upgrade `up` on the storage at `pos`: whether the storage's contents changed.
-#[allow(clippy::too_many_arguments)]
 pub fn run(
     host: &mut dyn ServerHost,
     level: LevelRef,
@@ -370,7 +367,6 @@ pub fn run(
     c: &mut Contents,
     up: &ItemStack,
     u: &Upgrade,
-    tick: u64,
 ) -> bool {
     let max = crate::options::tune().hopper_stack[usize::from(u.advanced)] as u32;
     let mult = upgrades::multiplier(&*host, kind, &c.upgrades);
@@ -378,7 +374,7 @@ pub fn run(
     let dirs = read_dirs(up, u.advanced, &facing(&*host, level, pos));
     let mut changed = false;
     for dir in &dirs.push {
-        for dst in neighbours(host, level, pos, dir, tick) {
+        for dst in neighbours(host, level, pos, dir) {
             if push(host, &dst, c, &output, max) {
                 changed = true;
                 break;
@@ -386,7 +382,7 @@ pub fn run(
         }
     }
     for dir in &dirs.pull {
-        for src in neighbours(host, level, pos, dir, tick) {
+        for src in neighbours(host, level, pos, dir) {
             if pull(host, &src, kind, c, &input, mult, max) {
                 changed = true;
                 break;
