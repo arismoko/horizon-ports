@@ -52,6 +52,7 @@ mod swapper;
 mod table;
 mod ticking;
 mod tool;
+mod upgrade_click;
 mod upgrades;
 mod worn;
 mod xp_bucket;
@@ -2003,13 +2004,37 @@ impl Hooks for Mod {
             return Flow::Continue;
         };
         let held = contents::item_id(&*host, stack);
-        if !held.starts_with("sophisticatedstorage:") {
-            return Flow::Continue;
-        }
         let dim = click.dimension.key().id().to_string();
         let Some(level) = host.level(&dim) else {
             return Flow::Continue;
         };
+        if upgrades::upgrade(&held).is_some() {
+            let (Some(player), Some(slot)) = (
+                host.player(click.player),
+                hand_slot(&*host, click.player, Hand::Main),
+            ) else {
+                return Flow::Continue;
+            };
+            let sneaking = places::sneaking(&*host, click.player);
+            if upgrade_click::click(
+                host,
+                player,
+                slot,
+                level,
+                click.pos,
+                click.hit.face,
+                sneaking,
+            ) {
+                self.shared.placed.note(level, click.pos);
+                *event.cancellation_result = InteractionResult::Success;
+                event.cancelled = true;
+                return Flow::Cancel;
+            }
+            return Flow::Continue;
+        }
+        if !held.starts_with("sophisticatedstorage:") {
+            return Flow::Continue;
+        }
         if !storage::takes_click(&held, &storage::block_id(&*host, level, click.pos)) {
             return Flow::Continue;
         }
