@@ -1284,6 +1284,38 @@ impl Hooks for Mod {
         Flow::Continue
     }
 
+    /// `CreeperMixin` / `removeBeneficialEffects`: a bearer creeper's blast leaves it without its beneficial effects
+    /// (vanilla's lingering cloud is made from what is left, after `Level.explode`).
+    fn explosion_start(
+        &self,
+        host: &mut dyn ServerHost,
+        event: &mut mod_api::ExplosionStartEvent<'_>,
+    ) -> Flow {
+        let Some(id) = event.explosion.source else {
+            return Flow::Continue;
+        };
+        let Some(entity) = host.entity(id) else {
+            return Flow::Continue;
+        };
+        if entity
+            .kind(&*host)
+            .and_then(|k| k.id(&*host))
+            .map(|n| n.to_string())
+            .as_deref()
+            != Some("minecraft:creeper")
+            || !mobs::is_bearer(&*host, entity)
+        {
+            return Flow::Continue;
+        }
+        let living = LivingRef::new(entity);
+        for effect in living.effects(&*host).unwrap_or_default() {
+            if effect.id.category(&*host) == Some(mod_api::EffectCategory::Beneficial) {
+                living.remove_effect(host, effect.id);
+            }
+        }
+        Flow::Continue
+    }
+
     /// `applyPotions`: a bearer new to a level is given its effects (they need the live mob, which the spawn hook
     /// doesn't have).
     fn entity_join_level(

@@ -18,6 +18,7 @@ use crate::contents::{
 };
 
 /// The vanilla discs: song name and length in seconds (data/minecraft/jukebox_song/*.json).
+// gap: sunrise#5050 (no API reads a jukebox song, so only these vanilla discs play)
 const SONGS: [(&str, u32); 22] = [
     ("11", 71),
     ("13", 178),
@@ -228,11 +229,47 @@ fn runs() -> std::sync::MutexGuard<'static, Option<HashMap<[i32; 4], Run>>> {
     g
 }
 
-/// Silences `sound` for every player (`ServerStorageSoundHandler.stopPlayingDisc`).
-fn silence(host: &mut dyn ServerHost, sound: &str) {
+/// How far a disc is heard and stopped (`ServerStorageSoundHandler`'s `sendToAllNear` radius).
+const RANGE: f64 = 128.0;
+
+/// The level and position a source plays from now.
+fn where_is(host: &dyn Host, source: &Source) -> Option<(mod_api::LevelRef, [f64; 3])> {
+    match source {
+        Source::Carried { player, .. } => {
+            let e = host.player(*player)?.entity();
+            Some((e.level(host)?, e.position(host)?))
+        }
+        Source::Mob { entity } => {
+            let e = host.entity(*entity)?;
+            Some((e.level(host)?, e.position(host)?))
+        }
+        Source::Block { dim, pos, .. } => Some((
+            host.level(dim)?,
+            [
+                f64::from(pos[0]) + 0.5,
+                f64::from(pos[1]) + 0.5,
+                f64::from(pos[2]) + 0.5,
+            ],
+        )),
+    }
+}
+
+/// Silences `sound` for the players of the source's level within [`RANGE`] of it
+/// (`ServerStorageSoundHandler.stopPlayingDisc`).
+fn silence(host: &mut dyn ServerHost, sound: &str, source: &Source) {
+    let Some((level, at)) = where_is(&*host, source) else {
+        return;
+    };
     let players: Vec<_> = host.players().server_players();
     for p in players {
-        let _ = p.stop_sound(host, Some(sound), Some(SoundSource::Records));
+        let e = p.entity();
+        let (Some(l), Some(pos)) = (e.level(&*host), e.position(&*host)) else {
+            continue;
+        };
+        let d: f64 = (0..3).map(|k| (pos[k] - at[k]).powi(2)).sum();
+        if l == level && d <= RANGE * RANGE {
+            let _ = p.stop_sound(host, Some(sound), Some(SoundSource::Records));
+        }
     }
 }
 
@@ -318,7 +355,7 @@ fn start(
 /// Stops the deck (`stop`): the sound ends, the playlist is forgotten.
 pub fn stop(host: &mut dyn ServerHost, id: [i32; 4], deck: &mut Deck) {
     if let Some(run) = runs().as_mut().and_then(|m| m.remove(&id)) {
-        silence(host, &run.sound);
+        silence(host, &run.sound, &run.source);
     }
     deck.playing = false;
     deck.active = None;
@@ -338,7 +375,7 @@ pub fn skip(host: &mut dyn ServerHost, id: [i32; 4], deck: &mut Deck, forward: b
         before(&filled, active).map(|i| (i, deck.played))
     };
     let Some((slot, played)) = next else { return };
-    silence(host, &run.sound);
+    silence(host, &run.sound, &run.source);
     start(host, id, deck, run.source, slot, played);
 }
 
@@ -366,7 +403,7 @@ fn finished(host: &mut dyn ServerHost, id: [i32; 4], deck: &mut Deck, source: So
 /// A running deck whose storage is gone: its sound ends.
 pub fn drop_run(host: &mut dyn ServerHost, id: [i32; 4]) {
     if let Some(run) = runs().as_mut().and_then(|m| m.remove(&id)) {
-        silence(host, &run.sound);
+        silence(host, &run.sound, &run.source);
     }
 }
 

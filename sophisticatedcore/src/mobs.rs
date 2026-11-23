@@ -515,3 +515,10 @@ mod tests {
         assert_eq!(health_bonus(20.0, 0), None);
     }
 }
+
+/// Whether `entity` carries the spawn tag of a backpack bearer.
+pub fn is_bearer(host: &dyn Host, entity: mod_api::EntityRef) -> bool {
+    entity
+        .tags(host)
+        .is_some_and(|t| (0..6).any(|i| t.contains(&format!("{TIER_TAG}{i}"))))
+}
