@@ -517,6 +517,14 @@ pub fn may_add_upgrade(
     {
         return Err("There's already a Compression upgrade in another upgrade slot");
     }
+    if u.kind == Kind::Everlasting
+        && c.upgrades
+            .iter()
+            .flatten()
+            .any(|x| upgrades::of(host, x).is_some_and(|o| o.kind == Kind::Everlasting))
+    {
+        return Err("There's already an Everlasting upgrade in another upgrade slot");
+    }
     if u.kind == Kind::ToolSwapper
         && c.upgrades
             .iter()

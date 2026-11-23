@@ -23,6 +23,8 @@ pub enum Kind {
     Stonecutter,
     /// The infinity upgrades, with the permission level that fills, empties and removes them.
     Infinity(u8),
+    /// The everlasting upgrade: one per storage.
+    Everlasting,
     Smithing,
     Void,
     Restock,
@@ -85,6 +87,7 @@ pub fn upgrade(id: &str) -> Option<Upgrade> {
         "deposit_upgrade" => u(Kind::Deposit, f, false),
         "refill_upgrade" => u(Kind::Refill, f, true),
         "crafting_upgrade" => u(Kind::Crafting, 0, false),
+        "everlasting_upgrade" => u(Kind::Everlasting, 0, false),
         "infinity_upgrade" => u(Kind::Infinity(2), 0, false),
         "survival_infinity_upgrade" => u(Kind::Infinity(0), 0, false),
         "stonecutter_upgrade" => u(Kind::Stonecutter, 0, false),

@@ -18,7 +18,7 @@
 //!   `chestLootEnabled = true`) and the crafting kinds (`crafting`).
 //!
 //! Not ported: the jar's own screen (tabs, sorting buttons, the memory and no-sort slot settings), the furnace,
-//! jukebox, tank, battery, pump, XP pump, anvil, inception and everlasting
+//! jukebox, tank, battery, pump, XP pump, anvil and inception
 //! upgrades (they sit in their slot and do nothing), the filter upgrade (it filters automation, and a
 //! placed backpack offers none), the backpack's render on the player's back, mobs spawning with backpacks.
 // Menus and inventories here are addressed by slot number, which these loops keep explicit.
@@ -28,6 +28,7 @@ mod compression;
 mod contents;
 mod cooking;
 mod crafting;
+mod everlasting;
 mod filter;
 mod filter_view;
 mod fluid_view;
@@ -914,6 +915,28 @@ impl BlockPart for StorageBlockPart {
         }
         Some(InteractionResult::Success)
     }
+
+    /// BackpackBlock.getExplosionResistance: a placed backpack with the everlasting upgrade resists like bedrock.
+    fn explosion_resistance(
+        &self,
+        level: &dyn mod_api::LevelHost,
+        event: &mut mod_api::ExplosionResistanceEvent<'_>,
+    ) -> Option<f32> {
+        let be = level.block_entity([event.pos.x, event.pos.y, event.pos.z])?;
+        let data = level.block_entity_data(be)?;
+        everlasting::in_block_entity(&data).then_some(everlasting::BEDROCK_RESISTANCE)
+    }
+
+    /// BackpackBlock.canEntityDestroy: nothing destroys a placed backpack with the everlasting upgrade.
+    fn can_entity_destroy(
+        &self,
+        host: &dyn Host,
+        event: &mut mod_api::CanEntityDestroyEvent,
+    ) -> Option<bool> {
+        let level = event.entity.level(host)?;
+        let st = storage::read_be(host, level, [event.pos.x, event.pos.y, event.pos.z])?;
+        everlasting::has(&st).then_some(false)
+    }
 }
 
 /// The placed backpack's block entity: the declared container (one slot, no screen) holds the backpack.
@@ -1425,6 +1448,15 @@ impl Hooks for Mod {
         {
             jukebox::mob_starts(host, event.entity, u64::from(event.entity));
         }
+        // EverlastingBackpackItemEntity: a dropped backpack with the upgrade can't be hurt.
+        if host
+            .item_entity(entity)
+            .and_then(|i| i.with_stack(&*host, |v| v.project()).flatten())
+            .is_some_and(|s| everlasting::has(&s))
+        {
+            entity.set_invulnerable(host, true);
+            entity.add_tag(host, everlasting::TAG);
+        }
         if event.loaded_from_disk {
             return Flow::Continue;
         }
@@ -1659,6 +1691,37 @@ impl Hooks for Mod {
             storage::broken(host, player, level, event.pos);
         }
         Flow::Continue
+    }
+
+    /// This mod follows its dropped everlasting backpacks' ticks.
+    fn entity_tick_listened(
+        &self,
+        _host: HostSide<'_>,
+        event: &mut mod_api::EntityTickListenedEvent,
+    ) {
+        event.listened = true;
+    }
+
+    /// EverlastingBackpackItemEntity.tick: a dropped everlasting backpack rises out of water and lava,
+    /// then hangs where it surfaced.
+    fn entity_tick_pre(&self, host: HostSide<'_>, event: &mut mod_api::EntityTickPreEvent<'_>) {
+        let HostSide::Server(host) = host else {
+            return;
+        };
+        for (&id, &kind) in event.entities.iter().zip(event.kinds) {
+            if kind == "minecraft:item"
+                && let Some(entity) = host.entity(id)
+            {
+                everlasting::float(host, entity);
+            }
+        }
+    }
+
+    /// EverlastingBackpackItemEntity: the dropped backpack never despawns; each expiry gives it more life.
+    fn item_expire(&self, _host: &mut dyn ServerHost, event: &mut mod_api::ItemExpireEvent<'_>) {
+        if everlasting::has(event.stack) {
+            event.extra_life = everlasting::EXTRA_LIFE;
+        }
     }
 
     /// ToolSwapperUpgradeWrapper.onAttackEntity: the best weapon the backpack holds goes into the hand.

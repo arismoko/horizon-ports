@@ -22,9 +22,10 @@ What it does:
 Differences from the original:
 
 - The original's own screen (tabs, memory and no-sort slots) is a chest menu here; its sort and page buttons sit at the two ends of the bottom control row, and the sort button position setting swaps them or hides sort.
-- The inception and everlasting upgrades sit in their slot and do nothing yet (and the anvil upgrade, see below); the storage network blocks do not work yet.
+- The inception upgrade sits in its slot and does nothing yet (and the anvil upgrade, see below); the storage network blocks do not work yet.
 - The compression upgrade weighs one crafting recipe per grid where the original weighs every matching one, and a slot's shown count stops at 2147483647. It cannot go in beside a compacting upgrade, as in the original.
 - The stonecutter upgrade holds an input stack and lists its stonecutting recipes, five a row and three rows a page; the smithing upgrade holds template, base and addition and shows the smithing result. Both are chest-menu views, not the original's slot tabs, and take whole stacks from your inventory.
+- A dropped backpack with the everlasting upgrade can't be hurt, never despawns and rises out of water and lava; the placed one resists explosions like bedrock and no mob breaks it. It does not survive the void and has no sparkle: the game gives mods no hook before the void removes an item and no way to look up a particle at run time. One per storage.
 - Infinity upgrades show each filled slot as 2147483647 and never run out; only the storage menu fills an empty slot (with a stack of one), pipes and automation insert nothing, and sorting does nothing. Only players with the upgrade's permission level (2 for the admin one) can fill a slot or remove the upgrade, or break or pick up the placed backpack. No other upgrade fits beside it.
 - The anvil upgrade does nothing yet: it waits on sunrise#4592 (opening a real anvil from an item, with vanilla's result, cost and naming).
 - The advanced tool swapper does not swap tools when you right-click a block or entity (stripping, shearing, flattening): the game gives mods no way to ask whether a tool works on a block (sunrise#5099). Weapons are ranked by their main-hand attack damage modifiers and the item tags `minecraft:swords` and `minecraft:axes`.
