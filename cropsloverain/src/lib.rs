@@ -47,7 +47,8 @@ fn settings() -> Config {
 /// How many positions one level may keep queued between its random ticks and the end of the tick.
 const MAX_QUEUED: usize = 65_536;
 
-type Queue = Vec<(&'static str, [i32; 3])>;
+/// A remembered block: its dimension, its position, and whether it grows whatever the weather.
+type Queue = Vec<(&'static str, [i32; 3], bool)>;
 
 fn queue() -> MutexGuard<'static, Queue> {
     static QUEUE: Mutex<Queue> = Mutex::new(Vec::new());
@@ -56,22 +57,25 @@ fn queue() -> MutexGuard<'static, Queue> {
         .expect("the growth queue lock is never held across a panic")
 }
 
-fn enqueue(dimension: &'static str, pos: [i32; 3]) {
+fn enqueue(dimension: &'static str, pos: [i32; 3], always: bool) {
     let mut queue = queue();
     if queue.len() < MAX_QUEUED {
-        queue.push((dimension, pos));
+        queue.push((dimension, pos, always));
     }
 }
 
 /// A block that grows faster in the rain: it remembers the random tick, and under the debug
 /// switch (`debugMode` and `haltRegularGrowth`) takes the game's own growth away.
-pub struct Rain;
+pub struct Rain {
+    /// A bamboo sapling grows on every random tick, rain or not, as in the original.
+    always: bool,
+}
 
 #[mod_api::sunrise_part]
 impl BlockPart for Rain {
     fn random_tick(&self, _level: &mut dyn LevelWriteHost, event: &mut RandomTickEvent) -> Flow {
         let p = event.pos;
-        enqueue(event.dimension.key().id(), [p.x, p.y, p.z]);
+        enqueue(event.dimension.key().id(), [p.x, p.y, p.z], self.always);
         if settings().halts_regular_growth() {
             Flow::Cancel
         } else {
@@ -411,16 +415,26 @@ pub fn grow_queued(host: &mut dyn ServerHost, level: LevelRef) {
     let Some(dimension) = level.dimension().id(&*host) else {
         return;
     };
+    let config = settings();
+    // Only rain makes a roll succeed, so in dry weather, or with the master switch off, only the
+    // blocks that grow whatever the weather are looked at.
+    let wet = config.use_rain_growth_speed && level.is_raining(&*host).unwrap_or(false);
     let waiting: Vec<[i32; 3]> = {
         let mut queue = queue();
-        let (ours, rest): (Queue, Queue) = queue.drain(..).partition(|(d, _)| *d == dimension);
+        let (ours, rest): (Queue, Queue) = queue.drain(..).partition(|(d, _, _)| *d == dimension);
         *queue = rest;
-        ours.into_iter().map(|(_, pos)| pos).collect()
+        ours.into_iter()
+            .filter(|(_, _, always)| wet || *always)
+            .map(|(_, pos, _)| pos)
+            .collect()
     };
+    if waiting.is_empty() {
+        return;
+    }
     let mut grower = Grower {
         host,
         level,
-        config: settings(),
+        config,
     };
     for pos in waiting {
         grower.grow(pos);
@@ -428,17 +442,18 @@ pub fn grow_queued(host: &mut dyn ServerHost, level: LevelRef) {
 }
 
 fn declare(r: &mut dyn Registrar) {
-    r.block_part_tag("minecraft:crops", Rain);
-    r.block_part_tag("minecraft:saplings", Rain);
+    r.block_part_tag("minecraft:crops", Rain { always: false });
+    r.block_part_tag("minecraft:saplings", Rain { always: false });
     for id in [
         "minecraft:cocoa",
         "minecraft:sweet_berry_bush",
         "minecraft:sugar_cane",
-        "minecraft:bamboo_sapling",
     ] {
         let block = r.block_key(id);
-        r.block_part(block, Rain);
+        r.block_part(block, Rain { always: false });
     }
+    let sapling = r.block_key("minecraft:bamboo_sapling");
+    r.block_part(sapling, Rain { always: true });
 }
 
 #[derive(Default)]
@@ -457,7 +472,7 @@ impl Hooks for Mod {
             return;
         }
         let p = event.pos;
-        enqueue(event.dimension.key().id(), [p.x, p.y, p.z]);
+        enqueue(event.dimension.key().id(), [p.x, p.y, p.z], false);
         if settings().halts_regular_growth() {
             *event.result = TriState::False;
         }
