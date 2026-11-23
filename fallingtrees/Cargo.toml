@@ -1,6 +1,6 @@
 [package]
 name = "mod-fallingtrees"
-version = "0.5.0"
+version = "0.5.1"
 edition = "2024"
 license = "GPL-3.0-only"
 description = "Falling Trees for Sunrise: chop a tree's log with an axe and the whole tree comes down"
