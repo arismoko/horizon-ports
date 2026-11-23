@@ -1435,6 +1435,16 @@ struct Mod {
 
 #[mod_api::sunrise_mod]
 impl Hooks for Mod {
+    fn render_level_stage(
+        &self,
+        host: &dyn ClientHost,
+        event: &mut mod_api::RenderLevelStageEvent<'_>,
+    ) {
+        if event.stage == mod_api::RenderLevelStage::AfterLevel {
+            network::draw_links(host, event.view, &mut *event.draw);
+        }
+    }
+
     fn block_changed(
         &self,
         _level: &dyn mod_api::LevelHost,

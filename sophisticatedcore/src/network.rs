@@ -197,6 +197,7 @@ impl BlockEntityPart for ControllerEntity {
         event: &mut mod_api::BlockEntitySubmitEvent<'_>,
     ) {
         debug_view(host, event.pos, &mut *event.draw);
+        note_link_view(host, event.pos, &mut *event.draw);
     }
 }
 
@@ -816,6 +817,111 @@ pub fn deposit(
     moved
 }
 
+/// `DyeColor.LIGHT_BLUE.getTextureDiffuseColors()` and `LIME`'s, as opaque ARGB: the controller the tool holds, and
+/// the blocks linked to a controller.
+const SELECTED_COLOR: u32 = 0xFF66_99D8;
+const LINKED_COLOR: u32 = 0xFF80_CC1A;
+/// The controllers drawn with the storage tool in Link mode, with the game time they were last seen at and whether
+/// the tool holds them. Only the controller's renderer knows it is in view, and only the level stage can draw lines.
+static LINK_VIEW: LazyLock<Mutex<HashMap<(LevelRef, [i32; 3]), (i64, bool)>>> =
+    LazyLock::new(|| Mutex::new(HashMap::new()));
+/// How many ticks a controller stays drawn after its renderer last ran (the stage may run before the renderer).
+const LINK_VIEW_TTL: i64 = 2;
+
+/// The twelve edges of the box `min`..`max`.
+fn box_edges(min: [f64; 3], max: [f64; 3]) -> Vec<([f64; 3], [f64; 3])> {
+    let corner = |i: usize| {
+        [
+            if i & 1 == 0 { min[0] } else { max[0] },
+            if i & 2 == 0 { min[1] } else { max[1] },
+            if i & 4 == 0 { min[2] } else { max[2] },
+        ]
+    };
+    (0..8usize)
+        .flat_map(|i| (0..3).map(move |b| (i, i | (1 << b))))
+        .filter(|(i, j)| i != j)
+        .map(|(i, j)| (corner(i), corner(j)))
+        .collect()
+}
+
+/// What the storage tool in Link mode shows (ControllerRenderer): an outline of the controller the tool holds, and
+/// for each block linked to a controller a line from the controller's centre to its own and its outline. Shapes are
+/// taken as whole blocks.
+fn link_geometry(
+    controller: [i32; 3],
+    selected: bool,
+    linked: &[[i32; 3]],
+) -> Vec<([f64; 3], [f64; 3], u32)> {
+    let at = |p: [i32; 3]| [f64::from(p[0]), f64::from(p[1]), f64::from(p[2])];
+    let outline = |p: [i32; 3], color: u32| {
+        let min = at(p);
+        box_edges(min, [min[0] + 1.0, min[1] + 1.0, min[2] + 1.0])
+            .into_iter()
+            .map(move |(a, b)| (a, b, color))
+    };
+    let mut out = Vec::new();
+    if selected {
+        out.extend(outline(controller, SELECTED_COLOR));
+    }
+    for &p in linked {
+        let centre = |p: [i32; 3]| at(p).map(|v| v + 0.5);
+        out.push((centre(controller), centre(p), LINKED_COLOR));
+        out.extend(outline(p, LINKED_COLOR));
+    }
+    out
+}
+
+/// Notes that the controller at `pos` is in view while the player holds the storage tool in Link mode.
+fn note_link_view(host: &dyn ClientHost, pos: [i32; 3], draw: &mut dyn BlockEntityDrawContext) {
+    let Some(local) = host.local_player() else {
+        return;
+    };
+    let Some(held) = crate::render::held_stack(host) else {
+        return;
+    };
+    let host: &dyn Host = host;
+    if crate::contents::item_id(host, &held) != crate::tool::TOOL
+        || crate::tool::mode(&held) != crate::tool::Mode::Link
+    {
+        return;
+    }
+    let Some(dim) = local.dimension(host) else {
+        return;
+    };
+    let Some(level) = host.level(&dim.to_string()) else {
+        return;
+    };
+    let selected = crate::tool::controller_link(&held) == Some(pos);
+    lock(&LINK_VIEW).insert((level, pos), (draw.game_time(), selected));
+}
+
+/// The link lines and outlines of the controllers seen lately, over the world (the original's line type has no
+/// depth test).
+pub fn draw_links(
+    host: &dyn ClientHost,
+    view: &mod_api::WorldRenderView,
+    draw: &mut dyn mod_api::WorldDrawContext,
+) {
+    let host: &dyn Host = host;
+    let seen: Vec<_> = {
+        let mut m = lock(&LINK_VIEW);
+        m.retain(|_, (t, _)| view.game_time.saturating_sub(*t) <= LINK_VIEW_TTL);
+        m.iter().map(|(k, v)| (*k, v.1)).collect()
+    };
+    let lines: Vec<mod_api::WorldLine> = seen
+        .into_iter()
+        .flat_map(|((level, pos), selected)| {
+            link_geometry(pos, selected, &linked_to(host, level, pos))
+        })
+        .map(|(a, b, color)| {
+            mod_api::WorldLine::new(a, b, color, 2.0, mod_api::WorldDepth::ThroughWalls)
+        })
+        .collect();
+    if !lines.is_empty() {
+        let _ = draw.lines(&lines);
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -829,6 +935,29 @@ mod tests {
     }
 
     const S: Role = Role::Storage { linked: None };
+
+    #[test]
+    fn a_box_has_twelve_edges_each_along_one_axis() {
+        let e = box_edges([0.0; 3], [1.0; 3]);
+        assert_eq!(e.len(), 12);
+        for (a, b) in e {
+            let differing = (0..3).filter(|&i| a[i] != b[i]).count();
+            assert_eq!(differing, 1);
+        }
+    }
+
+    #[test]
+    fn links_show_a_line_and_an_outline_each_and_the_held_controller_an_outline() {
+        let none = link_geometry(C, false, &[]);
+        assert!(none.is_empty());
+        let held = link_geometry(C, true, &[]);
+        assert_eq!(held.len(), 12);
+        assert!(held.iter().all(|g| g.2 == SELECTED_COLOR));
+        let linked = link_geometry(C, false, &[[3, 0, 0], [0, 2, 0]]);
+        assert_eq!(linked.len(), 2 * 13);
+        let line = linked[0];
+        assert_eq!((line.0, line.1), ([0.5; 3], [3.5, 0.5, 0.5]));
+    }
 
     #[test]
     fn storages_conduct_outwards_from_the_controller() {
