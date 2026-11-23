@@ -1,6 +1,4 @@
 {
   "sprite": "sophisticatedcore:block/xp_still",
-  "tint": 4294967295,
-  "density": 800,
-  "viscosity": 1500
+  "tint": 4294967295
 }
