@@ -6,7 +6,7 @@
 //! `direction`, `level`, `levelsToStore`, `levelsToTake` and `mendItems` for the XP pump.
 //!
 //! Experience is held in the tank as this mod's own `sophisticatedcore:xp_still` fluid, 20 mB to the point
-//! (XpHelper.RATIO). It has no block or bucket form.
+//! (XpHelper.RATIO). It is a world fluid with a bucket (`sophisticatedcore:xp_bucket`), as the original registers it.
 
 use std::collections::{HashMap, VecDeque};
 use std::sync::Mutex;

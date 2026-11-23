@@ -1120,7 +1120,8 @@ impl Hooks for Mod {
         let backpacks = has("sophisticatedbackpacks");
         let storage_loaded = has("sophisticatedstorage");
         // Experience, as the original's `xp_still`: a fluid with no block, flowing form or bucket.
-        r.declare_fluid("xp_still");
+        // The original's defaults: tick delay 5, drop-off 1, slope search 4, no source conversion, a bucket.
+        r.declare_world_fluid("xp_still", mod_api::WorldFluid::default());
         let keys = crafting::keys(r, backpacks, storage_loaded);
         r.register_crafting_recipe_serializer(
             UPGRADE_NEXT_TIER,
@@ -1645,6 +1646,19 @@ impl Hooks for Mod {
             return Flow::Cancel;
         }
         Flow::Continue
+    }
+
+    /// The experience fluid's sprites: the still one on the surface, the flowing one on its sides.
+    fn register_fluid_models(
+        &self,
+        _: &RegistrationContext,
+        event: &mut mod_api::RegisterFluidModelsEvent<'_>,
+    ) {
+        let mut m = mod_api::FluidModel::default();
+        m.fluid = "sophisticatedcore:xp_still".into();
+        m.still = Some("sophisticatedcore:block/xp_still".into());
+        m.flowing = Some("sophisticatedcore:block/xp_flowing".into());
+        event.register(m);
     }
 
     /// The jar's creative tab lists every wood of a chest or barrel (WoodStorageBlockBase.addCreativeTabItems); the
