@@ -18,6 +18,10 @@ const MAX_DIFFICULTY: i32 = 3;
 const MAX_LOCAL_DIFFICULTY: f32 = 6.75;
 pub const TIER_TAG: &str = "sophisticatedbackpacks:backpack_tier_";
 pub const DIFFICULTY_TAG: &str = "sophisticatedbackpacks:backpack_difficulty_";
+/// Set at spawn on a bearer that is owed its potion effects (`buffWithPotionEffects`); the number is its difficulty.
+pub const EFFECTS_TAG: &str = "sophisticatedbackpacks:backpack_effects_";
+/// Set once the effects were given, so a bearer entering a level again isn't buffed twice.
+pub const EFFECTS_DONE_TAG: &str = "sophisticatedbackpacks:backpack_effects_given";
 const HEALTH_BONUS: &str = "sophisticatedbackpacks:backpack_bearer_health_bonus";
 
 /// The armour tiers, rarest first: weight and item suffix.
@@ -76,6 +80,37 @@ const ADDITIONS: [Addition; 6] = [
         armour: [(3, 5), (3, 5), (3, 5)],
     },
 ];
+
+/// `APPLICABLE_EFFECTS`: the effects a bearer may get, with the highest amplifier each allows. Resistance and
+/// regeneration are one entry that picks between them.
+const EFFECTS: [(&[&str], i32); 6] = [
+    (&["minecraft:resistance", "minecraft:regeneration"], 1),
+    (&["minecraft:fire_resistance"], i32::MAX),
+    (&["minecraft:absorption"], i32::MAX),
+    (&["minecraft:health_boost"], i32::MAX),
+    (&["minecraft:speed"], i32::MAX),
+    (&["minecraft:strength"], i32::MAX),
+];
+
+/// How long a bearer's effects last (`30 * 60 * 20` ticks).
+pub const EFFECT_TICKS: i32 = 36_000;
+
+/// `applyPotions`: `difficulty + 2` of the effects (each at most once), each with an amplifier between the tier's
+/// minimum difficulty and a roll up to the difficulty, capped by what the effect allows. (effect id, amplifier)
+pub fn effects(entity: u32, pos: [f64; 3], difficulty: i32, min_difficulty: i32) -> Vec<(&'static str, i32)> {
+    let mut dice = Dice::seeded(&[u64::from(entity), pos[0].to_bits(), pos[2].to_bits()], "effects");
+    let mut left: Vec<usize> = (0..EFFECTS.len()).collect();
+    let mut out = Vec::new();
+    for _ in 0..(difficulty + 2).max(0) {
+        if left.is_empty() {
+            break;
+        }
+        let (names, max) = EFFECTS[left.remove(dice.below(left.len() as u64) as usize)];
+        let amplifier = min_difficulty.max(dice.below(difficulty.max(0) as u64 + 1) as i32).min(max);
+        out.push((names[dice.below(names.len() as u64) as usize], amplifier));
+    }
+    out
+}
 
 /// How much a tier raises the drop chance (`dropChanceMultiplier`), leather to netherite.
 const DROP_MULTIPLIER: [f64; 6] = [1.0, 1.25, 1.5, 3.0, 4.5, 6.0];
@@ -260,6 +295,42 @@ pub fn backpack(host: &dyn Host, tier: usize) -> Option<ItemStack> {
 
 use crate::storage;
 
+/// Tagged on a bearer that spawned with a jukebox upgrade.
+pub const JUKEBOX_TAG: &str = "sophisticatedbackpacks:jukebox";
+
+/// `addJukeboxUpgradeAndRandomDisc`: one spawn in four (`play_jukebox`) puts a jukebox upgrade in the backpack's
+/// first upgrade slot, advanced one time in four, with a random disc not on the block list: one in the basic
+/// upgrade, `1 + rnd(slots / 3)` in the advanced. True when it did.
+pub fn add_jukebox(host: &dyn Host, pack: &mut ItemStack, entity_key: &[u64], blocked: &[String]) -> bool {
+    let mut dice = Dice::seeded(entity_key, "jukebox");
+    if dice.below(4) != 0 {
+        return false;
+    }
+    let Some(kind) = storage_items::by_item(&contents::item_id(host, pack)) else { return false };
+    if kind.upgrade_count() == 0 {
+        return false;
+    }
+    let advanced = dice.unit() < 0.25;
+    let id = if advanced { "sophisticatedbackpacks:advanced_jukebox_upgrade" } else { "sophisticatedbackpacks:jukebox_upgrade" };
+    let Some(mut up) = storage::new_stack(host, id) else { return false };
+    let Some(info) = upgrades::of(host, &up) else { return false };
+    let discs = crate::jukebox::mob_discs(blocked);
+    if discs.is_empty() {
+        return false;
+    }
+    let slots = upgrades::disc_slots(&info);
+    let count = if advanced { dice.below((slots / 3).max(1) as u64) as usize + 1 } else { 1 };
+    let mut deck = crate::jukebox::Deck::read(host, &up, slots);
+    for slot in deck.discs.iter_mut().take(count) {
+        *slot = storage::new_stack(host, &discs[dice.below(discs.len() as u64) as usize]);
+    }
+    deck.write(host, &mut up);
+    let mut c = Contents::read(host, pack, kind);
+    c.upgrades[0] = Some(up);
+    c.write(host, pack, kind);
+    true
+}
+
 /// The tier and difficulty a mob was tagged with at spawn.
 pub fn tags_of(host: &dyn Host, entity: mod_api::EntityRef) -> Option<(usize, i32)> {
     let tags = entity.tags(host)?;
@@ -268,6 +339,17 @@ pub fn tags_of(host: &dyn Host, entity: mod_api::EntityRef) -> Option<(usize, i3
         .find(|d| tags.contains(&format!("{DIFFICULTY_TAG}{d}")))
         .unwrap_or(0);
     Some((tier, difficulty))
+}
+
+/// The difficulty a bearer was tagged to receive potion effects at, if it still owes them.
+pub fn effects_owed(host: &dyn Host, entity: mod_api::EntityRef) -> Option<(i32, i32)> {
+    let tags = entity.tags(host)?;
+    if tags.contains(EFFECTS_DONE_TAG) {
+        return None;
+    }
+    let difficulty = (0..=MAX_DIFFICULTY).find(|d| tags.contains(&format!("{EFFECTS_TAG}{d}")))?;
+    let tier = (0..6).find(|t| tags.contains(&format!("{TIER_TAG}{t}")))?;
+    Some((difficulty, ADDITIONS.iter().find(|a| a.tier == tier)?.min_difficulty))
 }
 
 /// A drop of a backpack of `tier`, with loot of the mob's kind rolled in: one roll per difficulty level (nothing at
@@ -374,6 +456,25 @@ mod tests {
         assert!(!drops(0, 0, 0.5, 0.15, 0.5));
         assert!(drops(0, 1, 0.5, 0.15, 0.64));
         assert!(drops(5, 0, 0.5, 0.15, 0.99));
+    }
+
+    #[test]
+    fn effects_are_distinct_and_capped() {
+        for e in 0..100 {
+            let got = effects(e, [3.0, 70.0, 9.0], 3, 1);
+            assert_eq!(got.len(), 5);
+            let mut kinds: Vec<&str> = got.iter().map(|(n, _)| *n).collect();
+            kinds.sort_unstable();
+            kinds.dedup();
+            assert_eq!(kinds.len(), 5, "each entry once");
+            for (name, amp) in got {
+                assert!((1..=3).contains(&amp));
+                if name == "minecraft:resistance" || name == "minecraft:regeneration" {
+                    assert_eq!(amp, 1, "capped at amplifier 1");
+                }
+            }
+        }
+        assert_eq!(effects(1, [0.0; 3], 0, 0).len(), 2);
     }
 
     #[test]

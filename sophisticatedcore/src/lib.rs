@@ -26,6 +26,7 @@
 
 mod contents;
 mod crafting;
+mod jukebox;
 mod menu;
 mod mobs;
 mod options;
@@ -34,6 +35,7 @@ mod storage;
 mod storage_items;
 mod ticking;
 mod upgrades;
+mod worn;
 
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -41,7 +43,7 @@ use std::sync::{Arc, Mutex};
 
 use mod_api::serde_json::json;
 use mod_api::{
-    BlockEntityOnLoadEvent, EquipmentSlot, FinalizeSpawnEvent, Identifier, LivingDropsEvent, LivingRef, SpawnReason, BlockEntityPart, BlockPart, BlockSide, BlockState, BlockUpdateFlags, BreakBlockEvent,
+    BlockEntityOnLoadEvent, EntityJoinLevelEvent, EquipmentSlot, FinalizeSpawnEvent, Identifier, LivingDropsEvent, LivingRef, SpawnReason, BlockEntityPart, BlockPart, BlockSide, BlockState, BlockUpdateFlags, BreakBlockEvent,
     BuildCreativeModeTabContentsEvent, CanFitInsideContainerItemsEvent, ClientHost, DataLoadContext, Flow, Hand, Host,
     HostSide, Hooks, IPayloadContext, IPayloadHandler, ITEMS, InputKeyEvent, InteractionResult, ItemPart,
     ItemPickedUpPostEvent, ItemResource, ItemStack, KeyAction, KeyRegistration, LeftClickBlockEvent,
@@ -64,6 +66,7 @@ pub const STORAGE_DYE: &str = "sophisticatedcore:storage_dye";
 const OPEN: &str = "sophisticatedcore:open";
 const KEY: &str = "open_backpack";
 const ACT: &str = "sophisticatedcore:action";
+
 
 /// The keys besides Open Backpack (`KeybindHandler`): id, label, the default key, the code sent to the server.
 /// The original binds Sort to the middle mouse button, Inventory Interaction to C, and the first two upgrade toggles to
@@ -123,6 +126,8 @@ struct Shared {
     placed: storage::Placed,
     /// A player's last limited barrel deposit (tick, position): a second within 10 ticks deposits everything.
     deposits: Mutex<HashMap<u128, (u64, [i32; 3])>>,
+    /// Who wears a backpack, as the clients were told.
+    told: worn::Told,
 }
 
 impl Shared {
@@ -404,6 +409,15 @@ impl IPayloadHandler for OpenHandler {
         if let Ok(p) = context.player() {
             self.0.queue(Job::Key(p.uuid()));
         }
+        Ok(())
+    }
+}
+
+struct ViewHandler;
+
+impl IPayloadHandler for ViewHandler {
+    fn handle(&self, payload: PayloadBytes, _context: &mut dyn IPayloadContext) -> Result<(), PayloadHandleError> {
+        worn::heard(&payload.0);
         Ok(())
     }
 }
@@ -754,6 +768,7 @@ impl Hooks for Mod {
         r.register_crafting_recipe_serializer(UPGRADE_NEXT_TIER, crafting::UpgradeNextTier { keys: keys.clone() });
         r.register_crafting_recipe_serializer(STORAGE_DYE, crafting::StorageDye { keys });
         let mut blocks = Vec::new();
+        let mut tiers = Vec::new();
         for s in storage_items::BACKPACKS.iter().filter(|s| has(storage_items::namespace(s))) {
             let item = r.item_key(s.id);
             r.item_part(item, StorageItemPart(self.shared.clone()));
@@ -762,8 +777,10 @@ impl Hooks for Mod {
                 r.block_part(key, StorageBlockPart(self.shared.clone()));
                 r.block_container(&key, ModContainer { slots: 1, ..Default::default() });
                 blocks.push(b);
+                tiers.push((s.tier, key));
             }
         }
+        worn::set_blocks(tiers);
         if !blocks.is_empty() {
             let kind = r.block_entity_type("backpack").blocks(&blocks).build();
             if let Err(e) = r.block_entity_part(&kind, StorageBlockEntity) {
@@ -817,7 +834,8 @@ impl Hooks for Mod {
             .registrar("1")
             .optional()
             .play_to_server(PayloadId(OPEN.into()), Arc::new(OpenHandler(self.shared.clone())))
-            .play_to_server(PayloadId(ACT.into()), Arc::new(ActionHandler(self.shared.clone())));
+            .play_to_server(PayloadId(ACT.into()), Arc::new(ActionHandler(self.shared.clone())))
+            .play_to_client(PayloadId(worn::VIEW.into()), Some(Arc::new(ViewHandler)));
     }
 
     /// `EntityBackpackAdditionHandler.addBackpack`: a new monster of a listed kind may wear a backpack, with armour
@@ -840,7 +858,12 @@ impl Hooks for Mod {
             return Flow::Continue;
         };
         let (mob, edits) = (event.mob, event.edits);
-        let Some(pack) = mobs::backpack(host, wearer.tier) else { return Flow::Continue };
+        let Some(mut pack) = mobs::backpack(host, wearer.tier) else { return Flow::Continue };
+        let jukebox = opts.mob_jukebox
+            && mobs::add_jukebox(host, &mut pack, &[event.pos[0].to_bits(), event.pos[1].to_bits(), event.pos[2].to_bits()], &options::Lists::get(host).disc_block);
+        if jukebox {
+            let _ = edits.add_tag(mob, mobs::JUKEBOX_TAG);
+        }
         let _ = edits.set_equipment(mob, EquipmentSlot::Chest, Some(pack));
         for (slot, id) in [EquipmentSlot::Head, EquipmentSlot::Legs, EquipmentSlot::Feet].into_iter().zip(&wearer.armour) {
             if let Some(stack) = id.as_deref().and_then(|id| mobs::armour_stack(host, id)) {
@@ -855,8 +878,32 @@ impl Hooks for Mod {
             let _ = edits.add_attribute_modifier(mob, &id, bonus);
         }
         let difficulty = if opts.mob_loot { wearer.difficulty } else { 0 };
+        if opts.mob_potions {
+            let _ = edits.add_tag(mob, &format!("{}{}", mobs::EFFECTS_TAG, wearer.difficulty));
+        }
         let _ = edits.add_tag(mob, &format!("{}{}", mobs::TIER_TAG, wearer.tier));
         let _ = edits.add_tag(mob, &format!("{}{difficulty}", mobs::DIFFICULTY_TAG));
+        Flow::Continue
+    }
+
+    /// `applyPotions`: a bearer new to a level is given its effects (they need the live mob, which the spawn hook
+    /// doesn't have).
+    fn entity_join_level(&self, host: &mut dyn ServerHost, event: &mut EntityJoinLevelEvent<'_>) -> Flow {
+        let Some(entity) = host.entity(event.entity) else { return Flow::Continue };
+        if entity.tags(&*host).is_some_and(|t| t.contains(mobs::JUKEBOX_TAG)) {
+            jukebox::mob_starts(host, event.entity, u64::from(event.entity));
+        }
+        if event.loaded_from_disk {
+            return Flow::Continue;
+        }
+        let Some((difficulty, min_difficulty)) = mobs::effects_owed(&*host, entity) else { return Flow::Continue };
+        let living = LivingRef::new(entity);
+        for (id, amplifier) in mobs::effects(event.entity, event.pos, difficulty, min_difficulty) {
+            if let Some(key) = host.effect_key(id) {
+                living.add_effect(host, &mod_api::ActiveEffect::new(key, mobs::EFFECT_TICKS, amplifier, false, true, true));
+            }
+        }
+        entity.add_tag(host, mobs::EFFECTS_DONE_TAG);
         Flow::Continue
     }
 
@@ -882,6 +929,20 @@ impl Hooks for Mod {
             event.drops.push(drop);
         }
         Flow::Continue
+    }
+
+    /// The layer that draws a worn backpack on its bearer.
+    fn register_entity_layers(&self, _: &RegistrationContext, event: &mut mod_api::RegisterEntityLayersEvent<'_>) {
+        worn::register(event.layers);
+    }
+
+    /// A client that starts tracking a bearer is told it wears a backpack.
+    fn player_start_tracking(&self, host: &mut dyn ServerHost, event: &mut mod_api::PlayerStartTrackingEvent<'_>) {
+        let tier = if event.kind == "minecraft:player" { self.shared.told.of(event.entity) } else { worn::mob_tier(&*host, event.entity) };
+        // Always told: a client's note of a dead bearer must not outlive its entity id.
+        if let Some(p) = host.player(event.player) {
+            let _ = p.send_payload(host, &PayloadId(worn::VIEW.into()), worn::encode(event.entity, tier));
+        }
     }
 
     fn client_tick_post(&self, host: &mut dyn ClientHost, _: &mut mod_api::ClientTickPostEvent) {
@@ -930,11 +991,15 @@ impl Hooks for Mod {
         if opts.slowness && n.is_multiple_of(BACKPACK_CHECK) {
             self.shared.too_many(host, &players, &opts);
         }
+        if n.is_multiple_of(4) {
+            self.shared.told.sync(host, &players);
+        }
         for uuid in players {
             let ids = ticking::tick(host, uuid, n);
             self.shared.refresh_ids(host, &ids);
         }
         storage::tick(host, &self.shared.placed, n);
+        jukebox::tick(host, n);
     }
 
     /// StorageTierUpgradeItem.onItemUseFirst and the packing tape: before the block's own use (a vanilla chest would

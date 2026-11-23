@@ -19,6 +19,8 @@ pub enum Kind {
     Deposit,
     Refill,
     Crafting,
+    /// The jukebox upgrades: music discs played from the storage.
+    Jukebox,
     /// HopperUpgradeWrapper on a placed storage: pulls from the inventory above, pushes to the one below.
     Hopper,
     Stack(f64),
@@ -57,6 +59,7 @@ pub fn upgrade(id: &str) -> Option<Upgrade> {
         "deposit_upgrade" => u(Kind::Deposit, f, false),
         "refill_upgrade" => u(Kind::Refill, if advanced { 12 } else { 6 }, true),
         "crafting_upgrade" => u(Kind::Crafting, 0, false),
+        "jukebox_upgrade" => u(Kind::Jukebox, 0, false),
         "hopper_upgrade" => u(Kind::Hopper, 0, false),
         "stack_upgrade_starter_tier" => u(Kind::Stack(1.5), 0, false),
         "stack_upgrade_tier_1" => u(Kind::Stack(2.0), 0, false),
@@ -197,7 +200,7 @@ pub fn set_grid(host: &dyn Host, upgrade: &mut ItemStack, g: &[Option<ItemStack>
 
 /// A copy of `c` without the keys a settings view writes (so two upgrades compare by kind).
 pub fn _settings_keys(c: &mut Compound) {
-    for k in ["filters", "isAllowList", "primaryMatch", "shouldVoidOverflow", "pickupItems", "pickupXp", "craftingInventory"] {
+    for k in ["filters", "isAllowList", "primaryMatch", "shouldVoidOverflow", "pickupItems", "pickupXp", "craftingInventory", "discInventory", "isPlaying", "shuffle", "repeatMode", "discSlotActive", "discPlayed"] {
         c.del(k);
     }
 }
@@ -222,6 +225,12 @@ pub fn use_remainder(host: &dyn Host, stack: &ItemStack) -> Option<ItemStack> {
     let t = own.or_else(|| host.item_default_component(stack.item(), "minecraft:use_remainder"))?;
     let Tag::Compound(c) = t else { return None };
     ItemStack::from_nbt(host, &c)
+}
+
+/// Disc slots of a jukebox upgrade (the basic one holds one, the advanced one twelve: `advancedJukeboxUpgrade`'s
+/// default).
+pub fn disc_slots(u: &Upgrade) -> usize {
+    if u.advanced { 12 } else { 1 }
 }
 
 #[cfg(test)]

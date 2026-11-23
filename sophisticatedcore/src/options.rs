@@ -24,8 +24,10 @@ pub mod key {
     pub const MOB_BACKPACK_CHANCE: &str = "mob_backpack_chance";
     pub const MOB_BACKPACK_LOOT: &str = "mob_backpack_loot";
     pub const MOB_BUFF_HEALTH: &str = "mob_backpack_buff_health";
+    pub const MOB_POTIONS: &str = "mob_backpack_potion_effects";
     pub const MOB_ARMOUR: &str = "mob_backpack_armour";
     pub const BACKPACK_DROP_CHANCE: &str = "mob_backpack_drop_chance";
+    pub const MOB_JUKEBOX: &str = "mob_backpack_plays_jukebox";
     pub const LOOTING_CHANCE: &str = "mob_backpack_looting_chance";
 }
 
@@ -61,8 +63,10 @@ pub const SPECS: &[(&str, Kind)] = &[
     (key::MOB_BACKPACK_CHANCE, Kind::Range(0.0, 1.0, 0.005, 0.01)),
     (key::MOB_BACKPACK_LOOT, Kind::Toggle(true)),
     (key::MOB_BUFF_HEALTH, Kind::Toggle(true)),
+    (key::MOB_POTIONS, Kind::Toggle(true)),
     (key::MOB_ARMOUR, Kind::Toggle(true)),
     (key::BACKPACK_DROP_CHANCE, Kind::Range(0.0, 1.0, 0.01, 0.5)),
+    (key::MOB_JUKEBOX, Kind::Toggle(true)),
     (key::LOOTING_CHANCE, Kind::Range(0.0, 0.3, 0.01, 0.15)),
 ];
 
@@ -81,6 +85,8 @@ pub struct Options {
     pub mob_chance: f64,
     pub mob_loot: bool,
     pub mob_health: bool,
+    pub mob_potions: bool,
+    pub mob_jukebox: bool,
     pub mob_armour: bool,
     pub drop_chance: f64,
     pub looting_chance: f64,
@@ -111,6 +117,8 @@ impl Options {
             mob_chance: number(get(key::MOB_BACKPACK_CHANCE).as_deref(), 0.01),
             mob_loot: flag(get(key::MOB_BACKPACK_LOOT).as_deref(), true),
             mob_health: flag(get(key::MOB_BUFF_HEALTH).as_deref(), true),
+            mob_potions: flag(get(key::MOB_POTIONS).as_deref(), true),
+            mob_jukebox: flag(get(key::MOB_JUKEBOX).as_deref(), true),
             mob_armour: flag(get(key::MOB_ARMOUR).as_deref(), true),
             drop_chance: number(get(key::BACKPACK_DROP_CHANCE).as_deref(), 0.5),
             looting_chance: number(get(key::LOOTING_CHANCE).as_deref(), 0.15),
@@ -342,6 +350,8 @@ pub struct Lists {
     pub non_stackable: Vec<String>,
     /// `entity|loot table` lines: which monsters may wear a backpack and what fills it.
     pub entity_loot: Vec<String>,
+    /// Discs entities with a jukebox upgrade never play (`discBlockList`).
+    pub disc_block: Vec<String>,
 }
 
 fn read_list(host: &dyn Host, file: &str, help: &str, defaults: &str) -> Vec<String> {
@@ -401,6 +411,12 @@ impl Lists {
                 "entity_loot_tables.txt",
                 "Monsters that may spawn wearing a backpack, and the loot table that fills it: entity|table.",
                 crate::mobs::DEFAULT_LOOT,
+            ),
+            disc_block: read_list(
+                host,
+                "disc_block_list.txt",
+                "Music discs that entities wearing a backpack never play.",
+                "botania:record_gaia_1\nbotania:record_gaia_2\n",
             ),
             non_stackable: read_list(
                 host,

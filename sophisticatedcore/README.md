@@ -20,8 +20,9 @@ A port of [Sophisticated Backpacks](https://github.com/Salandora/SophisticatedBa
 ## Differences from the original
 
 - The original's own screen (tabs, sort buttons, memory and no-sort slots) is a chest menu here.
-- The furnace, jukebox, tank, battery, pump, XP pump, tool swapper, stonecutter, anvil, smithing, inception, everlasting and infinity upgrades sit in their slot and do nothing yet; the filter upgrade and the storage network blocks do not work yet.
-- Backpacks are not drawn on the player's back or on the monsters wearing them, and no potion effects are given to them.
+- The furnace, tank, battery, pump, XP pump, tool swapper, stonecutter, anvil, smithing, inception, everlasting and infinity upgrades sit in their slot and do nothing yet; the filter upgrade and the storage network blocks do not work yet.
+- Worn backpacks are drawn on the body in their default colours; dyed and spawn-egg colours are not drawn. A monster's potion effects are given when it joins the level, and a creeper's blast does not strip them.
+- The jukebox upgrade plays the vanilla discs; its shuffle plays each disc once per round, and "previous" goes to the disc in the slot before.
 
 ## Building
 

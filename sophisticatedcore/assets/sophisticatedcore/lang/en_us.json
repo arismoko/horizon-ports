@@ -323,6 +323,7 @@
   "sophisticatedcore.config.mob_backpack_loot": "Mob backpacks hold loot",
   "sophisticatedcore.config.mob_backpack_buff_health": "Backpack bearers get more health",
   "sophisticatedcore.config.mob_backpack_armour": "Backpack bearers get armour",
+  "sophisticatedcore.config.mob_backpack_potion_effects": "Backpack bearers get potion effects",
   "sophisticatedcore.config.mob_backpack_drop_chance": "Chance a bearer drops its backpack",
   "sophisticatedcore.config.mob_backpack_looting_chance": "Drop chance added per looting level"
 }

@@ -10,6 +10,7 @@
 use mod_api::{Compound, Host, Identifier, ItemStack, MenuClickedEvent, MenuReplace, PlayerRef, RecipeInput, ServerHost, Tag, Text};
 
 use crate::contents::{self, Contents};
+use crate::jukebox::{self, Deck, Repeat, Source};
 use crate::places::{self, Loc};
 use crate::storage_items::{self, Family, StorageItem};
 use crate::upgrades::{self, Kind};
@@ -19,6 +20,7 @@ pub enum View {
     Main { page: usize },
     Settings { slot: usize },
     Crafting { slot: usize, selected: Option<usize> },
+    Jukebox { slot: usize },
 }
 
 #[derive(Clone, Debug)]
@@ -109,7 +111,7 @@ fn shown(host: &dyn Host, st: &ItemStack) -> Option<ItemStack> {
 }
 
 fn kind_has_view(u: &upgrades::Upgrade) -> bool {
-    u.filters > 0 || u.kind == Kind::Crafting
+    u.filters > 0 || matches!(u.kind, Kind::Crafting | Kind::Jukebox)
 }
 
 /// What the menu shows for the session's view.
@@ -192,6 +194,43 @@ pub fn render(host: &mut dyn ServerHost, s: &Session, c: &Contents) -> Vec<Optio
                 }
                 _ => {}
             }
+            out[base + 8] = Some(up.clone());
+        }
+        View::Jukebox { slot } => {
+            let Some(up) = c.upgrades.get(*slot).cloned().flatten() else { return out };
+            let Some(u) = upgrades::of(&*host, &up) else { return out };
+            let deck = Deck::read(&*host, &up, upgrades::disc_slots(&u));
+            for i in 0..base {
+                out[i] = fill.clone();
+            }
+            for (i, d) in deck.discs.iter().enumerate() {
+                out[i] = match d {
+                    Some(d) => Some(d.clone()),
+                    None => button(&*host, "minecraft:white_stained_glass_pane", "Disc slot", &["Click a music disc in your inventory to add it"]),
+                };
+            }
+            for i in base..base + 9 {
+                out[i] = fill.clone();
+            }
+            out[base] = button(&*host, "minecraft:arrow", "Back", &[]);
+            out[base + 2] = if deck.playing {
+                button(&*host, "minecraft:red_dye", "Stop", &["Stops the music"])
+            } else {
+                button(&*host, "minecraft:lime_dye", "Play", &["Plays the discs in the slots"])
+            };
+            out[base + 3] = button(&*host, "minecraft:spectral_arrow", "Previous", &["The disc before this one"]);
+            out[base + 4] = button(&*host, "minecraft:arrow", "Next", &["The next disc"]);
+            out[base + 5] = if deck.shuffle {
+                button(&*host, "minecraft:ender_pearl", "Shuffle on", &["Click: play in order"])
+            } else {
+                button(&*host, "minecraft:snowball", "Shuffle off", &["Click: shuffle the discs"])
+            };
+            let (name, lore) = match deck.repeat {
+                Repeat::No => ("Repeat off", "Click: repeat the disc"),
+                Repeat::One => ("Repeat one", "Click: repeat all discs"),
+                Repeat::All => ("Repeat all", "Click: don't repeat"),
+            };
+            out[base + 6] = button(&*host, "minecraft:repeater", name, &[lore]);
             out[base + 8] = Some(up.clone());
         }
         View::Crafting { slot, selected } => {
@@ -343,6 +382,7 @@ pub fn click(host: &mut dyn ServerHost, uuid: u128, s: &Session, c: &Contents, e
     match s.view.clone() {
         View::Main { page } => click_main(host, player, s, c, ev.slot, page, shift, right),
         View::Settings { slot } => click_settings(host, player, s, c, ev.slot, slot),
+        View::Jukebox { slot } => click_jukebox(host, player, s, c, ev.slot, slot, uuid),
         View::Crafting { slot, selected } => click_crafting(host, player, s, c, ev.slot, slot, selected, shift),
     }
 }
@@ -420,7 +460,11 @@ fn click_main(host: &mut dyn ServerHost, player: PlayerRef, s: &Session, c: &Con
         }
         let u = upgrades::of(&*host, &up);
         if !shift && let Some(u) = u.filter(kind_has_view) {
-            let view = if u.kind == Kind::Crafting { View::Crafting { slot: j, selected: None } } else { View::Settings { slot: j } };
+            let view = match u.kind {
+                Kind::Crafting => View::Crafting { slot: j, selected: None },
+                Kind::Jukebox => View::Jukebox { slot: j },
+                _ => View::Settings { slot: j },
+            };
             return (Outcome::View(view), None);
         }
         if let Err(e) = may_remove_upgrade(&*host, s.kind, &c, j) {
@@ -479,6 +523,63 @@ fn click_settings(host: &mut dyn ServerHost, player: PlayerRef, s: &Session, c: 
             return (Outcome::Nothing, None);
         }
     }
+    c.upgrades[j] = Some(up);
+    (Outcome::Changed(c), None)
+}
+
+/// A click in a jukebox upgrade's view: discs in and out, the player's buttons.
+fn click_jukebox(host: &mut dyn ServerHost, player: PlayerRef, s: &Session, c: &Contents, slot: i32, j: usize, uuid: u128) -> (Outcome, Option<&'static str>) {
+    let mut c = c.clone();
+    let base = s.control();
+    let Some(mut up) = c.upgrades.get(j).cloned().flatten() else { return (Outcome::View(View::Main { page: 0 }), None) };
+    let Some(u) = upgrades::of(&*host, &up) else { return (Outcome::View(View::Main { page: 0 }), None) };
+    let mut deck = Deck::read(&*host, &up, upgrades::disc_slots(&u));
+    let Some(id) = s.id.into_iter().any(|x| x != 0).then_some(s.id) else { return (Outcome::Nothing, None) };
+    let source = match &s.loc {
+        Loc::Block { dim, pos } => Source::Block { dim: dim.clone(), pos: *pos, slot: j },
+        _ => Source::Carried { player: uuid, slot: j },
+    };
+    let seed = u64::from(id[1] as u32) ^ (deck.discs.len() as u64).wrapping_mul(0x9E37_79B9) ^ slot as u64;
+    if let Some(inv) = inventory_slot(s, slot) {
+        let invs = places::inventory(host, player);
+        let Some(st) = invs[inv as usize].clone() else { return (Outcome::Nothing, None) };
+        if !Deck::valid(&*host, &st) {
+            return (Outcome::Nothing, Some("Only music discs go here"));
+        }
+        let Some(free) = deck.discs.iter().position(Option::is_none) else { return (Outcome::Nothing, Some("The disc slots are full")) };
+        deck.discs[free] = contents::with_count(&st, 1);
+        places::set_slot(host, player, inv, st.clone().shrink(1));
+    } else {
+        let Ok(i) = usize::try_from(slot) else { return (Outcome::Nothing, None) };
+        if i < deck.discs.len() {
+            let Some(disc) = deck.discs[i].take() else { return (Outcome::Nothing, None) };
+            // Taking out the disc that plays stops the music (the slot's setChanged).
+            if deck.playing && deck.active == Some(i) {
+                jukebox::stop(host, id, &mut deck);
+            }
+            places::give_or_drop(host, player, &disc);
+        } else if i == base {
+            return (Outcome::View(View::Main { page: 0 }), None);
+        } else if i == base + 2 {
+            if deck.playing {
+                jukebox::stop(host, id, &mut deck);
+            } else if !jukebox::play(host, id, &mut deck, source, seed) {
+                return (Outcome::Nothing, Some("Put a music disc in first"));
+            }
+        } else if i == base + 3 || i == base + 4 {
+            if deck.playing {
+                jukebox::skip(host, id, &mut deck, i == base + 4, seed);
+            }
+        } else if i == base + 5 {
+            deck.shuffle = !deck.shuffle;
+            deck.played = deck.active.map_or(0, |a| 1u64 << a);
+        } else if i == base + 6 {
+            deck.repeat = deck.repeat.next();
+        } else {
+            return (Outcome::Nothing, None);
+        }
+    }
+    deck.write(&*host, &mut up);
     c.upgrades[j] = Some(up);
     (Outcome::Changed(c), None)
 }
