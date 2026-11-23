@@ -22,9 +22,11 @@ A port of [Sophisticated Backpacks](https://github.com/Salandora/SophisticatedBa
 ## Differences from the original
 
 - The original's own screen (tabs, memory and no-sort slots) is a chest menu here; its sort and page buttons sit at the two ends of the bottom control row, and the sort button position setting swaps them or hides sort.
-- The stonecutter, anvil, smithing, inception, everlasting and infinity upgrades sit in their slot and do nothing yet; the storage network blocks do not work yet.
+- The anvil, inception, everlasting and infinity upgrades sit in their slot and do nothing yet; the storage network blocks do not work yet.
 - The hopper upgrade's view lists the sides (advanced only) and, for each filter, its type and a button that opens the filter; left-click an inventory item to add it to the input filter, right-click for the output filter. The contents filter does not look at memory slots (not ported).
 - The compression upgrade weighs one crafting recipe per grid where the original weighs every matching one, and a slot's shown count stops at 2147483647. It cannot go in beside a compacting upgrade, as in the original.
+- The stonecutter upgrade holds an input stack and lists its stonecutting recipes, five a row and three rows a page; the smithing upgrade holds template, base and addition and shows the smithing result. Both are chest-menu views, not the original's slot tabs, and take whole stacks from your inventory.
+- The anvil upgrade does nothing: the game gives mods no way to compute an anvil result (repair, combining, cost) or to type a new name into a menu.
 - The advanced tool swapper does not swap tools when you right-click a block or entity (stripping, shearing, flattening): the game gives mods no way to ask whether a tool works on a block. Weapons are ranked by their main-hand attack damage modifiers and the item tags `minecraft:swords` and `minecraft:axes`.
 - A cooking upgrade that is switched off or taken out keeps no paused progress: its burn and cook clocks run on. In an automatic one, right-click an inventory item to add it to the matching filter.
 - Worn backpacks are drawn on the body in their default colours; dyed and spawn-egg colours are not drawn. A monster's potion effects are given when it joins the level; a creeper bearer loses its beneficial effects when it explodes.

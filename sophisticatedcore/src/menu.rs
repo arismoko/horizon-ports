@@ -51,6 +51,16 @@ pub enum View {
     Hopper {
         slot: usize,
     },
+    /// A stonecutter upgrade's input and recipes.
+    Stonecutter {
+        slot: usize,
+        page: usize,
+    },
+    /// A smithing upgrade's three slots.
+    Smithing {
+        slot: usize,
+        selected: Option<usize>,
+    },
     /// A tank, battery, pump or XP pump upgrade's screen.
     Fluid {
         slot: usize,
@@ -162,6 +172,8 @@ fn kind_has_view(u: &upgrades::Upgrade) -> bool {
         || matches!(
             u.kind,
             Kind::Crafting
+                | Kind::Stonecutter
+                | Kind::Smithing
                 | Kind::Jukebox
                 | Kind::Cooking(_)
                 | Kind::Hopper
@@ -239,6 +251,12 @@ pub fn render(host: &mut dyn ServerHost, s: &Session, c: &Contents) -> Vec<Optio
         View::Tags { .. } => crate::filter_view::render_tags(host, s, c, &s.view, &mut out),
         View::Cooking { slot } => render_cooking(host, s, c, *slot, &mut out),
         View::Fluid { slot } => crate::fluid_view::render(host, s, c, *slot, &mut out),
+        View::Stonecutter { slot, page } => {
+            crate::station::render_stonecutter(host, s, c, *slot, *page, &mut out)
+        }
+        View::Smithing { slot, selected } => {
+            crate::station::render_smithing(host, s, c, (*slot, *selected), &mut out)
+        }
         View::Hopper { slot } => crate::hopper_view::render(host, s, c, *slot, &mut out),
         View::Jukebox { slot } => {
             let Some(up) = c.upgrades.get(*slot).cloned().flatten() else {
@@ -651,6 +669,18 @@ pub fn click(
         View::Crafting { slot, selected } => {
             click_crafting(host, player, s, c, ev.slot, slot, selected, shift)
         }
+        View::Stonecutter { slot, page } => crate::station::click_stonecutter(
+            host,
+            player,
+            s,
+            c,
+            ev.slot,
+            (slot, page),
+            (right, shift),
+        ),
+        View::Smithing { slot, selected } => {
+            crate::station::click_smithing(host, player, s, c, ev.slot, (slot, selected), shift)
+        }
     }
 }
 
@@ -761,6 +791,9 @@ fn click_main(
                     slot: j,
                     selected: None,
                 },
+                Kind::Stonecutter | Kind::Smithing => {
+                    crate::station::view_of(u.kind, j).unwrap_or(View::Main { page: 0 })
+                }
                 Kind::Jukebox => View::Jukebox { slot: j },
                 Kind::Cooking(_) => View::Cooking { slot: j },
                 Kind::Hopper => View::Hopper { slot: j },

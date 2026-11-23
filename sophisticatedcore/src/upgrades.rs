@@ -19,6 +19,9 @@ pub enum Kind {
     Compacting,
     Compression,
     ToolSwapper,
+    /// The stonecutter and smithing upgrades (see `station`).
+    Stonecutter,
+    Smithing,
     Void,
     Restock,
     Deposit,
@@ -80,6 +83,8 @@ pub fn upgrade(id: &str) -> Option<Upgrade> {
         "deposit_upgrade" => u(Kind::Deposit, f, false),
         "refill_upgrade" => u(Kind::Refill, f, true),
         "crafting_upgrade" => u(Kind::Crafting, 0, false),
+        "stonecutter_upgrade" => u(Kind::Stonecutter, 0, false),
+        "smithing_upgrade" => u(Kind::Smithing, 0, false),
         "jukebox_upgrade" => u(Kind::Jukebox, 0, false),
         "hopper_upgrade" => u(Kind::Hopper, 0, false),
         "tank_upgrade" => u(Kind::Tank, 0, false),
@@ -242,6 +247,8 @@ pub fn set_grid(host: &dyn Host, upgrade: &mut ItemStack, g: &[Option<ItemStack>
 /// A copy of `c` without the keys a settings view writes (so two upgrades compare by kind).
 pub fn _settings_keys(c: &mut Compound) {
     for k in [
+        "input",
+        "recipeId",
         "toolSwapMode",
         "shouldSwapWeapon",
         "firstInventorySlot",

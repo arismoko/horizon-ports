@@ -18,7 +18,7 @@
 //!   `chestLootEnabled = true`) and the crafting kinds (`crafting`).
 //!
 //! Not ported: the jar's own screen (tabs, sorting buttons, the memory and no-sort slot settings), the furnace,
-//! jukebox, tank, battery, pump, XP pump, tool swapper, stonecutter, anvil, smithing, inception, everlasting and
+//! jukebox, tank, battery, pump, XP pump, anvil, inception, everlasting and
 //! infinity upgrades (they sit in their slot and do nothing), the filter upgrade (it filters automation, and a
 //! placed backpack offers none), the backpack's render on the player's back, mobs spawning with backpacks.
 // Menus and inventories here are addressed by slot number, which these loops keep explicit.
@@ -40,6 +40,7 @@ mod menu;
 mod mobs;
 mod options;
 mod places;
+mod station;
 mod storage;
 mod storage_items;
 mod swapper;
