@@ -23,7 +23,7 @@ A port of [Sophisticated Backpacks](https://github.com/Salandora/SophisticatedBa
 - The tool swapper, stonecutter, anvil, smithing, inception, everlasting and infinity upgrades sit in their slot and do nothing yet; the filter upgrade and the storage network blocks do not work yet.
 - A cooking upgrade that is switched off or taken out keeps no paused progress: its burn and cook clocks run on. In an automatic one, right-click an inventory item to add it to the matching filter.
 - Worn backpacks are drawn on the body in their default colours; dyed and spawn-egg colours are not drawn. A monster's potion effects are given when it joins the level; a creeper bearer loses its beneficial effects when it explodes.
-- A bucket of experience holds 1000 mB of the experience fluid and gives it up whole into a pipe or tank; an empty vanilla bucket cannot take experience from a tank yet (the game's bucket handler only knows water and lava).
+- A bucket of experience holds 1000 mB of the experience fluid and gives it up whole into a pipe or tank; an empty vanilla bucket cannot take experience from a tank yet (the game's bucket handler only knows water and lava; sunrise#5070).
 - Backpacks now take vanilla shulker boxes, and shulker boxes take backpacks, as the original does; the container-item switches in settings refuse them again.
 - The jukebox upgrade plays the vanilla discs only (modded and data-pack discs wait for an API to read a jukebox song); its shuffle plays each disc once per round, and "previous" goes to the disc in the slot before.
 
