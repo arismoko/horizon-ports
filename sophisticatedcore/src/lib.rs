@@ -27,6 +27,8 @@
 mod contents;
 mod cooking;
 mod crafting;
+mod fluid_view;
+mod fluids;
 mod jukebox;
 mod menu;
 mod mobs;
@@ -1116,6 +1118,8 @@ impl Hooks for Mod {
         let has = |ns: &str| cx.mods().iter().any(|p| p.namespaces().any(|n| n == ns));
         let backpacks = has("sophisticatedbackpacks");
         let storage_loaded = has("sophisticatedstorage");
+        // Experience, as a tank-only fluid (the XP pump's): no block or bucket form.
+        r.declare_fluid("xp_still");
         let keys = crafting::keys(r, backpacks, storage_loaded);
         r.register_crafting_recipe_serializer(
             UPGRADE_NEXT_TIER,

@@ -138,6 +138,43 @@ pub struct Options {
     pub storage_containers_denied: bool,
 }
 
+/// The tank, battery, pump and XP pump upgrades' configs (TankUpgradeConfig, BatteryUpgradeConfig,
+/// PumpUpgradeConfig, XpPumpUpgradeConfig): amounts are millibuckets, or FE for the battery.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Liquids {
+    pub tank_per_row: u32,
+    pub tank_ratio: f64,
+    pub tank_cooldown: u32,
+    pub tank_io: u32,
+    pub battery_per_row: u32,
+    pub battery_ratio: f64,
+    pub battery_io: u32,
+    pub pump_filters: usize,
+    pub pump_io: u32,
+    pub pump_ratio: f64,
+    pub xp_mending: bool,
+    pub xp_per_mending: u32,
+}
+
+impl Default for Liquids {
+    fn default() -> Self {
+        Self {
+            tank_per_row: 4000,
+            tank_ratio: 1.0,
+            tank_cooldown: 20,
+            tank_io: 20,
+            battery_per_row: 10000,
+            battery_ratio: 1.0,
+            battery_io: 20,
+            pump_filters: 4,
+            pump_io: 20,
+            pump_ratio: 1.0,
+            xp_mending: true,
+            xp_per_mending: 5,
+        }
+    }
+}
+
 fn flag(text: Option<&str>, default: bool) -> bool {
     text.map_or(default, |t| t.trim() == "true")
 }
@@ -199,6 +236,20 @@ pub fn slowness_amplifier(count: usize, max: usize, ratio: f64) -> Option<i32> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_liquid_upgrades_start_at_the_jars_defaults() {
+        assert_eq!(read_tune(&|_| None).liquids, Liquids::default());
+        let t = read_tune(&|k| match k {
+            "tank_upgrade_capacity_per_slot_row" => Some("9000".to_owned()),
+            "tank_upgrade_stack_multiplier_ratio" => Some("9".to_owned()),
+            "xp_pump_upgrade_mending_on" => Some("false".to_owned()),
+            _ => None,
+        });
+        assert_eq!(t.liquids.tank_per_row, 9000);
+        assert_eq!(t.liquids.tank_ratio, 5.0);
+        assert!(!t.liquids.xp_mending);
+    }
 
     #[test]
     fn the_tables_start_at_the_jars_defaults() {
@@ -371,6 +422,29 @@ pub fn tier_specs() -> Vec<(String, Kind)> {
         range(format!("{name}_input_filter_slots"), 1, 20, 8);
         range(format!("{name}_fuel_filter_slots"), 1, 20, 4);
     }
+    range(
+        "tank_upgrade_capacity_per_slot_row".into(),
+        500,
+        20000,
+        4000,
+    );
+    range(
+        "tank_upgrade_auto_fill_drain_container_cooldown".into(),
+        1,
+        100,
+        20,
+    );
+    range("tank_upgrade_max_input_output".into(), 1, 1000, 20);
+    range(
+        "battery_upgrade_energy_per_slot_row".into(),
+        500,
+        50000,
+        10000,
+    );
+    range("battery_upgrade_max_input_output".into(), 1, 1000, 20);
+    range("pump_upgrade_filter_slots".into(), 1, 20, 4);
+    range("pump_upgrade_max_input_output".into(), 1, 1000, 20);
+    range("xp_pump_upgrade_max_xp_points_per_mending".into(), 1, 20, 5);
     for name in ["void_upgrade", "advanced_void_upgrade"] {
         out.push((format!("{name}_void_anything_enabled"), Kind::Toggle(true)));
     }
@@ -379,6 +453,13 @@ pub fn tier_specs() -> Vec<(String, Kind)> {
             out.push((format!("{name}_{key}"), Kind::Range(0.25, 4.0, 0.05, 1.0)));
         }
     }
+    for name in ["tank", "battery", "pump"] {
+        out.push((
+            format!("{name}_upgrade_stack_multiplier_ratio"),
+            Kind::Range(0.0, 5.0, 0.05, 1.0),
+        ));
+    }
+    out.push(("xp_pump_upgrade_mending_on".into(), Kind::Toggle(true)));
     out
 }
 
@@ -405,6 +486,8 @@ pub struct Tune {
     pub cooking: [(f64, f64); 6],
     /// Input and fuel filter slots of the automatic cooking upgrades.
     pub cook_filters: [[usize; 2]; 3],
+    /// The tank, battery, pump and XP pump upgrades' numbers.
+    pub liquids: Liquids,
     /// `playButtonSound`.
     pub button_sound: bool,
     /// Index into [`SORT_POSITIONS`].
@@ -517,6 +600,40 @@ fn read_tune(get: &dyn Fn(&str) -> Option<String>) -> Tune {
             ];
         }
     }
+    let d = Liquids::default();
+    let n = |key: &str, default: f64, max: f64| {
+        get(key)
+            .and_then(|t| t.trim().parse::<f64>().ok())
+            .map_or(default, |v| v.clamp(0.0, max))
+    };
+    t.liquids = Liquids {
+        tank_per_row: int(get("tank_upgrade_capacity_per_slot_row"), 4000, 500, 20000) as u32,
+        tank_ratio: n("tank_upgrade_stack_multiplier_ratio", d.tank_ratio, 5.0),
+        tank_cooldown: int(
+            get("tank_upgrade_auto_fill_drain_container_cooldown"),
+            20,
+            1,
+            100,
+        ) as u32,
+        tank_io: int(get("tank_upgrade_max_input_output"), 20, 1, 1000) as u32,
+        battery_per_row: int(
+            get("battery_upgrade_energy_per_slot_row"),
+            10000,
+            500,
+            50000,
+        ) as u32,
+        battery_ratio: n(
+            "battery_upgrade_stack_multiplier_ratio",
+            d.battery_ratio,
+            5.0,
+        ),
+        battery_io: int(get("battery_upgrade_max_input_output"), 20, 1, 1000) as u32,
+        pump_filters: int(get("pump_upgrade_filter_slots"), 4, 1, 20) as usize,
+        pump_io: int(get("pump_upgrade_max_input_output"), 20, 1, 1000) as u32,
+        pump_ratio: n("pump_upgrade_stack_multiplier_ratio", d.pump_ratio, 5.0),
+        xp_mending: flag(get("xp_pump_upgrade_mending_on").as_deref(), true),
+        xp_per_mending: int(get("xp_pump_upgrade_max_xp_points_per_mending"), 5, 1, 20) as u32,
+    };
     for (g, name) in GROUPS.iter().enumerate() {
         t.backpack_groups[g] = int(
             get(&format!("backpack_max_{name}")),

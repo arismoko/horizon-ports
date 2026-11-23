@@ -1552,6 +1552,21 @@ pub fn tick(host: &mut dyn ServerHost, placed: &Placed, n: u64) {
             let id = contents::uuid(&st).unwrap_or([pos[0], pos[1], pos[2], i32::MIN]);
             changed |= crate::cooking::run(&*host, level, id, kind, &mut c);
         }
+        if kinds.iter().any(|k| {
+            matches!(
+                k.kind,
+                Kind::Tank | Kind::Battery | Kind::Pump | Kind::XpPump
+            )
+        }) {
+            let id = contents::uuid(&st).unwrap_or([pos[0], pos[1], pos[2], i32::MIN]);
+            let site = crate::fluids::Site {
+                level,
+                pos,
+                id,
+                carrier: None,
+            };
+            changed |= crate::fluids::run(host, &site, kind, &mut c);
+        }
         if n.is_multiple_of(10) && kinds.iter().any(|k| k.kind == Kind::Magnet) {
             changed |= magnet(host, level, pos, kind, &mut c);
         }

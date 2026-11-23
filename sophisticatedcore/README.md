@@ -20,7 +20,8 @@ A port of [Sophisticated Backpacks](https://github.com/Salandora/SophisticatedBa
 ## Differences from the original
 
 - The original's own screen (tabs, memory and no-sort slots) is a chest menu here; its sort and page buttons sit at the two ends of the bottom control row, and the sort button position setting swaps them or hides sort.
-- The tank, battery, pump, XP pump, tool swapper, stonecutter, anvil, smithing, inception, everlasting and infinity upgrades sit in their slot and do nothing yet; the filter upgrade and the storage network blocks do not work yet.
+- The tank, battery, pump and XP pump upgrades work from their own screens, but differ from the original: experience is held as a tank-only fluid (`sophisticatedcore:xp_still`, 20 mB a point) with no world fluid or bucket; a one-row storage clips the XP pump's controls; and a storage's tank and battery are not offered to pipes as block or item capabilities.
+- The tool swapper, stonecutter, anvil, smithing, inception, everlasting and infinity upgrades sit in their slot and do nothing yet; the filter upgrade and the storage network blocks do not work yet.
 - A cooking upgrade that is switched off or taken out keeps no paused progress: its burn and cook clocks run on. In an automatic one, right-click an inventory item to add it to the matching filter.
 - Worn backpacks are drawn on the body in their default colours; dyed and spawn-egg colours are not drawn. A monster's potion effects are given when it joins the level; a creeper bearer loses its beneficial effects when it explodes.
 - Backpacks now take vanilla shulker boxes, and shulker boxes take backpacks, as the original does; the container-item switches in settings refuse them again.

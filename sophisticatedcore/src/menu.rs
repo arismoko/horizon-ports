@@ -37,6 +37,10 @@ pub enum View {
     Cooking {
         slot: usize,
     },
+    /// A tank, battery, pump or XP pump upgrade's screen.
+    Fluid {
+        slot: usize,
+    },
 }
 
 #[derive(Clone, Debug)]
@@ -114,7 +118,7 @@ pub fn button(host: &dyn Host, id: &str, name: &str, lore: &[&str]) -> Option<It
     Some(st)
 }
 
-fn filler(host: &dyn Host) -> Option<ItemStack> {
+pub(crate) fn filler(host: &dyn Host) -> Option<ItemStack> {
     button(host, "minecraft:black_stained_glass_pane", " ", &[])
 }
 
@@ -140,7 +144,17 @@ fn shown(host: &dyn Host, st: &ItemStack) -> Option<ItemStack> {
 }
 
 fn kind_has_view(u: &upgrades::Upgrade) -> bool {
-    u.filters > 0 || matches!(u.kind, Kind::Crafting | Kind::Jukebox | Kind::Cooking(_))
+    u.filters > 0
+        || matches!(
+            u.kind,
+            Kind::Crafting
+                | Kind::Jukebox
+                | Kind::Cooking(_)
+                | Kind::Tank
+                | Kind::Battery
+                | Kind::Pump
+                | Kind::XpPump
+        )
 }
 
 /// The control-row cells of the sort button and the page button, by the `sort_buttons_position`
@@ -327,6 +341,7 @@ pub fn render(host: &mut dyn ServerHost, s: &Session, c: &Contents) -> Vec<Optio
             out[base + 8] = Some(up.clone());
         }
         View::Cooking { slot } => render_cooking(host, s, c, *slot, &mut out),
+        View::Fluid { slot } => crate::fluid_view::render(host, s, c, *slot, &mut out),
         View::Jukebox { slot } => {
             let Some(up) = c.upgrades.get(*slot).cloned().flatten() else {
                 return out;
@@ -484,7 +499,7 @@ fn craft_result(
 }
 
 /// The inventory slot a click past the menu's own slots is on (27 main rows first, then the hotbar).
-fn inventory_slot(s: &Session, slot: i32) -> Option<u32> {
+pub(crate) fn inventory_slot(s: &Session, slot: i32) -> Option<u32> {
     let rel = usize::try_from(slot).ok()?.checked_sub(s.own_slots())?;
     match rel {
         0..27 => Some(rel as u32 + 9),
@@ -574,8 +589,21 @@ pub fn may_add_upgrade(
             return Err("No more upgrades of this kind fit");
         }
     }
+    if matches!(u.kind, Kind::Tank | Kind::Battery)
+        && c.upgrades
+            .iter()
+            .flatten()
+            .any(|x| upgrades::of(host, x).is_some_and(|o| o.kind == u.kind))
+    {
+        return Err("Only one of these fits in a storage");
+    }
     if let Kind::Stack(m) = u.kind {
         let after = upgrades::multiplier(host, kind, &c.upgrades) * m;
+        let mut ups = c.upgrades.clone();
+        ups[j] = Some(up.clone());
+        if !liquids_fit(host, kind, c.slots.len(), &ups) {
+            return Err("The tank or battery holds too much for this downgrade");
+        }
         if c.slots
             .iter()
             .flatten()
@@ -585,6 +613,23 @@ pub fn may_add_upgrade(
         }
     }
     Ok(())
+}
+
+/// Whether a tank's fluid and a battery's energy fit the capacity `ups` give them (IStackableContentsUpgrade).
+fn liquids_fit(
+    host: &dyn Host,
+    kind: &StorageItem,
+    slots: usize,
+    ups: &[Option<ItemStack>],
+) -> bool {
+    let l = crate::fluids::limits_with(host, kind, slots, ups);
+    ups.iter()
+        .flatten()
+        .all(|u| match upgrades::of(host, u).map(|u| u.kind) {
+            Some(Kind::Tank) => crate::fluids::read_tank(u).amount <= l.tank_cap,
+            Some(Kind::Battery) => crate::fluids::read_energy(u) <= l.battery_cap,
+            _ => true,
+        })
 }
 
 pub fn may_remove_upgrade(
@@ -602,6 +647,11 @@ pub fn may_remove_upgrade(
     }) = upgrades::of(host, &up)
     {
         let after = upgrades::multiplier(host, kind, &c.upgrades) / m;
+        let mut ups = c.upgrades.clone();
+        ups[j] = None;
+        if !liquids_fit(host, kind, c.slots.len(), &ups) {
+            return Err("The tank or battery holds too much to lose this upgrade");
+        }
         if c.slots
             .iter()
             .flatten()
@@ -667,6 +717,9 @@ pub fn click(
         View::Settings { slot } => click_settings(host, player, s, c, ev.slot, slot),
         View::Jukebox { slot } => click_jukebox(host, player, s, c, ev.slot, slot, uuid),
         View::Cooking { slot } => click_cooking(host, player, s, c, ev.slot, slot, right),
+        View::Fluid { slot } => {
+            crate::fluid_view::click(host, player, s, c, ev.slot, slot, right, shift)
+        }
         View::Crafting { slot, selected } => {
             click_crafting(host, player, s, c, ev.slot, slot, selected, shift)
         }
@@ -783,6 +836,7 @@ fn click_main(
                 },
                 Kind::Jukebox => View::Jukebox { slot: j },
                 Kind::Cooking(_) => View::Cooking { slot: j },
+                Kind::Tank | Kind::Battery | Kind::Pump | Kind::XpPump => View::Fluid { slot: j },
                 _ => View::Settings { slot: j },
             };
             return (Outcome::View(view), None);

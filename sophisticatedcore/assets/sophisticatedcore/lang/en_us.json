@@ -376,5 +376,17 @@
   "sophisticatedcore.config.sort_buttons_position.title_line_right": "Title line, right",
   "sophisticatedcore.config.sort_buttons_position.below_upgrades": "Below upgrades",
   "sophisticatedcore.config.sort_buttons_position.below_upgrade_tabs": "Below upgrade tabs",
-  "sophisticatedcore.config.sort_buttons_position.hidden": "Hidden"
+  "sophisticatedcore.config.sort_buttons_position.hidden": "Hidden",
+  "sophisticatedcore.config.tank_upgrade_capacity_per_slot_row": "Tank upgrade: capacity per slot row (mB)",
+  "sophisticatedcore.config.tank_upgrade_auto_fill_drain_container_cooldown": "Tank upgrade: container fill and drain cooldown (ticks)",
+  "sophisticatedcore.config.tank_upgrade_max_input_output": "Tank upgrade: transfer per slot row (mB)",
+  "sophisticatedcore.config.battery_upgrade_energy_per_slot_row": "Battery upgrade: energy per slot row (FE)",
+  "sophisticatedcore.config.battery_upgrade_max_input_output": "Battery upgrade: transfer per slot row (FE)",
+  "sophisticatedcore.config.pump_upgrade_filter_slots": "Pump upgrade: fluid filter slots",
+  "sophisticatedcore.config.pump_upgrade_max_input_output": "Pump upgrade: transfer per slot row (mB)",
+  "sophisticatedcore.config.xp_pump_upgrade_max_xp_points_per_mending": "XP pump upgrade: most points spent on one mend",
+  "sophisticatedcore.config.tank_upgrade_stack_multiplier_ratio": "Tank upgrade: share of the stack multiplier it uses",
+  "sophisticatedcore.config.battery_upgrade_stack_multiplier_ratio": "Battery upgrade: share of the stack multiplier it uses",
+  "sophisticatedcore.config.pump_upgrade_stack_multiplier_ratio": "Pump upgrade: share of the stack multiplier it uses",
+  "sophisticatedcore.config.xp_pump_upgrade_mending_on": "XP pump upgrade: mends items"
 }

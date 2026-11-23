@@ -25,6 +25,11 @@ pub enum Kind {
     Jukebox,
     /// The smelting, smoking and blasting upgrades (manual and automatic).
     Cooking(crate::cooking::Cooking),
+    /// The tank, battery, pump and XP pump upgrades (see `fluids`).
+    Tank,
+    Battery,
+    Pump,
+    XpPump,
     /// HopperUpgradeWrapper on a placed storage: pulls from the inventory above, pushes to the one below.
     Hopper,
     Stack(f64),
@@ -72,6 +77,10 @@ pub fn upgrade(id: &str) -> Option<Upgrade> {
         "crafting_upgrade" => u(Kind::Crafting, 0, false),
         "jukebox_upgrade" => u(Kind::Jukebox, 0, false),
         "hopper_upgrade" => u(Kind::Hopper, 0, false),
+        "tank_upgrade" => u(Kind::Tank, 0, false),
+        "battery_upgrade" => u(Kind::Battery, 0, false),
+        "pump_upgrade" => u(Kind::Pump, 0, false),
+        "xp_pump_upgrade" => u(Kind::XpPump, 0, false),
         "smelting_upgrade"
         | "smoking_upgrade"
         | "blasting_upgrade"
@@ -354,7 +363,15 @@ mod tests {
         );
         assert_eq!(
             upgrade("sophisticatedbackpacks:tank_upgrade").unwrap().kind,
-            Kind::Inert
+            Kind::Tank
+        );
+        let p = upgrade("sophisticatedstorage:advanced_pump_upgrade").unwrap();
+        assert!(p.advanced && p.kind == Kind::Pump);
+        assert_eq!(
+            upgrade("sophisticatedstorage:xp_pump_upgrade")
+                .unwrap()
+                .kind,
+            Kind::XpPump
         );
         assert!(upgrade("sophisticatedbackpacks:upgrade_base").is_none());
         assert!(upgrade("minecraft:stick").is_none());

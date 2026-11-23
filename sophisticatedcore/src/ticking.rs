@@ -298,6 +298,30 @@ fn compact(host: &mut dyn ServerHost, uuid: u128, c: &mut Carried) -> bool {
     compact_contents(&*host, level, c.kind, &mut c.contents)
 }
 
+/// The tank, battery, pump and XP pump upgrades of a carried storage, every tick.
+fn liquids(host: &mut dyn ServerHost, uuid: u128, c: &mut Carried) -> bool {
+    let Some(id) = contents::uuid(&c.stack) else {
+        return false;
+    };
+    let Some(player) = host.player(uuid) else {
+        return false;
+    };
+    let Some(dim) = player.dimension(&*host).map(|d| d.to_string()) else {
+        return false;
+    };
+    let (Some(level), Some(pos)) = (host.level(&dim), player.entity().block_position(&*host))
+    else {
+        return false;
+    };
+    let site = crate::fluids::Site {
+        level,
+        pos,
+        id,
+        carrier: Some(player),
+    };
+    crate::fluids::run(host, &site, c.kind, &mut c.contents)
+}
+
 /// The cooking upgrades of a carried storage, every tick.
 fn cook(host: &mut dyn ServerHost, uuid: u128, c: &mut Carried) -> bool {
     let Some(id) = contents::uuid(&c.stack) else {
@@ -501,6 +525,15 @@ pub fn tick(host: &mut dyn ServerHost, uuid: u128, n: u64) -> Vec<[i32; 4]> {
             .iter()
             .any(|(_, u)| matches!(u.kind, Kind::Cooking(_)));
         if cooks && cook(host, uuid, c) {
+            c.contents_changed = true;
+        }
+        let pumps = c.ups(&*host).iter().any(|(_, u)| {
+            matches!(
+                u.kind,
+                Kind::Tank | Kind::Battery | Kind::Pump | Kind::XpPump
+            )
+        });
+        if pumps && liquids(host, uuid, c) {
             c.contents_changed = true;
         }
     }
