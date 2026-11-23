@@ -276,36 +276,15 @@ fn paint(draw: &mut dyn BlockEntityDrawContext, facing: &str, look: &BarrelLook)
     draw.push();
     draw.rotate_about([0.0, 1.0, 0.0], -y, [0.5, 0.5, 0.5]);
     draw.rotate_about([1.0, 0.0, 0.0], -x, [0.5, 0.5, 0.5]);
-    if let Some([side, top, bottom]) = &look.cover {
-        let faces = [
-            face(bottom),
-            face(top),
-            face(side),
-            face(side),
-            face(side),
-            face(side),
-        ];
-        draw.cube([-0.01; 3], [16.01; 3], faces, 0xFF_FFFF);
+    if let Some(sprites) = &look.cover {
+        barrel_shape(draw, sprites, 0.01, 0xFF_FFFF);
     }
     for (layer, color, grow) in [("main", look.main, 0.02), ("accent", look.accent, 0.04)] {
         let Some(c) = color else {
             continue;
         };
-        let [side, top, bottom] = BARREL_SPRITES.map(|p| sprite(p, layer));
-        let faces = [
-            face(&bottom),
-            face(&top),
-            face(&side),
-            face(&side),
-            face(&side),
-            face(&side),
-        ];
-        draw.cube(
-            [-grow, -grow, -grow],
-            [16.0 + grow, 16.0 + grow, 16.0 + grow],
-            faces,
-            c as u32 & 0xFF_FFFF,
-        );
+        let sprites = BARREL_SPRITES.map(|p| sprite(p, layer));
+        barrel_shape(draw, &sprites, grow, c as u32 & 0xFF_FFFF);
     }
     if look.lock {
         let (x0, x1, z0, z1, y) = (7.5 / 16.0, 8.5 / 16.0, 15.0 / 16.0, 1.0, 16.1 / 16.0);
@@ -319,8 +298,100 @@ fn paint(draw: &mut dyn BlockEntityDrawContext, facing: &str, look: &BarrelLook)
     draw.pop();
 }
 
-fn face(s: &str) -> Option<CubeFace<'_>> {
-    Some(CubeFace::new(s))
+/// One element of the barrel template: its corners in sixteenths, and per face (down, up, north, south, west, east)
+/// which sprite (0 side, 1 top, 2 bottom) and uv it shows; the rim's top-trim is the top sprite.
+type Element = ([f32; 3], [f32; 3], [Option<(usize, [f32; 4])>; 6]);
+
+/// `block/template/barrel_0`: the core up to 15 sixteenths and a one-sixteenth rim round the top.
+const BARREL_ELEMENTS: [Element; 5] = [
+    (
+        [0.0, 0.0, 0.0],
+        [16.0, 15.0, 16.0],
+        [
+            Some((2, [0.0, 0.0, 16.0, 16.0])),
+            Some((1, [0.0, 0.0, 16.0, 16.0])),
+            Some((0, [0.0, 1.0, 16.0, 16.0])),
+            Some((0, [0.0, 1.0, 16.0, 16.0])),
+            Some((0, [0.0, 1.0, 16.0, 16.0])),
+            Some((0, [0.0, 1.0, 16.0, 16.0])),
+        ],
+    ),
+    (
+        [0.0, 15.0, 0.0],
+        [16.0, 16.0, 1.0],
+        [
+            None,
+            Some((1, [0.0, 0.0, 16.0, 1.0])),
+            Some((0, [0.0, 0.0, 16.0, 1.0])),
+            Some((1, [0.0, 1.0, 16.0, 2.0])),
+            Some((0, [0.0, 0.0, 1.0, 1.0])),
+            Some((0, [15.0, 0.0, 16.0, 1.0])),
+        ],
+    ),
+    (
+        [0.0, 15.0, 15.0],
+        [16.0, 16.0, 16.0],
+        [
+            None,
+            Some((1, [0.0, 15.0, 16.0, 16.0])),
+            Some((1, [0.0, 14.0, 16.0, 15.0])),
+            Some((0, [0.0, 0.0, 16.0, 1.0])),
+            Some((0, [15.0, 0.0, 16.0, 1.0])),
+            Some((0, [0.0, 0.0, 1.0, 1.0])),
+        ],
+    ),
+    (
+        [15.0, 15.0, 1.0],
+        [16.0, 16.0, 15.0],
+        [
+            None,
+            Some((1, [15.0, 1.0, 16.0, 15.0])),
+            None,
+            None,
+            Some((1, [14.0, 1.0, 15.0, 15.0])),
+            Some((0, [1.0, 0.0, 15.0, 1.0])),
+        ],
+    ),
+    (
+        [0.0, 15.0, 1.0],
+        [1.0, 16.0, 15.0],
+        [
+            None,
+            Some((1, [0.0, 1.0, 1.0, 15.0])),
+            None,
+            None,
+            Some((0, [1.0, 0.0, 15.0, 1.0])),
+            Some((1, [1.0, 1.0, 2.0, 15.0])),
+        ],
+    ),
+];
+
+/// A coordinate in sixteenths with the block's outer faces (0 and 16) pushed out by `grow`.
+fn grown(v: f32, grow: f32) -> f32 {
+    if v <= 0.0 {
+        -grow
+    } else if v >= 16.0 {
+        16.0 + grow
+    } else {
+        v
+    }
+}
+
+/// The barrel's shape (core and rim) in `sprites` (side, top, bottom), every outer face pushed out by `grow`
+/// sixteenths, times `tint`.
+fn barrel_shape(
+    draw: &mut dyn BlockEntityDrawContext,
+    sprites: &[String; 3],
+    grow: f32,
+    tint: u32,
+) {
+    for (from, to, faces) in &BARREL_ELEMENTS {
+        // A face on the block's outside moves out; the core's top (15) and the rim's inner faces stay.
+        let (lo, hi) = (from.map(|v| grown(v, grow)), to.map(|v| grown(v, grow)));
+        let faces =
+            faces.map(|f| f.map(|(sprite, uv)| CubeFace::new(&sprites[sprite]).with_uv(uv)));
+        draw.cube(lo, hi, faces, tint);
+    }
 }
 
 /// A limited barrel's front: the frame of its face, so that x grows along the face and z goes into the block.
@@ -593,6 +664,26 @@ fn counts(
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn growing_a_barrel_moves_only_the_outer_faces() {
+        assert_eq!(grown(0.0, 0.5), -0.5);
+        assert_eq!(grown(16.0, 0.5), 16.5);
+        assert_eq!(grown(15.0, 0.5), 15.0);
+        assert_eq!(grown(1.0, 0.5), 1.0);
+    }
+
+    #[test]
+    fn the_barrel_has_a_core_to_fifteen_and_a_rim_to_sixteen() {
+        let tops: Vec<f32> = BARREL_ELEMENTS.iter().map(|e| e.1[1]).collect();
+        assert_eq!(tops, [15.0, 16.0, 16.0, 16.0, 16.0]);
+        // The rim's four bars close the ring: their footprints add up to the 16 by 16 block minus its 14 by 14 middle.
+        let area: f32 = BARREL_ELEMENTS[1..]
+            .iter()
+            .map(|e| (e.1[0] - e.0[0]) * (e.1[2] - e.0[2]))
+            .sum();
+        assert_eq!(area, 16.0 * 16.0 - 14.0 * 14.0);
+    }
+
     use super::*;
 
     #[test]
