@@ -9,7 +9,7 @@ What it does:
 - Six backpack tiers (leather to netherite) that keep their contents and upgrades in the item: open one from your hand or with the Open Backpack key (B), or place it with sneak + use and pick it back up with an empty hand.
 - Sophisticated Storage's tiered chests, barrels (with limited one-to-four-slot barrels) and shulker boxes in every wood, which keep their contents when broken or packed; chests placed side by side join.
 - A paged storage screen with sorting, upgrade slots, upgrade settings and a crafting grid.
-- Upgrades that work while carried or placed: pickup, magnet, void, feeding, compacting, refill, restock and deposit, hopper, smelting, smoking and blasting (manual and automatic, with a furnace view), and stack upgrades that raise each slot's limit.
+- Upgrades that work while carried or placed: pickup, magnet, void, feeding, compacting, refill, restock and deposit, hopper (sides and input and output filters), smelting, smoking and blasting (manual and automatic, with a furnace view), and stack upgrades that raise each slot's limit.
 - Tier upgrades crafted in place keep the contents; dye backpacks and storage in the crafting grid.
 - Backpacks in vanilla chest loot, as in the original.
 - Keys in Controls: Open Backpack (B), Sort (middle mouse button, in a storage screen), Inventory Interaction (C, restock and deposit on the block you look at), and switches for the upgrades in slots 1 to 5 (Z and X for the first two): a switched-off upgrade does nothing.

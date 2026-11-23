@@ -77,7 +77,7 @@ pub fn dir_vec(name: &str) -> [i32; 3] {
 }
 
 /// Direction.getClockWise (seen from above).
-fn clockwise(f: &str) -> &'static str {
+pub(crate) fn clockwise(f: &str) -> &'static str {
     match f {
         "north" => "east",
         "east" => "south",
@@ -86,7 +86,7 @@ fn clockwise(f: &str) -> &'static str {
     }
 }
 
-fn counter_clockwise(f: &str) -> &'static str {
+pub(crate) fn counter_clockwise(f: &str) -> &'static str {
     match f {
         "north" => "west",
         "west" => "south",
@@ -1352,7 +1352,7 @@ impl Placed {
     }
 }
 
-fn dir_of(v: [i32; 3]) -> Direction {
+pub(crate) fn dir_of(v: [i32; 3]) -> Direction {
     match v {
         [0, 1, 0] => Direction::Up,
         [0, -1, 0] => Direction::Down,
@@ -1361,79 +1361,6 @@ fn dir_of(v: [i32; 3]) -> Direction {
         [-1, 0, 0] => Direction::West,
         _ => Direction::East,
     }
-}
-
-/// HopperUpgradeWrapper with its default directions: up to `maxTransferStackSize` items every `transferSpeedTicks` from the
-/// inventory above, and as many to the inventory below.
-fn hopper(
-    host: &mut dyn ServerHost,
-    level: LevelRef,
-    pos: [i32; 3],
-    kind: &StorageItem,
-    c: &mut Contents,
-    advanced: bool,
-) -> bool {
-    let max = crate::options::tune().hopper_stack[usize::from(advanced)] as u32;
-    let mut changed = false;
-    let m = upgrades::multiplier(&*host, kind, &c.upgrades);
-    let above = add(pos, [0, 1, 0]);
-    if kind_of_block(&block_id(&*host, level, above)).is_none()
-        && let Some(src) = level.capability(host, &mod_api::ITEMS, above, Some(dir_of([0, -1, 0])))
-    {
-        let mut left = max;
-        let n = src.size(host);
-        for i in 0..n {
-            if left == 0 {
-                break;
-            }
-            let Some(res) = src.resource(host, i) else {
-                continue;
-            };
-            let stack = res.as_stack().clone();
-            if !crate::menu::may_store(&*host, kind, &stack) {
-                continue;
-            }
-            let lim = upgrades::limit(&*host, &stack, m);
-            let mut trial = c.slots.clone();
-            let fits = contents::insert(&mut trial, &stack, left.min(src.amount(host, i)), lim);
-            if fits == 0 {
-                continue;
-            }
-            let got = host
-                .transaction(|host, tx| Ok::<u32, ()>(src.extract_at(host, tx, i, &res, fits)))
-                .unwrap_or(0);
-            if got > 0 {
-                contents::insert(&mut c.slots, &stack, got, lim);
-                left -= got;
-                changed = true;
-            }
-        }
-    }
-    let below = add(pos, [0, -1, 0]);
-    if kind_of_block(&block_id(&*host, level, below)).is_none()
-        && let Some(dst) = level.capability(host, &mod_api::ITEMS, below, Some(dir_of([0, 1, 0])))
-    {
-        let mut left = max;
-        for i in 0..c.slots.len() {
-            if left == 0 {
-                break;
-            }
-            let Some(st) = c.slots[i].clone().filter(|s| !contents::is_unknown(s)) else {
-                continue;
-            };
-            let res = ItemResource::of(&st);
-            let n = st.count().min(left);
-            let put = host
-                .transaction(|host, tx| Ok::<u32, ()>(dst.insert(host, tx, &res, n).unwrap_or(0)))
-                .unwrap_or(0);
-            if put > 0 {
-                c.slots[i] = st.clone().shrink(put);
-                left -= put;
-                changed = true;
-            }
-        }
-    }
-    changed
 }
 
 /// MagnetUpgradeWrapper on a block: item entities within range (3, advanced 5) of the storage go in.
@@ -1541,11 +1468,16 @@ pub fn tick(host: &mut dyn ServerHost, placed: &Placed, n: u64) {
             .collect();
         let mut changed = false;
         let tune = crate::options::tune();
-        for k in &kinds {
-            if k.kind == Kind::Hopper
-                && n.is_multiple_of(tune.hopper_ticks[usize::from(k.advanced)] as u64)
-            {
-                changed |= hopper(host, level, pos, kind, &mut c, k.advanced);
+        let hoppers: Vec<(ItemStack, upgrades::Upgrade)> = c
+            .upgrades
+            .iter()
+            .flatten()
+            .filter_map(|u| upgrades::of(&*host, u).map(|k| (u.clone(), k)))
+            .filter(|(_, k)| k.kind == Kind::Hopper)
+            .collect();
+        for (up, k) in &hoppers {
+            if n.is_multiple_of(tune.hopper_ticks[usize::from(k.advanced)] as u64) {
+                changed |= crate::hopper::run(host, level, pos, kind, &mut c, up, k, n);
             }
         }
         if kinds.iter().any(|k| matches!(k.kind, Kind::Cooking(_))) {

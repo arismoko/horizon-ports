@@ -71,6 +71,8 @@ const JUKEBOX_SLOTS: i64 = 12;
 /// `HopperUpgradeConfig`: ticks between transfers and the most items per transfer, basic then advanced.
 const HOPPER_TICKS: [i64; 2] = [8, 2];
 const HOPPER_STACK: [i64; 2] = [1, 4];
+/// Input and output filter slots of the basic and the advanced hopper upgrade (`HopperUpgradeConfig`).
+const HOPPER_FILTERS: [i64; 2] = [2, 4];
 
 /// The cooking upgrades, in the order of [`Tune::cooking`]: the manual ones, then the automatic ones.
 pub const COOKING: [&str; 6] = [
@@ -300,6 +302,13 @@ mod tests {
         );
         assert_eq!(t.hopper_ticks[0], 20);
         assert_eq!(t.void_anything, [false, true]);
+        assert_eq!(t.hopper_filters, [[2, 2], [4, 4]]);
+        let t = read_tune(&|k| match k {
+            "advanced_hopper_upgrade_output_filter_slots" => Some("30".to_owned()),
+            "hopper_upgrade_input_filter_slots" => Some("3".to_owned()),
+            _ => None,
+        });
+        assert_eq!(t.hopper_filters, [[3, 2], [4, 8]]);
     }
 
     #[test]
@@ -406,6 +415,14 @@ pub fn tier_specs() -> Vec<(String, Kind)> {
             64,
             HOPPER_STACK[a],
         );
+        for side in ["input", "output"] {
+            range(
+                format!("{name}_{side}_filter_slots"),
+                1,
+                8,
+                HOPPER_FILTERS[a],
+            );
+        }
     }
     for (g, name) in GROUPS.iter().enumerate() {
         range(
@@ -485,6 +502,8 @@ pub struct Tune {
     /// Basic then advanced.
     pub hopper_ticks: [usize; 2],
     pub hopper_stack: [usize; 2],
+    /// Input and output filter slots, basic then advanced.
+    pub hopper_filters: [[usize; 2]; 2],
     pub void_anything: [bool; 2],
     /// Smelting speed and fuel efficiency multipliers by [`COOKING`] index.
     pub cooking: [(f64, f64); 6],
@@ -575,6 +594,14 @@ fn read_tune(get: &dyn Fn(&str) -> Option<String>) -> Tune {
             1,
             64,
         ) as usize;
+        for (i, side) in ["input", "output"].into_iter().enumerate() {
+            t.hopper_filters[a][i] = int(
+                get(&format!("{name}_{side}_filter_slots")),
+                HOPPER_FILTERS[a],
+                1,
+                8,
+            ) as usize;
+        }
     }
     for (a, name) in ["void_upgrade", "advanced_void_upgrade"].iter().enumerate() {
         t.void_anything[a] = flag(

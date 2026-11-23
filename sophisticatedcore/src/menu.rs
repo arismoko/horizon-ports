@@ -37,6 +37,10 @@ pub enum View {
     Cooking {
         slot: usize,
     },
+    /// A hopper upgrade's sides and filters.
+    Hopper {
+        slot: usize,
+    },
     /// A tank, battery, pump or XP pump upgrade's screen.
     Fluid {
         slot: usize,
@@ -150,6 +154,7 @@ fn kind_has_view(u: &upgrades::Upgrade) -> bool {
             Kind::Crafting
                 | Kind::Jukebox
                 | Kind::Cooking(_)
+                | Kind::Hopper
                 | Kind::Tank
                 | Kind::Battery
                 | Kind::Pump
@@ -342,6 +347,7 @@ pub fn render(host: &mut dyn ServerHost, s: &Session, c: &Contents) -> Vec<Optio
         }
         View::Cooking { slot } => render_cooking(host, s, c, *slot, &mut out),
         View::Fluid { slot } => crate::fluid_view::render(host, s, c, *slot, &mut out),
+        View::Hopper { slot } => crate::hopper_view::render(host, s, c, *slot, &mut out),
         View::Jukebox { slot } => {
             let Some(up) = c.upgrades.get(*slot).cloned().flatten() else {
                 return out;
@@ -717,6 +723,9 @@ pub fn click(
         View::Settings { slot } => click_settings(host, player, s, c, ev.slot, slot),
         View::Jukebox { slot } => click_jukebox(host, player, s, c, ev.slot, slot, uuid),
         View::Cooking { slot } => click_cooking(host, player, s, c, ev.slot, slot, right),
+        View::Hopper { slot } => {
+            crate::hopper_view::click(host, player, s, c, ev.slot, slot, right)
+        }
         View::Fluid { slot } => {
             crate::fluid_view::click(host, player, s, c, ev.slot, slot, right, shift)
         }
@@ -836,6 +845,7 @@ fn click_main(
                 },
                 Kind::Jukebox => View::Jukebox { slot: j },
                 Kind::Cooking(_) => View::Cooking { slot: j },
+                Kind::Hopper => View::Hopper { slot: j },
                 Kind::Tank | Kind::Battery | Kind::Pump | Kind::XpPump => View::Fluid { slot: j },
                 _ => View::Settings { slot: j },
             };

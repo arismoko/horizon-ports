@@ -391,5 +391,9 @@
   "sophisticatedcore.config.xp_pump_upgrade_mending_on": "XP pump upgrade: mends items",
   "sophisticatedcore.config.item_fluid_handler_enabled": "Backpacks hold fluid in item form",
   "itemGroup.sophisticatedcore": "Sophisticated Core",
-  "item.sophisticatedcore.xp_bucket": "Bucket of Experience"
+  "item.sophisticatedcore.xp_bucket": "Bucket of Experience",
+  "sophisticatedcore.config.hopper_upgrade_input_filter_slots": "Hopper upgrade input filter slots",
+  "sophisticatedcore.config.hopper_upgrade_output_filter_slots": "Hopper upgrade output filter slots",
+  "sophisticatedcore.config.advanced_hopper_upgrade_input_filter_slots": "Advanced hopper upgrade input filter slots",
+  "sophisticatedcore.config.advanced_hopper_upgrade_output_filter_slots": "Advanced hopper upgrade output filter slots"
 }

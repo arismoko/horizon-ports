@@ -9,7 +9,7 @@ A port of [Sophisticated Backpacks](https://github.com/Salandora/SophisticatedBa
 - Six backpack tiers (leather to netherite) that keep their contents and upgrades in the item: open one from your hand or with the Open Backpack key (B), or place it with sneak + use and pick it back up with an empty hand.
 - Sophisticated Storage's tiered chests, barrels (with limited one-to-four-slot barrels) and shulker boxes in every wood, which keep their contents when broken or packed; chests placed side by side join.
 - A paged storage screen with sorting, upgrade slots, upgrade settings and a crafting grid.
-- Upgrades that work while carried or placed: pickup, magnet, void, feeding, compacting, refill, restock and deposit, hopper, smelting, smoking and blasting (manual and automatic, with a furnace view), and stack upgrades that raise each slot's limit.
+- Upgrades that work while carried or placed: pickup, magnet, void, feeding, compacting, refill, restock and deposit, hopper (sides and input and output filters), smelting, smoking and blasting (manual and automatic, with a furnace view), and stack upgrades that raise each slot's limit.
 - Tier upgrades crafted in place keep the contents; dye backpacks and storage in the crafting grid.
 - Backpacks in vanilla chest loot, as in the original (a setting turns it off).
 - Keys in Controls: Open Backpack (B), Sort (middle mouse button, in a storage screen), Inventory Interaction (C, restock and deposit on the block you look at), and switches for the upgrades in slots 1 to 5 (Z and X for the first two): a switched-off upgrade does nothing.
@@ -21,6 +21,7 @@ A port of [Sophisticated Backpacks](https://github.com/Salandora/SophisticatedBa
 
 - The original's own screen (tabs, memory and no-sort slots) is a chest menu here; its sort and page buttons sit at the two ends of the bottom control row, and the sort button position setting swaps them or hides sort.
 - The tool swapper, stonecutter, anvil, smithing, inception, everlasting and infinity upgrades sit in their slot and do nothing yet; the filter upgrade and the storage network blocks do not work yet.
+- The hopper upgrade's view lists the sides (advanced only) and both filters one after another; left-click an inventory item to add it to the input filter, right-click for the output filter. A storage with one row or fewer, such as a limited barrel, shows only the first 15 or so controls, which clips the output filter. Filters match by item or by mod; tag, durability and NBT matching are not offered, and the contents filter does not look at memory slots (not ported). A chest minecart in reach is picked in turn rather than at random.
 - A cooking upgrade that is switched off or taken out keeps no paused progress: its burn and cook clocks run on. In an automatic one, right-click an inventory item to add it to the matching filter.
 - Worn backpacks are drawn on the body in their default colours; dyed and spawn-egg colours are not drawn. A monster's potion effects are given when it joins the level; a creeper bearer loses its beneficial effects when it explodes.
 - A bucket of experience holds 1000 mB of the experience fluid and gives it up whole into a pipe or tank; an empty vanilla bucket cannot take experience from a tank yet (the game's bucket handler only knows water and lava; sunrise#5070).

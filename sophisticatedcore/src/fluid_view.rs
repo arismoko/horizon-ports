@@ -16,12 +16,12 @@ use crate::places;
 use crate::upgrades::{self, Kind};
 
 /// The menu cell of control `n`: the cells below `base`, then those after the Back cell.
-fn cell(base: usize, n: usize) -> usize {
+pub(crate) fn cell(base: usize, n: usize) -> usize {
     if n < base { n } else { n + 1 }
 }
 
 /// The control at menu cell `i`, none for Back, the upgrade cell and beyond.
-fn control(base: usize, i: usize) -> Option<usize> {
+pub(crate) fn control(base: usize, i: usize) -> Option<usize> {
     match i {
         _ if i < base => Some(i),
         _ if i == base || i > base + 7 => None,

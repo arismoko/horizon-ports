@@ -230,6 +230,8 @@ pub struct Filter {
     pub by_mod: bool,
     /// The fuel filter: an empty allow list lets everything through.
     pub empty_allows_all: bool,
+    /// A hopper upgrade's contents mode (`filterByStorage`): items match by what the inventory already holds.
+    pub by_storage: bool,
 }
 
 impl Filter {
@@ -245,6 +247,7 @@ impl Filter {
             allow: contents::get_bool(&sub, "isAllowList").unwrap_or(fuel),
             by_mod: contents::get_str(&sub, "primaryMatch").as_deref() == Some("mod"),
             empty_allows_all: fuel,
+            by_storage: contents::get_bool(&sub, "filterByStorage").unwrap_or(false),
         }
     }
 
@@ -261,8 +264,43 @@ impl Filter {
             "primaryMatch",
             Tag::String(if self.by_mod { "mod" } else { "item" }.into()),
         );
+        if self.by_storage {
+            put(&mut sub, "filterByStorage", Tag::Byte(1));
+        } else {
+            sub.del("filterByStorage");
+        }
         put(&mut d, key, Tag::Compound(sub));
         set_custom_data(up, d);
+    }
+
+    /// ContentsFilterLogic.matchesFilter: in contents mode a stack matches when it is the item (or from the mod) of
+    /// one `held` in the inventory the filter watches; otherwise the list decides.
+    pub fn matches_contents<'a>(
+        &self,
+        host: &dyn Host,
+        stack: &ItemStack,
+        held: impl IntoIterator<Item = &'a ItemStack>,
+    ) -> bool {
+        if !self.by_storage {
+            return self.matches(host, stack);
+        }
+        if contents::is_unknown(stack) {
+            return false;
+        }
+        let ns = |s: &ItemStack| {
+            contents::item_id(host, s)
+                .split(':')
+                .next()
+                .unwrap_or("")
+                .to_owned()
+        };
+        held.into_iter().any(|x| {
+            if self.by_mod {
+                ns(x) == ns(stack)
+            } else {
+                x.same_item(stack)
+            }
+        })
     }
 
     pub fn matches(&self, host: &dyn Host, stack: &ItemStack) -> bool {

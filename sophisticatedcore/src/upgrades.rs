@@ -295,6 +295,9 @@ pub fn _settings_keys(c: &mut Compound) {
         "isCooking",
         "inputFilter",
         "fuelFilter",
+        "outputFilter",
+        "pullDirections",
+        "pushDirections",
     ] {
         c.del(k);
     }

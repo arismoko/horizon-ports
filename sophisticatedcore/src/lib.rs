@@ -29,6 +29,8 @@ mod cooking;
 mod crafting;
 mod fluid_view;
 mod fluids;
+mod hopper;
+mod hopper_view;
 mod jukebox;
 mod liquid_caps;
 mod menu;
