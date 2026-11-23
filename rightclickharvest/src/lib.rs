@@ -43,8 +43,7 @@ fn tags_of(host: &dyn mod_api::Host, stack: Option<&ItemStack>) -> Vec<String> {
         .unwrap_or_default()
 }
 
-/// `isHoe` and the tier tags of the held stack: `#minecraft:hoes`, the tier tags, or a block
-/// transformer that tills.
+/// `isHoe` and the tier tags of the held stack: `#minecraft:hoes` and the tier tags.
 fn hoe(host: &dyn mod_api::Host, stack: Option<&ItemStack>) -> (bool, Tiers) {
     let tags = tags_of(host, stack);
     let has = |tag: &str| tags.iter().any(|t| t == tag);
@@ -53,11 +52,8 @@ fn hoe(host: &dyn mod_api::Host, stack: Option<&ItemStack>) -> (bool, Tiers) {
         mid: has("rightclickharvest:mid_tier_hoes"),
         high: has("rightclickharvest:high_tier_hoes"),
     };
-    let transformer = stack
-        .and_then(|stack| host.item_default_component(stack.item(), "minecraft:block_transformer"))
-        .is_some_and(|component| format!("{component:?}").contains("hoe"));
     (
-        has("minecraft:hoes") || tiers.low || tiers.mid || tiers.high || transformer,
+        has("minecraft:hoes") || tiers.low || tiers.mid || tiers.high,
         tiers,
     )
 }

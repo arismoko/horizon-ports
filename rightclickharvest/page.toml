@@ -17,6 +17,7 @@ What it does:
 Differences from the original:
 
 - A crop the port does not know the seed of (a modded crop) drops everything; vanilla crops give one seed or crop less, as the original does.
+- A hoe is an item in `#minecraft:hoes` or one of the three tier tags; the original's extra test for a block-transformer component that tills is not read, as the mod API does not expose that component's contents.
 - The warning about holding a hoe is shown once for each game session, not saved, and its words are not coloured.
 - Other mods' claim protection (the original asks the loader's break and place events) and the original's `AfterHarvest` event for other mods are not available; there is no in-game config screen.
 """
