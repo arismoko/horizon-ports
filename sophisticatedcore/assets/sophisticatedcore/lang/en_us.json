@@ -254,6 +254,8 @@
   "sophisticatedcore.config.max_number_of_backpacks": "Backpacks you can carry without slowness",
   "sophisticatedcore.config.slowness_levels_per_additional_backpack": "Slowness levels per extra backpack",
   "sophisticatedcore.config.only_worn_backpack_triggers_upgrades": "Only the worn backpack's upgrades run",
+  "sophisticatedcore.config.inception_upgrades_use_inventories_of_backpacks_in_backpack": "Inception upgrades use the inventories of backpacks inside",
+  "sophisticatedcore.config.inception_upgrades_in_contained_backpacks_are_functional": "Upgrades in backpacks inside an inception backpack work",
   "sophisticatedcore.config.drop_packed": "Chests and barrels always drop packed",
   "sophisticatedcore.config.too_many_item_entity_drops": "Item drops from a chest above which it drops packed",
   "sophisticatedcore.config.show_single_wood_variant_only": "Creative tab lists one wood only",

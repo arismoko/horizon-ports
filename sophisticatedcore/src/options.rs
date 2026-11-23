@@ -16,6 +16,10 @@ pub mod key {
     pub const MAX_BACKPACKS: &str = "max_number_of_backpacks";
     pub const SLOWNESS_RATIO: &str = "slowness_levels_per_additional_backpack";
     pub const ONLY_WORN: &str = "only_worn_backpack_triggers_upgrades";
+    pub const INCEPTION_INVENTORIES: &str =
+        "inception_upgrades_use_inventories_of_backpacks_in_backpack";
+    pub const INCEPTION_FUNCTIONAL: &str =
+        "inception_upgrades_in_contained_backpacks_are_functional";
     pub const DROP_PACKED: &str = "drop_packed";
     pub const TOO_MANY_DROPS: &str = "too_many_item_entity_drops";
     pub const SINGLE_WOOD: &str = "show_single_wood_variant_only";
@@ -100,6 +104,8 @@ pub const SPECS: &[(&str, Kind)] = &[
     (key::MAX_BACKPACKS, Kind::Range(1.0, 27.0, 1.0, 3.0)),
     (key::SLOWNESS_RATIO, Kind::Range(0.1, 5.0, 0.1, 1.0)),
     (key::ONLY_WORN, Kind::Toggle(false)),
+    (key::INCEPTION_INVENTORIES, Kind::Toggle(true)),
+    (key::INCEPTION_FUNCTIONAL, Kind::Toggle(true)),
     (key::DROP_PACKED, Kind::Toggle(false)),
     (key::TOO_MANY_DROPS, Kind::Range(1.0, 1000.0, 1.0, 200.0)),
     (key::SINGLE_WOOD, Kind::Toggle(false)),
@@ -125,6 +131,10 @@ pub struct Options {
     pub max_backpacks: usize,
     pub slowness_ratio: f64,
     pub only_worn: bool,
+    /// `upgradesUseInventoriesOfBackpacksInBackpack`.
+    pub inception_inventories: bool,
+    /// `upgradesInContainedBackpacksAreFunctional`.
+    pub inception_functional: bool,
     pub drop_packed: bool,
     pub too_many_drops: usize,
     pub single_wood: bool,
@@ -200,6 +210,8 @@ impl Options {
             max_backpacks: number(get(key::MAX_BACKPACKS).as_deref(), 3.0).max(1.0) as usize,
             slowness_ratio: number(get(key::SLOWNESS_RATIO).as_deref(), 1.0),
             only_worn: flag(get(key::ONLY_WORN).as_deref(), false),
+            inception_inventories: flag(get(key::INCEPTION_INVENTORIES).as_deref(), true),
+            inception_functional: flag(get(key::INCEPTION_FUNCTIONAL).as_deref(), true),
             drop_packed: flag(get(key::DROP_PACKED).as_deref(), false),
             too_many_drops: number(get(key::TOO_MANY_DROPS).as_deref(), 200.0).max(1.0) as usize,
             single_wood: flag(get(key::SINGLE_WOOD).as_deref(), false),

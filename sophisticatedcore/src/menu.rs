@@ -181,6 +181,7 @@ fn kind_has_view(u: &upgrades::Upgrade) -> bool {
                 | Kind::Battery
                 | Kind::Pump
                 | Kind::XpPump
+                | Kind::Inception
         )
 }
 
@@ -455,6 +456,37 @@ pub fn may_store(host: &dyn Host, kind: &StorageItem, stack: &ItemStack) -> bool
     )
 }
 
+/// [`may_store`] for a storage that holds `upgrades`: a backpack with an inception upgrade also takes backpacks that
+/// have none (`BackpackInventoryHandler.isAllowed`).
+pub fn may_store_in(
+    host: &dyn Host,
+    kind: &StorageItem,
+    upgrades: &[Option<ItemStack>],
+    stack: &ItemStack,
+) -> bool {
+    let id = contents::item_id(host, stack);
+    let inner = match storage_items::by_item(&id) {
+        Some(o) if kind.family == Family::Backpack && o.family == Family::Backpack => o,
+        _ => return may_store(host, kind, stack),
+    };
+    let has = |ups: &[Option<ItemStack>]| {
+        ups.iter()
+            .flatten()
+            .any(|u| upgrades::of(host, u).is_some_and(|k| k.kind == Kind::Inception))
+    };
+    let listed = crate::options::listed(&crate::options::Lists::get(host).backpack_disallowed, &id);
+    nests(
+        has(upgrades),
+        has(&Contents::read(host, stack, inner).upgrades),
+        listed,
+    )
+}
+
+/// Whether a backpack goes into another: the outer one needs the inception upgrade, the inner one must not have it.
+fn nests(outer_inception: bool, inner_inception: bool, listed: bool) -> bool {
+    outer_inception && !inner_inception && !listed
+}
+
 /// The container rules of `BackpackInventoryHandler.isAllowed` and `StackStorageWrapper.isAllowedInStorage`: a
 /// backpack never goes in a backpack (no inception upgrade), no shulker box goes in a shulker box, and with
 /// `containerItemsDisallowed` on, nothing that cannot fit inside container items goes in: shulker boxes always,
@@ -712,7 +744,7 @@ fn click_main(
         let Some(st) = invs[inv as usize].clone() else {
             return (Outcome::Nothing, None);
         };
-        if !may_store(&*host, s.kind, &st) {
+        if !may_store_in(&*host, s.kind, &c.upgrades, &st) {
             return (Outcome::Nothing, Some("That can't go in here"));
         }
         if shift
@@ -1342,6 +1374,14 @@ mod tests {
     }
 
     use super::*;
+
+    #[test]
+    fn a_backpack_nests_only_with_an_inception_upgrade_outside_and_none_inside() {
+        assert!(nests(true, false, false));
+        assert!(!nests(false, false, false));
+        assert!(!nests(true, true, false));
+        assert!(!nests(true, false, true));
+    }
 
     #[test]
     fn container_rules_follow_the_original() {

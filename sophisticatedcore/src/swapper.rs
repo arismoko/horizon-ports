@@ -375,14 +375,15 @@ pub fn on_block_click(
     if places::creative(&*host, uuid) {
         return;
     }
-    for mut c in ticking::carried(host, uuid) {
-        for (up, k) in swappers(&*host, &c) {
-            if swap_for_block(host, (player, level, pos), &mut c, &up, &k) {
-                if c.contents_changed {
-                    c.save(host, uuid);
-                }
-                return;
-            }
+    for mut root in ticking::carried(host, uuid) {
+        let swapped = root.visit(&mut |c| {
+            swappers(&*host, c)
+                .into_iter()
+                .any(|(up, k)| swap_for_block(host, (player, level, pos), c, &up, &k))
+        });
+        if swapped {
+            root.flush(host, uuid);
+            return;
         }
     }
 }
@@ -393,14 +394,15 @@ pub fn on_attack(host: &mut dyn ServerHost, player: PlayerRef) {
     if places::creative(&*host, uuid) {
         return;
     }
-    for mut c in ticking::carried(host, uuid) {
-        for (up, k) in swappers(&*host, &c) {
-            if swap_for_attack(host, player, &mut c, &up, &k) {
-                if c.contents_changed {
-                    c.save(host, uuid);
-                }
-                return;
-            }
+    for mut root in ticking::carried(host, uuid) {
+        let swapped = root.visit(&mut |c| {
+            swappers(&*host, c)
+                .into_iter()
+                .any(|(up, k)| swap_for_attack(host, player, c, &up, &k))
+        });
+        if swapped {
+            root.flush(host, uuid);
+            return;
         }
     }
 }

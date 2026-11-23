@@ -17,10 +17,8 @@
 //!   (one slot holding the backpack, spilled when broken), the chest loot injections (Homestead's
 //!   `chestLootEnabled = true`) and the crafting kinds (`crafting`).
 //!
-//! Not ported: the jar's own screen (tabs, sorting buttons, the memory and no-sort slot settings), the furnace,
-//! jukebox, tank, battery, pump, XP pump, anvil and inception
-//! upgrades (they sit in their slot and do nothing), the filter upgrade (it filters automation, and a
-//! placed backpack offers none), the backpack's render on the player's back, mobs spawning with backpacks.
+//! Not ported: the jar's own screen (tabs, sorting buttons, the memory and no-sort slot settings), the anvil
+//! upgrade (it sits in its slot and does nothing), inception in a backpack placed as a block.
 // Menus and inventories here are addressed by slot number, which these loops keep explicit.
 #![allow(clippy::needless_range_loop, clippy::type_complexity)]
 
@@ -35,6 +33,7 @@ mod fluid_view;
 mod fluids;
 mod hopper;
 mod hopper_view;
+mod inception;
 mod infinity;
 mod jukebox;
 mod liquid_caps;

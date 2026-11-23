@@ -11,20 +11,210 @@
 use mod_api::{HostTransaction, Identifier, ItemStack, PlayerRef, RecipeInput, ServerHost};
 
 use crate::contents::{self, Contents};
+use crate::inception::{self, Order};
 use crate::places::{self, Loc};
 use crate::storage_items::{self, StorageItem};
 use crate::upgrades::{self, Kind, Upgrade};
 
-/// A storage the player carries: where it is, the stack and its contents.
+/// A storage the player carries: where it is, the stack and its contents. With an inception upgrade it also holds
+/// the backpacks in its slots (`subs`, by slot): their contents live here while the tick runs, and `sync` puts them
+/// back in the slots.
+#[derive(Clone)]
 pub struct Carried {
     pub loc: Loc,
     pub stack: ItemStack,
     pub kind: &'static StorageItem,
     pub contents: Contents,
     pub contents_changed: bool,
+    subs: Vec<(usize, Carried)>,
+    /// `upgradesUseInventoriesOfBackpacksInBackpack`: the inception upgrade's inventory order, when it applies.
+    share: Option<Order>,
+    /// `upgradesInContainedBackpacksAreFunctional`.
+    functional: bool,
 }
 
 impl Carried {
+    pub fn new(
+        host: &dyn mod_api::Host,
+        loc: Loc,
+        stack: ItemStack,
+        kind: &'static StorageItem,
+        contents: Contents,
+    ) -> Carried {
+        let opts = crate::options::Options::read(host);
+        let inception = contents
+            .upgrades
+            .iter()
+            .flatten()
+            .find(|u| upgrades::of(host, u).is_some_and(|k| k.kind == Kind::Inception));
+        let (share, functional) = match inception {
+            Some(u) => (
+                opts.inception_inventories.then(|| Order::read(u)),
+                opts.inception_functional,
+            ),
+            None => (None, false),
+        };
+        let mut subs = Vec::new();
+        if share.is_some() || functional {
+            for (slot, st) in contents.slots.iter().enumerate() {
+                let Some(st) = st else { continue };
+                let Some(sk) = storage_items::by_item(&contents::item_id(host, st)) else {
+                    continue;
+                };
+                if sk.family != storage_items::Family::Backpack {
+                    continue;
+                }
+                let sc = Contents::read(host, st, sk);
+                subs.push((slot, Carried::new(host, loc.clone(), st.clone(), sk, sc)));
+            }
+        }
+        Carried {
+            loc,
+            stack,
+            kind,
+            contents,
+            contents_changed: false,
+            subs,
+            share,
+            functional,
+        }
+    }
+
+    /// Runs `f` on this storage and, when its inception upgrade makes them work, the backpacks inside it (depth
+    /// first); stops at the first `true`.
+    pub fn visit(&mut self, f: &mut dyn FnMut(&mut Carried) -> bool) -> bool {
+        if f(self) {
+            return true;
+        }
+        if self.functional {
+            for (_, s) in self.subs.iter_mut() {
+                if s.visit(f) {
+                    return true;
+                }
+            }
+        }
+        false
+    }
+
+    /// Puts what changed in the backpacks inside back into their slots here.
+    pub fn sync(&mut self, host: &dyn mod_api::Host) {
+        for (slot, s) in self.subs.iter_mut() {
+            s.sync(host);
+            if s.contents_changed {
+                let mut st = s.stack.clone();
+                s.contents.write(host, &mut st, s.kind);
+                s.stack = st.clone();
+                s.contents_changed = false;
+                if let Some(cell) = self.contents.slots.get_mut(*slot) {
+                    *cell = Some(st);
+                    self.contents_changed = true;
+                }
+            }
+        }
+    }
+
+    /// Items go to the inventories in the inception upgrade's order (`InceptionInventoryHandler.insert`).
+    pub fn add(&mut self, host: &dyn mod_api::Host, stack: &ItemStack, n: u32) -> u32 {
+        let Some(order) = self.share else {
+            return self.add_own(host, stack, n);
+        };
+        let mut left = n;
+        for i in inception::sequence(order, self.subs.len()) {
+            if left == 0 {
+                break;
+            }
+            left -= if i == self.subs.len() {
+                self.add_own(host, stack, left)
+            } else {
+                self.subs[i].1.add(host, stack, left)
+            };
+        }
+        n - left
+    }
+
+    fn add_own(&mut self, host: &dyn mod_api::Host, stack: &ItemStack, n: u32) -> u32 {
+        if !crate::menu::may_store_in(host, self.kind, &self.contents.upgrades, stack) {
+            return 0;
+        }
+        let went = self.contents.add(host, self.kind, stack, n);
+        if went > 0 {
+            self.contents_changed = true;
+        }
+        went
+    }
+
+    /// Items come from the inventories in the same order (`InceptionInventoryHandler.extract`).
+    pub fn remove(&mut self, host: &dyn mod_api::Host, stack: &ItemStack, n: u32) -> u32 {
+        let Some(order) = self.share else {
+            return self.remove_own(host, stack, n);
+        };
+        let mut left = n;
+        for i in inception::sequence(order, self.subs.len()) {
+            if left == 0 {
+                break;
+            }
+            left -= if i == self.subs.len() {
+                self.remove_own(host, stack, left)
+            } else {
+                self.subs[i].1.remove(host, stack, left)
+            };
+        }
+        n - left
+    }
+
+    fn remove_own(&mut self, host: &dyn mod_api::Host, stack: &ItemStack, n: u32) -> u32 {
+        let got = self.contents.remove(host, self.kind, stack, n);
+        if got > 0 {
+            self.contents_changed = true;
+        }
+        got
+    }
+
+    /// Every stack the inventories show, in order: where it is (the sub-backpack slots leading to its inventory),
+    /// its slot there, and the stack.
+    pub fn stacks(&self, host: &dyn mod_api::Host) -> Vec<(Vec<usize>, usize, ItemStack)> {
+        let own = |c: &Carried| -> Vec<(Vec<usize>, usize, ItemStack)> {
+            c.contents
+                .visible(host, c.kind)
+                .into_iter()
+                .enumerate()
+                .filter_map(|(i, s)| s.map(|s| (Vec::new(), i, s)))
+                .collect()
+        };
+        let Some(order) = self.share else {
+            return own(self);
+        };
+        let mut out = Vec::new();
+        for i in inception::sequence(order, self.subs.len()) {
+            if i == self.subs.len() {
+                out.extend(own(self));
+            } else {
+                for (mut path, slot, st) in self.subs[i].1.stacks(host) {
+                    path.insert(0, i);
+                    out.push((path, slot, st));
+                }
+            }
+        }
+        out
+    }
+
+    /// Takes up to `n` out of the slot `stacks` named.
+    pub fn take(&mut self, host: &dyn mod_api::Host, path: &[usize], slot: usize, n: u32) -> u32 {
+        match path.split_first() {
+            None => {
+                let got = self.contents.take_from(host, self.kind, slot, n);
+                if got > 0 {
+                    self.contents_changed = true;
+                }
+                got
+            }
+            Some((&i, rest)) => self
+                .subs
+                .get_mut(i)
+                .map_or(0, |(_, s)| s.take(host, rest, slot, n)),
+        }
+    }
+
     pub fn ups(&self, host: &dyn mod_api::Host) -> Vec<(ItemStack, Upgrade)> {
         self.contents
             .upgrades
@@ -39,8 +229,15 @@ impl Carried {
         self.ups(host).iter().any(|(_, u)| u.kind == kind)
     }
 
+    /// Saves when anything here or in the backpacks inside changed.
+    pub fn flush(&mut self, host: &mut dyn ServerHost, uuid: u128) -> bool {
+        self.sync(&*host);
+        self.contents_changed && self.save(host, uuid)
+    }
+
     /// Writes the contents back where the storage is (if it is still there).
     pub fn save(&mut self, host: &mut dyn ServerHost, uuid: u128) -> bool {
+        self.sync(&*host);
         let Some(id) = contents::uuid(&self.stack) else {
             let mut st = self.stack.clone();
             self.contents.write(&*host, &mut st, self.kind);
@@ -84,13 +281,7 @@ pub fn carried(host: &mut dyn ServerHost, uuid: u128) -> Vec<Carried> {
         if c.upgrades.iter().all(Option::is_none) {
             continue;
         }
-        out.push(Carried {
-            loc,
-            stack: st,
-            kind,
-            contents: c,
-            contents_changed: false,
-        });
+        out.push(Carried::new(&*host, loc, st, kind, c));
     }
     out
 }
@@ -107,7 +298,7 @@ pub fn accept(host: &dyn mod_api::Host, c: &mut Carried, stack: &ItemStack, magn
         }
         _ => false,
     });
-    if !takes || !crate::menu::may_store(host, c.kind, stack) {
+    if !takes || !crate::menu::may_store_in(host, c.kind, &c.contents.upgrades, stack) {
         return 0;
     }
     let void = ups
@@ -119,7 +310,7 @@ pub fn accept(host: &dyn mod_api::Host, c: &mut Carried, stack: &ItemStack, magn
     {
         return n;
     }
-    let went = c.contents.add(host, c.kind, stack, n);
+    let went = c.add(host, stack, n);
     if went < n && void.is_some() { n } else { went }
 }
 
@@ -171,24 +362,30 @@ fn take_items(
             continue;
         };
         let mut left = orig.count();
-        for c in list.iter_mut() {
+        for root in list.iter_mut() {
             if left == 0 {
                 break;
             }
-            let has_magnet = c.has(&*host, Kind::Magnet);
-            let has_pickup = c.has(&*host, Kind::Pickup);
-            if (magnet_only && !has_magnet) || (!magnet_only && !(has_pickup || has_magnet)) {
-                continue;
-            }
-            let Some(offer) = contents::with_count(&orig, left) else {
-                break;
-            };
-            let went = accept(&*host, c, &offer, magnet_only);
-            if went > 0 {
-                left -= went;
-                c.contents_changed = true;
-                changed = true;
-            }
+            root.visit(&mut |c| {
+                if left == 0 {
+                    return true;
+                }
+                let has_magnet = c.has(&*host, Kind::Magnet);
+                let has_pickup = c.has(&*host, Kind::Pickup);
+                if (magnet_only && !has_magnet) || (!magnet_only && !(has_pickup || has_magnet)) {
+                    return false;
+                }
+                let Some(offer) = contents::with_count(&orig, left) else {
+                    return true;
+                };
+                let went = accept(&*host, c, &offer, magnet_only);
+                if went > 0 {
+                    left -= went;
+                    c.contents_changed = true;
+                    changed = true;
+                }
+                false
+            });
         }
         if left == orig.count() {
             continue;
@@ -240,11 +437,7 @@ fn feed(host: &mut dyn ServerHost, uuid: u128, c: &mut Carried) -> bool {
     let Some((up, k)) = ups.iter().find(|(_, k)| k.kind == Kind::Feeding).cloned() else {
         return false;
     };
-    let visible = c.contents.visible(&*host, c.kind);
-    for (i, st) in visible.into_iter().enumerate() {
-        let Some(st) = st else {
-            continue;
-        };
+    for (path, i, st) in c.stacks(&*host) {
         let Some((n, sat)) = upgrades::food(&*host, &st) else {
             continue;
         };
@@ -258,9 +451,9 @@ fn feed(host: &mut dyn ServerHost, uuid: u128, c: &mut Carried) -> bool {
         if !player.feed(host, n, sat) {
             return false;
         }
-        c.contents.take_from(&*host, c.kind, i, 1);
+        c.take(&*host, &path, i, 1);
         if let Some(rem) = upgrades::use_remainder(&*host, &st) {
-            let went = c.contents.add(&*host, c.kind, &rem, rem.count());
+            let went = c.add(&*host, &rem, rem.count());
             if let Some(rest) = rem.clone().shrink(went) {
                 places::give_or_drop(host, player, &rest);
             }
@@ -450,7 +643,7 @@ fn refill(host: &mut dyn ServerHost, uuid: u128, c: &mut Carried) -> bool {
             if st.count() >= max {
                 break;
             }
-            let got = c.contents.remove(&*host, c.kind, &st, max - st.count());
+            let got = c.remove(&*host, &st, max - st.count());
             if got > 0 {
                 places::set_slot(
                     host,
@@ -500,44 +693,52 @@ pub fn tick(host: &mut dyn ServerHost, uuid: u128, n: u64) -> Vec<[i32; 4]> {
         }
     }
     if n.is_multiple_of(20) {
-        for c in list.iter_mut() {
-            if c.has(&*host, Kind::Feeding) && feed(host, uuid, c) {
-                c.contents_changed = true;
-            }
-            if c.has(&*host, Kind::Compacting) && compact(host, uuid, c) {
-                c.contents_changed = true;
-            }
+        for root in list.iter_mut() {
+            root.visit(&mut |c| {
+                if c.has(&*host, Kind::Feeding) && feed(host, uuid, c) {
+                    c.contents_changed = true;
+                }
+                if c.has(&*host, Kind::Compacting) && compact(host, uuid, c) {
+                    c.contents_changed = true;
+                }
+                false
+            });
         }
     }
     if n.is_multiple_of(5) {
-        for c in list.iter_mut() {
-            if c.has(&*host, Kind::Refill) && refill(host, uuid, c) {
-                c.contents_changed = true;
-            }
+        for root in list.iter_mut() {
+            root.visit(&mut |c| {
+                if c.has(&*host, Kind::Refill) && refill(host, uuid, c) {
+                    c.contents_changed = true;
+                }
+                false
+            });
         }
     }
-    for c in list.iter_mut() {
-        let cooks = c
-            .ups(&*host)
-            .iter()
-            .any(|(_, u)| matches!(u.kind, Kind::Cooking(_)));
-        if cooks && cook(host, uuid, c) {
-            c.contents_changed = true;
-        }
-        let pumps = c.ups(&*host).iter().any(|(_, u)| {
-            matches!(
-                u.kind,
-                Kind::Tank | Kind::Battery | Kind::Pump | Kind::XpPump
-            )
+    for root in list.iter_mut() {
+        root.visit(&mut |c| {
+            let cooks = c
+                .ups(&*host)
+                .iter()
+                .any(|(_, u)| matches!(u.kind, Kind::Cooking(_)));
+            if cooks && cook(host, uuid, c) {
+                c.contents_changed = true;
+            }
+            let pumps = c.ups(&*host).iter().any(|(_, u)| {
+                matches!(
+                    u.kind,
+                    Kind::Tank | Kind::Battery | Kind::Pump | Kind::XpPump
+                )
+            });
+            if pumps && liquids(host, uuid, c) {
+                c.contents_changed = true;
+            }
+            false
         });
-        if pumps && liquids(host, uuid, c) {
-            c.contents_changed = true;
-        }
     }
     let mut saved = Vec::new();
     for c in list.iter_mut() {
-        if c.contents_changed
-            && c.save(host, uuid)
+        if c.flush(host, uuid)
             && let Some(id) = contents::uuid(&c.stack)
         {
             saved.push(id);
@@ -555,48 +756,55 @@ pub fn picked_up(host: &mut dyn ServerHost, uuid: u128, picked: &ItemStack) -> V
     };
     let mut left = picked.count();
     let mut saved = Vec::new();
-    for c in list.iter_mut() {
+    for root in list.iter_mut() {
         if left == 0 {
             break;
         }
-        if !(c.has(&*host, Kind::Pickup) || c.has(&*host, Kind::Magnet)) {
-            continue;
-        }
-        let Some(want) = contents::with_count(picked, left) else {
-            break;
-        };
-        // Take what the inventory holds of it, up to what came in.
-        let inv = places::inventory(host, player);
-        let held: u32 = inv[..36]
-            .iter()
-            .flatten()
-            .filter(|s| contents::same(s, picked))
-            .map(|s| s.count())
-            .sum();
-        let Some(offer) = contents::with_count(&want, want.count().min(held)) else {
-            break;
-        };
-        let went = accept(&*host, c, &offer, false);
-        if went == 0 {
-            continue;
-        }
-        // Remove `went` of it from the inventory, last slots first.
-        let mut rest = went;
-        for slot in (0..36).rev() {
-            if rest == 0 {
-                break;
+        root.visit(&mut |c| {
+            if left == 0 {
+                return true;
             }
-            if let Some(s) = &inv[slot]
-                && contents::same(s, picked)
-            {
-                let take = s.count().min(rest);
-                places::set_slot(host, player, slot as u32, s.clone().shrink(take));
-                rest -= take;
+            if !(c.has(&*host, Kind::Pickup) || c.has(&*host, Kind::Magnet)) {
+                return false;
             }
-        }
-        left -= went;
-        if c.save(host, uuid)
-            && let Some(id) = contents::uuid(&c.stack)
+            let Some(want) = contents::with_count(picked, left) else {
+                return true;
+            };
+            // Take what the inventory holds of it, up to what came in.
+            let inv = places::inventory(host, player);
+            let held: u32 = inv[..36]
+                .iter()
+                .flatten()
+                .filter(|s| contents::same(s, picked))
+                .map(|s| s.count())
+                .sum();
+            let Some(offer) = contents::with_count(&want, want.count().min(held)) else {
+                return true;
+            };
+            let went = accept(&*host, c, &offer, false);
+            if went == 0 {
+                return false;
+            }
+            // Remove `went` of it from the inventory, last slots first.
+            let mut rest = went;
+            for slot in (0..36).rev() {
+                if rest == 0 {
+                    break;
+                }
+                if let Some(s) = &inv[slot]
+                    && contents::same(s, picked)
+                {
+                    let take = s.count().min(rest);
+                    places::set_slot(host, player, slot as u32, s.clone().shrink(take));
+                    rest -= take;
+                }
+            }
+            left -= went;
+            c.contents_changed = true;
+            false
+        });
+        if root.flush(host, uuid)
+            && let Some(id) = contents::uuid(&root.stack)
         {
             saved.push(id);
         }
@@ -618,13 +826,8 @@ pub fn interact(
     let Some((st, kind)) = places::storage_at(host, uuid, loc) else {
         return false;
     };
-    let mut c = Carried {
-        loc: loc.clone(),
-        contents: Contents::read(&*host, &st, kind),
-        stack: st,
-        kind,
-        contents_changed: false,
-    };
+    let contents = Contents::read(&*host, &st, kind);
+    let mut c = Carried::new(&*host, loc.clone(), st, kind, contents);
     let ups = c.ups(&*host);
     let restock: Vec<_> = ups
         .iter()
@@ -668,8 +871,7 @@ pub fn interact(
             if !upgrades::matches(&*host, up, k, &stack) {
                 continue;
             }
-            let mut trial = c.contents.clone();
-            let fits = trial.add(&*host, c.kind, &stack, amount);
+            let fits = c.clone().add(&*host, &stack, amount);
             if fits == 0 {
                 continue;
             }
@@ -677,17 +879,13 @@ pub fn interact(
                 .transaction(|host, tx| Ok::<u32, ()>(handler.extract_at(host, tx, i, &res, fits)))
                 .unwrap_or(0);
             if got > 0 {
-                c.contents.add(&*host, c.kind, &stack, got);
+                c.add(&*host, &stack, got);
                 moved_in += 1;
             }
         }
     }
     for (up, k) in &deposit {
-        let visible = c.contents.visible(&*host, c.kind);
-        for (i, stack) in visible.into_iter().enumerate() {
-            let Some(stack) = stack else {
-                continue;
-            };
+        for (path, i, stack) in c.stacks(&*host) {
             if !upgrades::matches(&*host, up, k, &stack) {
                 continue;
             }
@@ -699,7 +897,7 @@ pub fn interact(
                 })
                 .unwrap_or(0);
             if put > 0 {
-                c.contents.take_from(&*host, c.kind, i, put);
+                c.take(&*host, &path, i, put);
                 moved_out += 1;
             }
         }

@@ -49,7 +49,7 @@ fn contents_kind(u: &Upgrade) -> bool {
 
 /// Whether the upgrade has the list and match controls (a refill's list is only its items).
 fn has_match(u: &Upgrade) -> bool {
-    u.kind != Kind::Refill
+    !matches!(u.kind, Kind::Refill | Kind::Inception)
 }
 
 fn list_button(host: &dyn Host, u: &Upgrade, f: &Filter) -> Option<ItemStack> {
@@ -235,6 +235,29 @@ fn own(host: &dyn Host, u: &Upgrade, up: &ItemStack) -> [Option<ItemStack>; 2] {
                 "Swaps weapons",
                 "Click: swap in a sword or axe when attacking",
             ),
+        ],
+        Kind::Inception => [
+            match crate::inception::Order::read(up) {
+                crate::inception::Order::MainFirst => button(
+                    host,
+                    "minecraft:chest",
+                    "Backpack's own inventory first",
+                    &[
+                        "Items go in here before the backpacks inside",
+                        "Click: backpacks inside first",
+                    ],
+                ),
+                crate::inception::Order::InceptedFirst => button(
+                    host,
+                    "minecraft:ender_chest",
+                    "Backpacks inside first",
+                    &[
+                        "Items go in the backpacks inside before here",
+                        "Click: own inventory first",
+                    ],
+                ),
+            },
+            None,
         ],
         _ => [None, None],
     }
@@ -487,6 +510,10 @@ pub fn click(
         } else if i == base + 5 && key.is_empty() && u.kind == Kind::ToolSwapper && u.advanced {
             let v = !crate::swapper::swaps_weapons(&up);
             upgrades::set_flag(&mut up, "shouldSwapWeapon", v);
+            c.upgrades[j] = Some(up);
+            return (Outcome::Changed(c), None);
+        } else if i == base + 4 && key.is_empty() && u.kind == Kind::Inception {
+            crate::inception::Order::read(&up).next().write(&mut up);
             c.upgrades[j] = Some(up);
             return (Outcome::Changed(c), None);
         } else if i == base + 4 && key.is_empty() && u.kind == Kind::Magnet {
