@@ -360,11 +360,14 @@ pub struct Contents {
     pub memory: Vec<Option<ItemStack>>,
     /// Memory slots match the stack's components too (the category's `ignoreNbt` off).
     pub exact: bool,
+    /// Slots the sort leaves alone (`NoSortSettingsCategory`).
+    pub no_sort: Vec<i32>,
 }
 
 /// `memory` in the stack's custom_data: the slots' stacks, and whether they match components.
 const MEMORY: &str = "memory";
 const MEMORY_EXACT: &str = "memoryExact";
+const NO_SORT: &str = "noSort";
 
 /// How a slot takes a stack (see `Contents::modes`).
 pub const REFUSES: u8 = 0;
@@ -454,6 +457,10 @@ impl Contents {
                 None => Vec::new(),
             },
             exact: get_bool(&data, MEMORY_EXACT) == Some(true),
+            no_sort: match data.at(NO_SORT) {
+                Some(Tag::IntArray(v)) => v.clone(),
+                _ => Vec::new(),
+            },
         }
     }
 
@@ -483,6 +490,26 @@ impl Contents {
                 })
                 .collect(),
         )
+    }
+
+    /// Whether the sort leaves slot `slot` alone: a no-sort slot or a memory slot (`slotIndexesExcludedFromSort`).
+    pub fn sort_skips(&self, slot: usize) -> bool {
+        self.no_sort.contains(&(slot as i32)) || self.memory.get(slot).is_some_and(Option::is_some)
+    }
+
+    /// Marks slot `slot` as one the sort leaves alone, or clears it.
+    pub fn toggle_no_sort(&mut self, slot: usize) -> bool {
+        if slot >= self.slots.len() {
+            return false;
+        }
+        let at = slot as i32;
+        match self.no_sort.iter().position(|v| *v == at) {
+            Some(i) => {
+                self.no_sort.remove(i);
+            }
+            None => self.no_sort.push(at),
+        }
+        true
     }
 
     /// Keeps slot `slot` for what it holds (or forgets its memory); false when there is nothing to keep.
@@ -517,6 +544,11 @@ impl Contents {
             UPGRADES,
             write_items_kept(host, &self.upgrades, &self.kept_upgrades),
         );
+        if self.no_sort.is_empty() {
+            data.del(NO_SORT);
+        } else {
+            put(&mut data, NO_SORT, Tag::IntArray(self.no_sort.clone()));
+        }
         if self.memory.iter().any(Option::is_some) {
             put(&mut data, MEMORY, write_items(host, &self.memory));
             put(&mut data, MEMORY_EXACT, Tag::Byte(i8::from(self.exact)));
@@ -568,6 +600,7 @@ impl Contents {
             "packed",
             MEMORY,
             MEMORY_EXACT,
+            NO_SORT,
         ] {
             data.del(k);
         }
@@ -716,6 +749,22 @@ mod tests {
         let modes = [ACCEPTS, REFUSES, PREFERS, ACCEPTS, PREFERS];
         assert_eq!(fill_order(Some(&modes), 5), [2, 4, 0, 3]);
         assert_eq!(fill_order(None, 3), [0, 1, 2]);
+    }
+
+    #[test]
+    fn no_sort_slots_toggle_and_the_sort_skips_them() {
+        let mut c = Contents {
+            slots: vec![None; 4],
+            ..Default::default()
+        };
+        assert!(!c.sort_skips(2));
+        assert!(c.toggle_no_sort(2));
+        assert!(c.sort_skips(2) && !c.sort_skips(1));
+        assert!(c.toggle_no_sort(2));
+        assert!(!c.sort_skips(2));
+        // A slot past the end, and an empty slot with no memory, can't be marked.
+        assert!(!c.toggle_no_sort(9));
+        assert!(!c.toggle_memory(1, None));
     }
 
     #[test]

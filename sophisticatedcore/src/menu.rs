@@ -147,21 +147,32 @@ pub(crate) fn filler(host: &dyn Host) -> Option<ItemStack> {
 }
 
 /// A stored stack as the menu shows it: at most a stack of it, with the stored count in its lore when more.
-fn shown(host: &dyn Host, st: &ItemStack) -> Option<ItemStack> {
+fn shown(host: &dyn Host, st: &ItemStack, notes: &[&str]) -> Option<ItemStack> {
     let max = host.max_stack_size(st.item()).unwrap_or(64).max(1);
-    if st.count() <= max {
+    if st.count() <= max && notes.is_empty() {
         return Some(st.clone());
     }
-    let mut s = contents::with_count(st, max)?;
+    let mut s = contents::with_count(st, st.count().min(max))?;
+    let mut lines = Vec::new();
+    if st.count() > max {
+        lines.push(("gold", format!("Stored: {}", st.count())));
+    }
+    lines.extend(notes.iter().map(|n| ("aqua", (*n).to_string())));
     let mut patch = Compound::new();
-    let lore = format!("Stored: {}", st.count());
     patch.insert(
         "minecraft:lore".into(),
-        Tag::List(vec![Tag::compound([
-            ("text", Tag::String(lore.as_str().into())),
-            ("color", Tag::String("gold".into())),
-            ("italic", Tag::Byte(0)),
-        ])]),
+        Tag::List(
+            lines
+                .iter()
+                .map(|(color, text)| {
+                    Tag::compound([
+                        ("text", Tag::String(text.as_str().into())),
+                        ("color", Tag::String((*color).into())),
+                        ("italic", Tag::Byte(0)),
+                    ])
+                })
+                .collect(),
+        ),
     );
     let _ = s.apply_components(&patch);
     Some(s)
@@ -208,7 +219,16 @@ pub fn render(host: &mut dyn ServerHost, s: &Session, c: &Contents) -> Vec<Optio
                 let idx = page * s.page_size() + i;
                 out[i] = if idx < s.slots {
                     match (&visible[idx], c.memory.get(idx).and_then(Option::as_ref)) {
-                        (Some(st), _) => shown(&*host, st),
+                        (Some(st), memo) => {
+                            let mut notes = Vec::new();
+                            if memo.is_some() {
+                                notes.push("Memory slot");
+                            }
+                            if c.no_sort.contains(&(idx as i32)) {
+                                notes.push("Not sorted");
+                            }
+                            shown(&*host, st, &notes)
+                        }
                         (None, Some(m)) => button(
                             &*host,
                             &contents::item_id(&*host, m),
@@ -217,6 +237,12 @@ pub fn render(host: &mut dyn ServerHost, s: &Session, c: &Contents) -> Vec<Optio
                                 "Only this item goes in this slot",
                                 "Shift-right-click to forget it",
                             ],
+                        ),
+                        (None, None) if c.no_sort.contains(&(idx as i32)) => button(
+                            &*host,
+                            "minecraft:lime_stained_glass_pane",
+                            "Not sorted",
+                            &["Press Q over the slot to sort it again"],
                         ),
                         (None, None) => None,
                     }
@@ -235,6 +261,7 @@ pub fn render(host: &mut dyn ServerHost, s: &Session, c: &Contents) -> Vec<Optio
                     &[
                         "Merges and sorts the contents by item",
                         "Right-click: memory slots match components too (or not)",
+                        "Q over a slot: sort leaves it alone (or not)",
                     ],
                 );
             }
@@ -665,7 +692,7 @@ pub fn sort(host: &dyn Host, kind: &StorageItem, c: &mut Contents) {
     // (the original leaves them out of the sort).
     let free: Vec<bool> = (0..c.slots.len())
         .filter(|i| !banks.covers(*i))
-        .map(|i| c.memory.get(i).is_none_or(Option::is_none))
+        .map(|i| !c.sort_skips(i))
         .collect();
     let modes: Vec<u8> = free
         .iter()
@@ -719,6 +746,18 @@ pub fn click(
     let Some(player) = host.player(uuid) else {
         return (Outcome::Close, None);
     };
+    if ev.mode == 4
+        && let View::Main { page } = s.view
+        && let Ok(i) = usize::try_from(ev.slot)
+        && i < s.control()
+    {
+        // The drop key over a stored slot: the sort leaves it alone, or sorts it again.
+        let mut c = c.clone();
+        if c.toggle_no_sort(page * s.page_size() + i) {
+            return (Outcome::Changed(c), None);
+        }
+        return (Outcome::Nothing, None);
+    }
     if !matches!(ev.mode, 0 | 1) {
         return (Outcome::Nothing, None);
     }

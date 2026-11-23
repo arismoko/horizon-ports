@@ -529,9 +529,12 @@ impl NetHandler {
         }
     }
 
-    /// Whether a storage of the network keeps a memory slot for `stack` (ControllerBlockEntityBase.isMemorizedItem).
+    /// Whether a storage of the network keeps a memory slot for `stack` or has its item in a compression chain
+    /// (ControllerBlockEntityBase.isMemorizedItem, isFilterItem).
     fn memorizes(&self, host: &dyn Host, stack: &mod_api::ItemStack) -> bool {
-        self.parts(host).iter().any(|h| h.memorizes(host, stack))
+        self.parts(host)
+            .iter()
+            .any(|h| h.memorizes(host, stack) || h.filters(host, stack))
     }
 
     fn parts(&self, host: &dyn Host) -> &[Handler] {
@@ -669,16 +672,17 @@ impl ResourceHandler<ItemResource> for NetHandler {
         };
         let stack = resource.as_stack();
         let mut done = vec![false; parts.len()];
-        // The storages with a memory slot for the item first, then those already holding it, then any with room
-        // (the original's `memorizedItemStorages` before the stacks it holds).
-        for pass in 0..3 {
+        // The storages already holding the item, then those with a memory slot for it, then those whose compression
+        // chain has it, then any with room (ControllerBlockEntityBase.insert).
+        for pass in 0..4 {
             for (i, h) in parts.iter().enumerate() {
                 if left == 0 {
                     return Ok(amount);
                 }
                 let skip = match pass {
-                    0 => !h.memorizes(&*host, stack),
-                    1 => !holds(host, h),
+                    0 => !holds(host, h),
+                    1 => !h.memorizes(&*host, stack),
+                    2 => !h.filters(&*host, stack),
                     _ => false,
                 };
                 if done[i] || skip {

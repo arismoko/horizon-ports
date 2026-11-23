@@ -663,6 +663,22 @@ impl<'a> Banks<'a> {
         }
     }
 
+    /// Every item of each range's chain, whether or not a slot of it holds any now (`getFilterItems`).
+    pub fn chain_items(&self, c: &Contents) -> Vec<ItemStack> {
+        self.list
+            .iter()
+            .flat_map(|bank| {
+                let (chain, _) = self.chain(c, bank, None);
+                chain
+                    .defs
+                    .iter()
+                    .flatten()
+                    .map(|d| d.item.0.clone())
+                    .collect::<Vec<_>>()
+            })
+            .collect()
+    }
+
     /// What slot `slot` shows (everything compressed before it, counted in its item).
     pub fn shown(&self, c: &Contents, slot: usize) -> Option<ItemStack> {
         let bank = self.bank_of(slot)?;

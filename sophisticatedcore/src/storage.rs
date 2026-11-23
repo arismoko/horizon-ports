@@ -416,12 +416,24 @@ fn split_double(
         locked: false,
         memory: c.memory.iter().take(n).cloned().collect(),
         exact: c.exact,
+        no_sort: c
+            .no_sort
+            .iter()
+            .copied()
+            .filter(|i| (*i as usize) < n)
+            .collect(),
     };
     let leave = Contents {
         slots: c.slots[n..].to_vec(),
         upgrades: vec![None; kind.upgrade_count()],
         memory: c.memory.iter().skip(n).cloned().collect(),
         exact: c.exact,
+        no_sort: c
+            .no_sort
+            .iter()
+            .filter(|i| (**i as usize) >= n)
+            .map(|i| i - n as i32)
+            .collect(),
         ..Default::default()
     };
     let unflag = |s: &mut ItemStack| {
@@ -1143,6 +1155,17 @@ impl Handler {
     /// Whether a memory slot of this storage is kept for `stack` (`isMemorizedItem`).
     pub fn memorizes(&self, host: &dyn Host, stack: &ItemStack) -> bool {
         self.with(host, |_, c| c.memorizes(stack)).unwrap_or(false)
+    }
+
+    /// Whether a compression range of this storage has `stack`'s item in its chain (`isFilterItem`).
+    pub fn filters(&self, host: &dyn Host, stack: &ItemStack) -> bool {
+        self.with(host, |_, c| {
+            crate::compression::Banks::of(host, self.kind, c)
+                .chain_items(c)
+                .iter()
+                .any(|i| i.same_item(stack))
+        })
+        .unwrap_or(false)
     }
 
     fn with<R>(&self, host: &dyn Host, f: impl FnOnce(&ItemStack, &Contents) -> R) -> Option<R> {
