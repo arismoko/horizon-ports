@@ -16,11 +16,14 @@ use std::collections::HashSet;
 use std::sync::Mutex;
 
 use mod_api::{
-    Overanswered, BlockEntityRef, BlockUpdateFlags, Compound, Direction, Host, HostTransaction, Identifier, ItemResource,
-    ItemStack, LevelRef, PlayerRef, ResourceHandler, ServerHost, SoundSource, Tag, Transaction,
+    BlockEntityRef, BlockUpdateFlags, Compound, Direction, Host, HostTransaction, Identifier,
+    ItemResource, ItemStack, LevelRef, Overanswered, PlayerRef, ResourceHandler, ServerHost,
+    SoundSource, Tag, Transaction,
 };
 
-use crate::contents::{self, Contents, Nbt, custom_data, get_bool, get_int, get_str, put, set_custom_data};
+use crate::contents::{
+    self, Contents, Nbt, custom_data, get_bool, get_int, get_str, put, set_custom_data,
+};
 use crate::places::{self, Loc};
 use crate::storage_items::{self, Family, StorageItem};
 use crate::upgrades::{self, Kind};
@@ -34,11 +37,20 @@ pub fn kind_of_block(id: &str) -> Option<&'static StorageItem> {
 }
 
 pub fn block_id(host: &dyn Host, level: LevelRef, pos: [i32; 3]) -> String {
-    level.block(host, pos).and_then(|k| k.id(host)).unwrap_or_default().to_owned()
+    level
+        .block(host, pos)
+        .and_then(|k| k.id(host))
+        .unwrap_or_default()
+        .to_owned()
 }
 
 /// The entities whose boxes meet `min`..`max` (`Level.getEntities`), or None when the level can't be read.
-pub fn entities_in(host: &dyn Host, level: LevelRef, min: [f64; 3], max: [f64; 3]) -> Option<Vec<mod_api::EntityRef>> {
+pub fn entities_in(
+    host: &dyn Host,
+    level: LevelRef,
+    min: [f64; 3],
+    max: [f64; 3],
+) -> Option<Vec<mod_api::EntityRef>> {
     let mut found = Vec::new();
     let _ = level
         .visit_entities_in(host, min, max, &mut |e| {
@@ -86,14 +98,22 @@ fn counter_clockwise(f: &str) -> &'static str {
 // ---- block states ----
 
 /// The block at `pos` and its properties.
-pub fn state_props(host: &dyn Host, level: LevelRef, pos: [i32; 3]) -> Option<(String, Vec<(String, String)>)> {
+pub fn state_props(
+    host: &dyn Host,
+    level: LevelRef,
+    pos: [i32; 3],
+) -> Option<(String, Vec<(String, String)>)> {
     let state = level.block_state(host, pos)?;
     let s = host.block_state_string(state)?;
     let (block, rest) = match s.split_once('[') {
         Some((b, r)) => (b.to_string(), r.trim_end_matches(']').to_string()),
         None => (s.clone(), String::new()),
     };
-    let props = rest.split(',').filter_map(|kv| kv.split_once('=')).map(|(k, v)| (k.to_string(), v.to_string())).collect();
+    let props = rest
+        .split(',')
+        .filter_map(|kv| kv.split_once('='))
+        .map(|(k, v)| (k.to_string(), v.to_string()))
+        .collect();
     Some((block, props))
 }
 
@@ -109,24 +129,58 @@ pub fn set_prop(props: &mut Vec<(String, String)>, k: &str, v: &str) {
 }
 
 /// Sets `block[props]` at `pos` (properties `block` doesn't have are left out).
-pub fn set_state(host: &mut dyn ServerHost, level: LevelRef, pos: [i32; 3], block: &str, props: &[(String, String)]) -> bool {
+pub fn set_state(
+    host: &mut dyn ServerHost,
+    level: LevelRef,
+    pos: [i32; 3],
+    block: &str,
+    props: &[(String, String)],
+) -> bool {
     let full = |ps: &[(String, String)]| {
-        if ps.is_empty() { block.to_string() } else { format!("{block}[{}]", ps.iter().map(|(k, v)| format!("{k}={v}")).collect::<Vec<_>>().join(",")) }
+        if ps.is_empty() {
+            block.to_string()
+        } else {
+            format!(
+                "{block}[{}]",
+                ps.iter()
+                    .map(|(k, v)| format!("{k}={v}"))
+                    .collect::<Vec<_>>()
+                    .join(",")
+            )
+        }
     };
     let mut state = host.block_state_id(&full(props));
     if state.is_none() {
         // Keep only the properties the block has.
-        let ok: Vec<(String, String)> =
-            props.iter().filter(|(k, v)| host.block_state_id(&format!("{block}[{k}={v}]")).is_some()).cloned().collect();
+        let ok: Vec<(String, String)> = props
+            .iter()
+            .filter(|(k, v)| host.block_state_id(&format!("{block}[{k}={v}]")).is_some())
+            .cloned()
+            .collect();
         state = host.block_state_id(&full(&ok));
     }
     let Some(state) = state else { return false };
-    matches!(level.set_block(host, pos, state, BlockUpdateFlags::NEIGHBORS | BlockUpdateFlags::CLIENTS), Ok(true))
+    matches!(
+        level.set_block(
+            host,
+            pos,
+            state,
+            BlockUpdateFlags::NEIGHBORS | BlockUpdateFlags::CLIENTS
+        ),
+        Ok(true)
+    )
 }
 
 /// Changes properties of the block at `pos`, keeping the block and its block entity.
-pub fn change_props(host: &mut dyn ServerHost, level: LevelRef, pos: [i32; 3], changes: &[(&str, &str)]) -> bool {
-    let Some((block, mut props)) = state_props(&*host, level, pos) else { return false };
+pub fn change_props(
+    host: &mut dyn ServerHost,
+    level: LevelRef,
+    pos: [i32; 3],
+    changes: &[(&str, &str)],
+) -> bool {
+    let Some((block, mut props)) = state_props(&*host, level, pos) else {
+        return false;
+    };
     if changes.iter().all(|(k, v)| prop(&props, k) == Some(v)) {
         return true;
     }
@@ -139,12 +193,24 @@ pub fn change_props(host: &mut dyn ServerHost, level: LevelRef, pos: [i32; 3], c
 // ---- the block entity's stack ----
 
 pub fn read_be(host: &dyn Host, level: LevelRef, pos: [i32; 3]) -> Option<ItemStack> {
-    host.block_entity(level, pos)?.item_slot(host, 0).ok().flatten()
+    host.block_entity(level, pos)?
+        .item_slot(host, 0)
+        .ok()
+        .flatten()
 }
 
-pub fn write_be(host: &mut dyn ServerHost, level: LevelRef, pos: [i32; 3], stack: Option<ItemStack>) -> bool {
-    let Some(be) = host.block_entity(level, pos) else { return false };
-    let ok = host.transaction(|host, tx| be.set_item_slot(host, tx, 0, stack.clone()).map_err(|_| ())).is_ok();
+pub fn write_be(
+    host: &mut dyn ServerHost,
+    level: LevelRef,
+    pos: [i32; 3],
+    stack: Option<ItemStack>,
+) -> bool {
+    let Some(be) = host.block_entity(level, pos) else {
+        return false;
+    };
+    let ok = host
+        .transaction(|host, tx| be.set_item_slot(host, tx, 0, stack.clone()).map_err(|_| ()))
+        .is_ok();
     if ok {
         let _ = be.set_changed(host);
     }
@@ -169,17 +235,34 @@ pub fn set_wood(stack: &mut ItemStack, kind: &StorageItem, wood: &str) {
     set_custom_data(stack, d);
     let path = kind.id.split(':').nth(1).unwrap_or("");
     let name = Tag::compound([
-        ("translate", Tag::String(format!("block.sophisticatedstorage.{path}.wooden").as_str().into())),
+        (
+            "translate",
+            Tag::String(
+                format!("block.sophisticatedstorage.{path}.wooden")
+                    .as_str()
+                    .into(),
+            ),
+        ),
         (
             "with",
             Tag::List(vec![
-                Tag::compound([("translate", Tag::String(format!("wood_name.sophisticatedstorage.{wood}").as_str().into()))]),
+                Tag::compound([(
+                    "translate",
+                    Tag::String(
+                        format!("wood_name.sophisticatedstorage.{wood}")
+                            .as_str()
+                            .into(),
+                    ),
+                )]),
                 Tag::compound([("text", Tag::String(" ".into()))]),
             ]),
         ),
     ]);
     let mut patch = Compound::new();
-    patch.insert("minecraft:custom_model_data".into(), Tag::compound([("strings", Tag::List(vec![Tag::String(wood.into())]))]));
+    patch.insert(
+        "minecraft:custom_model_data".into(),
+        Tag::compound([("strings", Tag::List(vec![Tag::String(wood.into())]))]),
+    );
     patch.insert("minecraft:item_name".into(), name);
     let _ = stack.apply_components(&patch);
 }
@@ -206,7 +289,10 @@ pub fn fix_name(stack: &mut ItemStack, to: &StorageItem) {
         Some(w) if storage_items::wooden(to) => set_wood(stack, to, &w),
         _ => {
             let mut patch = Compound::new();
-            patch.insert("!minecraft:item_name".into(), Tag::Compound(Compound::new()));
+            patch.insert(
+                "!minecraft:item_name".into(),
+                Tag::Compound(Compound::new()),
+            );
             let _ = stack.apply_components(&patch);
         }
     }
@@ -246,20 +332,34 @@ pub fn partner(host: &dyn Host, level: LevelRef, pos: [i32; 3]) -> Option<[i32; 
 
 /// Where a storage's contents are: a double chest's main half (the one whose stack holds both halves).
 pub fn main_pos(host: &dyn Host, level: LevelRef, pos: [i32; 3]) -> [i32; 3] {
-    let Some(p) = partner(host, level, pos) else { return pos };
-    let main = |at| read_be(host, level, at).is_some_and(|s| get_bool(&custom_data(&s), contents::DOUBLE) == Some(true));
+    let Some(p) = partner(host, level, pos) else {
+        return pos;
+    };
+    let main = |at| {
+        read_be(host, level, at)
+            .is_some_and(|s| get_bool(&custom_data(&s), contents::DOUBLE) == Some(true))
+    };
     if !main(pos) && main(p) { p } else { pos }
 }
 
 /// A chest placed beside a single chest of the same block, facing and wood joins it (ChestBlock.getStateForPlacement,
 /// without sneaking): the chest that was there keeps the contents, now twice as many slots.
 fn join_chest(host: &mut dyn ServerHost, level: LevelRef, pos: [i32; 3]) {
-    let Some((block, props)) = state_props(&*host, level, pos) else { return };
-    let Some(facing) = prop(&props, "facing").map(str::to_string) else { return };
+    let Some((block, props)) = state_props(&*host, level, pos) else {
+        return;
+    };
+    let Some(facing) = prop(&props, "facing").map(str::to_string) else {
+        return;
+    };
     let wood = prop(&props, "wood").map(str::to_string);
-    for (dir, mine, theirs) in [(clockwise(&facing), "left", "right"), (counter_clockwise(&facing), "right", "left")] {
+    for (dir, mine, theirs) in [
+        (clockwise(&facing), "left", "right"),
+        (counter_clockwise(&facing), "right", "left"),
+    ] {
         let n = add(pos, dir_vec(dir));
-        let Some((nb, np)) = state_props(&*host, level, n) else { continue };
+        let Some((nb, np)) = state_props(&*host, level, n) else {
+            continue;
+        };
         if nb != block
             || prop(&np, "type") != Some("single")
             || prop(&np, "facing") != Some(facing.as_str())
@@ -268,7 +368,9 @@ fn join_chest(host: &mut dyn ServerHost, level: LevelRef, pos: [i32; 3]) {
         {
             continue;
         }
-        let Some(mut other) = read_be(&*host, level, n) else { continue };
+        let Some(mut other) = read_be(&*host, level, n) else {
+            continue;
+        };
         if get_bool(&custom_data(&other), contents::DOUBLE) == Some(true) || is_packed(&other) {
             continue;
         }
@@ -284,22 +386,49 @@ fn join_chest(host: &mut dyn ServerHost, level: LevelRef, pos: [i32; 3]) {
 
 /// Before a double chest's half at `pos` goes: the main half's slots past one chest go with the half that goes, the
 /// other keeps the rest and the upgrades, and becomes a single chest. The stack the leaving half should spill.
-fn split_double(host: &mut dyn ServerHost, level: LevelRef, pos: [i32; 3], kind: &StorageItem, own: ItemStack) -> ItemStack {
-    let Some(p) = partner(&*host, level, pos) else { return own };
-    let Some(other) = read_be(&*host, level, p) else { return own };
+fn split_double(
+    host: &mut dyn ServerHost,
+    level: LevelRef,
+    pos: [i32; 3],
+    kind: &StorageItem,
+    own: ItemStack,
+) -> ItemStack {
+    let Some(p) = partner(&*host, level, pos) else {
+        return own;
+    };
+    let Some(other) = read_be(&*host, level, p) else {
+        return own;
+    };
     let own_main = get_bool(&custom_data(&own), contents::DOUBLE) == Some(true);
-    let (main_stack, mut rest_stack) = if own_main { (own.clone(), other.clone()) } else { (other.clone(), own.clone()) };
+    let (main_stack, mut rest_stack) = if own_main {
+        (own.clone(), other.clone())
+    } else {
+        (other.clone(), own.clone())
+    };
     let c = Contents::read(&*host, &main_stack, kind);
     let n = kind.slot_count().min(c.slots.len());
-    let keep = Contents { slots: c.slots[..n].to_vec(), upgrades: c.upgrades.clone(), kept: c.kept.clone(), kept_upgrades: c.kept_upgrades.clone() };
-    let leave = Contents { slots: c.slots[n..].to_vec(), upgrades: vec![None; kind.upgrade_count()], ..Default::default() };
+    let keep = Contents {
+        slots: c.slots[..n].to_vec(),
+        upgrades: c.upgrades.clone(),
+        kept: c.kept.clone(),
+        kept_upgrades: c.kept_upgrades.clone(),
+    };
+    let leave = Contents {
+        slots: c.slots[n..].to_vec(),
+        upgrades: vec![None; kind.upgrade_count()],
+        ..Default::default()
+    };
     let unflag = |s: &mut ItemStack| {
         let mut d = custom_data(s);
         d.del(contents::DOUBLE);
         set_custom_data(s, d);
     };
     // The staying half: the first chest's slots and the upgrades.
-    let mut staying = if own_main { rest_stack.clone() } else { main_stack.clone() };
+    let mut staying = if own_main {
+        rest_stack.clone()
+    } else {
+        main_stack.clone()
+    };
     unflag(&mut staying);
     keep.write(&*host, &mut staying, kind);
     write_be(host, level, p, Some(staying));
@@ -321,8 +450,14 @@ fn split_double(host: &mut dyn ServerHost, level: LevelRef, pos: [i32; 3], kind:
 
 /// StorageBlockItem's placement, after the block is set: the block entity takes the stack (unpacked), the block its
 /// wood; a chest joins its neighbour.
-pub fn placed(host: &mut dyn ServerHost, player: Option<PlayerRef>, pos: [i32; 3], stack: &ItemStack) -> Option<(LevelRef, [i32; 3])> {
-    let kind = storage_items::by_item(&contents::item_id(&*host, stack)).filter(|k| k.family != Family::Backpack)?;
+pub fn placed(
+    host: &mut dyn ServerHost,
+    player: Option<PlayerRef>,
+    pos: [i32; 3],
+    stack: &ItemStack,
+) -> Option<(LevelRef, [i32; 3])> {
+    let kind = storage_items::by_item(&contents::item_id(&*host, stack))
+        .filter(|k| k.family != Family::Backpack)?;
     let player = player?;
     let dim = player.dimension(&*host)?.to_string();
     let level = host.level(&dim)?;
@@ -332,7 +467,11 @@ pub fn placed(host: &mut dyn ServerHost, player: Option<PlayerRef>, pos: [i32; 3
     let had_contents = d.has(contents::INVENTORY) || d.has(contents::UPGRADES);
     d.del(PACKED);
     if places::creative(&*host, player.uuid()) && d.has("contentsUuid") {
-        put(&mut d, "contentsUuid", Tag::IntArray(contents::new_uuid().to_vec()));
+        put(
+            &mut d,
+            "contentsUuid",
+            Tag::IntArray(contents::new_uuid().to_vec()),
+        );
     }
     set_custom_data(&mut st, d);
     if !write_be(host, level, pos, Some(st.clone())) {
@@ -340,7 +479,12 @@ pub fn placed(host: &mut dyn ServerHost, player: Option<PlayerRef>, pos: [i32; 3
     }
     if storage_items::wooden(kind) {
         let wood = wood_of(&st).unwrap_or_else(|| "oak".into());
-        change_props(host, level, pos, &[("wood", wood.as_str()), ("packed", "false")]);
+        change_props(
+            host,
+            level,
+            pos,
+            &[("wood", wood.as_str()), ("packed", "false")],
+        );
     } else {
         change_props(host, level, pos, &[("packed", "false")]);
     }
@@ -394,8 +538,12 @@ pub fn placement_facing(family: Family, yaw: f32, pitch: f32, face: Direction) -
 /// A player breaks the storage at `pos` (before the block goes): chests and barrels spill their contents and keep
 /// the empty storage in the block entity, which then drops it; shulker boxes and packed storages keep everything.
 pub fn broken(host: &mut dyn ServerHost, player: PlayerRef, level: LevelRef, pos: [i32; 3]) {
-    let Some(kind) = kind_of_block(&block_id(&*host, level, pos)) else { return };
-    let Some(mut st) = read_be(&*host, level, pos) else { return };
+    let Some(kind) = kind_of_block(&block_id(&*host, level, pos)) else {
+        return;
+    };
+    let Some(mut st) = read_be(&*host, level, pos) else {
+        return;
+    };
     let creative = player.is_creative(&*host) == Some(true);
     if kind.family == Family::Chest && !is_packed(&st) {
         st = split_double(host, level, pos, kind, st);
@@ -423,7 +571,15 @@ pub fn broken(host: &mut dyn ServerHost, player: PlayerRef, level: LevelRef, pos
         }
         return;
     }
-    let drops = droppable(&*host, c.slots.iter().chain(c.upgrades.iter()).flatten().filter(|s| !contents::is_unknown(s)).cloned());
+    let drops = droppable(
+        &*host,
+        c.slots
+            .iter()
+            .chain(c.upgrades.iter())
+            .flatten()
+            .filter(|s| !contents::is_unknown(s))
+            .cloned(),
+    );
     if drops.len() > crate::options::Options::read(&*host).too_many_drops {
         // StorageBlockBase.playerWillDestroy: too many item entities, so it drops packed.
         let mut d = custom_data(&st);
@@ -450,14 +606,28 @@ pub fn broken(host: &mut dyn ServerHost, player: PlayerRef, level: LevelRef, pos
 
 /// A tier upgrade item's tiers: what it upgrades from (`None` vanilla and basic, for `basic_*`) and to.
 fn tier_upgrade(id: &str) -> Option<(Option<u8>, u8)> {
-    let path = id.strip_prefix("sophisticatedstorage:")?.strip_suffix("_tier_upgrade")?;
-    let tier = |s: &str| ["basic", "copper", "iron", "gold", "diamond", "netherite"].iter().position(|t| *t == s).map(|i| i as u8);
+    let path = id
+        .strip_prefix("sophisticatedstorage:")?
+        .strip_suffix("_tier_upgrade")?;
+    let tier = |s: &str| {
+        ["basic", "copper", "iron", "gold", "diamond", "netherite"]
+            .iter()
+            .position(|t| *t == s)
+            .map(|i| i as u8)
+    };
     if path == "basic" {
         return Some((None, 0));
     }
     let (from, to) = path.split_once("_to_")?;
     let to = tier(to)?;
-    Some((if from == "basic" { None } else { Some(tier(from)?) }, to))
+    Some((
+        if from == "basic" {
+            None
+        } else {
+            Some(tier(from)?)
+        },
+        to,
+    ))
 }
 
 const VANILLA_SHULKERS: [(&str, i32); 17] = [
@@ -485,18 +655,27 @@ pub fn takes_click(held: &str, block: &str) -> bool {
     if held == "sophisticatedstorage:packing_tape" {
         return kind_of_block(block).is_some_and(|k| k.family != Family::ShulkerBox);
     }
-    let Some((from, to)) = tier_upgrade(held) else { return false };
+    let Some((from, to)) = tier_upgrade(held) else {
+        return false;
+    };
     if let Some(k) = kind_of_block(block) {
         return match from {
             None => to > 0 && k.tier == 0,
             Some(a) => k.tier == a,
         };
     }
-    from.is_none() && (block == "minecraft:chest" || block == "minecraft:barrel" || VANILLA_SHULKERS.iter().any(|(b, _)| *b == block))
+    from.is_none()
+        && (block == "minecraft:chest"
+            || block == "minecraft:barrel"
+            || VANILLA_SHULKERS.iter().any(|(b, _)| *b == block))
 }
 
 /// The vanilla container's items (its saved `Items`), emptied.
-fn take_vanilla_items(host: &mut dyn ServerHost, be: BlockEntityRef, size: usize) -> Vec<Option<ItemStack>> {
+fn take_vanilla_items(
+    host: &mut dyn ServerHost,
+    be: BlockEntityRef,
+    size: usize,
+) -> Vec<Option<ItemStack>> {
     let mut out = vec![None; size];
     if let Some(data) = be.data(&*host)
         && let Some(Tag::List(items)) = data.at("Items")
@@ -517,10 +696,21 @@ fn take_vanilla_items(host: &mut dyn ServerHost, be: BlockEntityRef, size: usize
 }
 
 /// One block's upgrade: the block replaced by `to`'s, the block entity's stack by `to`'s item with the same components.
-fn upgrade_block(host: &mut dyn ServerHost, level: LevelRef, pos: [i32; 3], to: &'static StorageItem) -> bool {
-    let Some(st) = read_be(&*host, level, pos) else { return false };
-    let Some(new) = retype(&*host, &st, to) else { return false };
-    let Some((_, props)) = state_props(&*host, level, pos) else { return false };
+fn upgrade_block(
+    host: &mut dyn ServerHost,
+    level: LevelRef,
+    pos: [i32; 3],
+    to: &'static StorageItem,
+) -> bool {
+    let Some(st) = read_be(&*host, level, pos) else {
+        return false;
+    };
+    let Some(new) = retype(&*host, &st, to) else {
+        return false;
+    };
+    let Some((_, props)) = state_props(&*host, level, pos) else {
+        return false;
+    };
     write_be(host, level, pos, None);
     if !set_state(host, level, pos, to.block.unwrap_or(to.id), &props) {
         write_be(host, level, pos, Some(st));
@@ -531,7 +721,13 @@ fn upgrade_block(host: &mut dyn ServerHost, level: LevelRef, pos: [i32; 3], to: 
 
 /// A vanilla chest, barrel or shulker box becoming storage `to` (StorageTierUpgradeItem.VanillaTierUpgradeDefinition):
 /// its items move into the new storage; a double chest's two halves become a double chest.
-fn upgrade_vanilla(host: &mut dyn ServerHost, level: LevelRef, pos: [i32; 3], block: &str, to_tier: u8) -> bool {
+fn upgrade_vanilla(
+    host: &mut dyn ServerHost,
+    level: LevelRef,
+    pos: [i32; 3],
+    block: &str,
+    to_tier: u8,
+) -> bool {
     let family = if block == "minecraft:chest" {
         Family::Chest
     } else if block == "minecraft:barrel" {
@@ -539,18 +735,31 @@ fn upgrade_vanilla(host: &mut dyn ServerHost, level: LevelRef, pos: [i32; 3], bl
     } else {
         Family::ShulkerBox
     };
-    let Some(to) = storage_items::STORAGE.iter().find(|s| s.family == family && s.tier == to_tier) else { return false };
-    let Some((_, mut props)) = state_props(&*host, level, pos) else { return false };
+    let Some(to) = storage_items::STORAGE
+        .iter()
+        .find(|s| s.family == family && s.tier == to_tier)
+    else {
+        return false;
+    };
+    let Some((_, mut props)) = state_props(&*host, level, pos) else {
+        return false;
+    };
     let double = family == Family::Chest && prop(&props, "type").is_some_and(|t| t != "single");
     let other = if double {
         let facing = prop(&props, "facing").unwrap_or("north").to_string();
-        let dir = if prop(&props, "type") == Some("left") { clockwise(&facing) } else { counter_clockwise(&facing) };
+        let dir = if prop(&props, "type") == Some("left") {
+            clockwise(&facing)
+        } else {
+            counter_clockwise(&facing)
+        };
         let p = add(pos, dir_vec(dir));
         (block_id(&*host, level, p) == "minecraft:chest").then_some(p)
     } else {
         None
     };
-    let Some(be) = host.block_entity(level, pos) else { return false };
+    let Some(be) = host.block_entity(level, pos) else {
+        return false;
+    };
     let mut items = take_vanilla_items(host, be, 27);
     let mut other_props = None;
     if let Some(p) = other
@@ -559,7 +768,9 @@ fn upgrade_vanilla(host: &mut dyn ServerHost, level: LevelRef, pos: [i32; 3], bl
         items.extend(take_vanilla_items(host, obe, 27));
         other_props = state_props(&*host, level, p).map(|s| s.1);
     }
-    let Some(mut st) = new_stack(&*host, to.id) else { return false };
+    let Some(mut st) = new_stack(&*host, to.id) else {
+        return false;
+    };
     match family {
         Family::Chest => set_wood(&mut st, to, "oak"),
         Family::Barrel => set_wood(&mut st, to, "spruce"),
@@ -583,9 +794,17 @@ fn upgrade_vanilla(host: &mut dyn ServerHost, level: LevelRef, pos: [i32; 3], bl
     }
     let n = contents::slots_of(&st, to);
     items.resize(n, None);
-    let c = Contents { slots: items, upgrades: vec![None; to.upgrade_count()], ..Default::default() };
+    let c = Contents {
+        slots: items,
+        upgrades: vec![None; to.upgrade_count()],
+        ..Default::default()
+    };
     c.write(&*host, &mut st, to);
-    let wood = if family == Family::Barrel { "spruce" } else { "oak" };
+    let wood = if family == Family::Barrel {
+        "spruce"
+    } else {
+        "oak"
+    };
     set_prop(&mut props, "wood", wood);
     set_prop(&mut props, "packed", "false");
     set_prop(&mut props, "open", "false");
@@ -606,7 +825,14 @@ fn upgrade_vanilla(host: &mut dyn ServerHost, level: LevelRef, pos: [i32; 3], bl
 }
 
 /// The click of a held tier upgrade or packing tape on the block at `pos`; whether it did something.
-pub fn use_tool(host: &mut dyn ServerHost, player: PlayerRef, slot: u32, held: &ItemStack, level: LevelRef, pos: [i32; 3]) -> bool {
+pub fn use_tool(
+    host: &mut dyn ServerHost,
+    player: PlayerRef,
+    slot: u32,
+    held: &ItemStack,
+    level: LevelRef,
+    pos: [i32; 3],
+) -> bool {
     let held_id = contents::item_id(&*host, held);
     let block = block_id(&*host, level, pos);
     if !takes_click(&held_id, &block) {
@@ -619,7 +845,9 @@ pub fn use_tool(host: &mut dyn ServerHost, player: PlayerRef, slot: u32, held: &
             places::message(host, uuid, "A double chest can't be packed");
             return true;
         }
-        let Some(mut st) = read_be(&*host, level, pos) else { return false };
+        let Some(mut st) = read_be(&*host, level, pos) else {
+            return false;
+        };
         if is_packed(&st) {
             return true;
         }
@@ -629,11 +857,17 @@ pub fn use_tool(host: &mut dyn ServerHost, player: PlayerRef, slot: u32, held: &
         write_be(host, level, pos, Some(st));
         change_props(host, level, pos, &[("packed", "true")]);
         if !creative {
-            let dmg = held.components().and_then(|c| get_int(c.as_nbt(), "minecraft:damage")).unwrap_or(0) + 1;
-            let max = host.item_default_component(held.item(), "minecraft:max_damage").and_then(|t| match t {
-                Tag::Int(v) => Some(v),
-                _ => None,
-            });
+            let dmg = held
+                .components()
+                .and_then(|c| get_int(c.as_nbt(), "minecraft:damage"))
+                .unwrap_or(0)
+                + 1;
+            let max = host
+                .item_default_component(held.item(), "minecraft:max_damage")
+                .and_then(|t| match t {
+                    Tag::Int(v) => Some(v),
+                    _ => None,
+                });
             let left = if max.is_some_and(|m| dmg >= m) {
                 None
             } else {
@@ -646,12 +880,24 @@ pub fn use_tool(host: &mut dyn ServerHost, player: PlayerRef, slot: u32, held: &
             places::set_slot(host, player, slot, left);
         }
         let at = pos.map(|v| f64::from(v) + 0.5);
-        level.play_sound(host, "minecraft:item.armor.equip_leather", at, SoundSource::Blocks, 1.0, 1.2, None);
+        level.play_sound(
+            host,
+            "minecraft:item.armor.equip_leather",
+            at,
+            SoundSource::Blocks,
+            1.0,
+            1.2,
+            None,
+        );
         return true;
     }
-    let Some((_, to)) = tier_upgrade(&held_id) else { return false };
+    let Some((_, to)) = tier_upgrade(&held_id) else {
+        return false;
+    };
     let done = if let Some(kind) = kind_of_block(&block) {
-        let Some(to_kind) = storage_items::with_tier(kind, to) else { return false };
+        let Some(to_kind) = storage_items::with_tier(kind, to) else {
+            return false;
+        };
         let main = main_pos(&*host, level, pos);
         if read_be(&*host, level, main).is_some_and(|s| is_packed(&s)) {
             return true;
@@ -668,7 +914,10 @@ pub fn use_tool(host: &mut dyn ServerHost, player: PlayerRef, slot: u32, held: &
         }
         ok.then_some(need)
     } else {
-        let double = block == "minecraft:chest" && level.block_property(&*host, pos, "type").is_some_and(|t| t != "single");
+        let double = block == "minecraft:chest"
+            && level
+                .block_property(&*host, pos, "type")
+                .is_some_and(|t| t != "single");
         let need = if double { 2 } else { 1 };
         if held.count() < need {
             places::message(host, uuid, "A double chest needs two tier upgrades");
@@ -682,7 +931,15 @@ pub fn use_tool(host: &mut dyn ServerHost, player: PlayerRef, slot: u32, held: &
                 places::set_slot(host, player, slot, held.clone().shrink(need));
             }
             let at = pos.map(|v| f64::from(v) + 0.5);
-            level.play_sound(host, "minecraft:block.smithing_table.use", at, SoundSource::Blocks, 1.0, 1.0, None);
+            level.play_sound(
+                host,
+                "minecraft:block.smithing_table.use",
+                at,
+                SoundSource::Blocks,
+                1.0,
+                1.0,
+                None,
+            );
             true
         }
         None => false,
@@ -697,7 +954,11 @@ pub fn limited_slot(kind: &StorageItem, facing: &str, pos: [i32; 3], point: [f64
     if kind.slot_count() <= 1 {
         return 0;
     }
-    let rel = [point[0] - f64::from(pos[0]), point[1] - f64::from(pos[1]), point[2] - f64::from(pos[2])];
+    let rel = [
+        point[0] - f64::from(pos[0]),
+        point[1] - f64::from(pos[1]),
+        point[2] - f64::from(pos[2]),
+    ];
     // (right, up) on the front, seen from outside.
     let (x, y) = match facing {
         "north" => (1.0 - rel[0], rel[1]),
@@ -730,9 +991,20 @@ pub fn limited_slot(kind: &StorageItem, facing: &str, pos: [i32; 3], point: [f64
 
 /// LimitedBarrelBlockEntity.depositItem: the held stack (or, on a second click within 10 ticks, every stack of the
 /// slot's item in the inventory) into slot `slot`.
-pub fn limited_deposit(host: &mut dyn ServerHost, player: PlayerRef, level: LevelRef, pos: [i32; 3], slot: usize, all: bool) -> bool {
-    let Some(kind) = kind_of_block(&block_id(&*host, level, pos)) else { return false };
-    let Some(mut st) = read_be(&*host, level, pos) else { return false };
+pub fn limited_deposit(
+    host: &mut dyn ServerHost,
+    player: PlayerRef,
+    level: LevelRef,
+    pos: [i32; 3],
+    slot: usize,
+    all: bool,
+) -> bool {
+    let Some(kind) = kind_of_block(&block_id(&*host, level, pos)) else {
+        return false;
+    };
+    let Some(mut st) = read_be(&*host, level, pos) else {
+        return false;
+    };
     let mut c = Contents::read(&*host, &st, kind);
     if slot >= c.slots.len() {
         return false;
@@ -743,7 +1015,9 @@ pub fn limited_deposit(host: &mut dyn ServerHost, player: PlayerRef, level: Leve
     let candidates: Vec<u32> = if all { (0..36).collect() } else { vec![hand] };
     let mut moved = false;
     for i in candidates {
-        let Some(h) = inv[i as usize].clone() else { continue };
+        let Some(h) = inv[i as usize].clone() else {
+            continue;
+        };
         match &c.slots[slot] {
             Some(cur) if !contents::same(cur, &h) => continue,
             None if all => continue,
@@ -770,17 +1044,38 @@ pub fn limited_deposit(host: &mut dyn ServerHost, player: PlayerRef, level: Leve
 }
 
 /// LimitedBarrelBlockEntity.tryToTakeItem: one of the slot's item (a stack when sneaking) to the player.
-pub fn limited_take(host: &mut dyn ServerHost, player: PlayerRef, level: LevelRef, pos: [i32; 3], slot: usize, stack: bool) -> bool {
-    let Some(kind) = kind_of_block(&block_id(&*host, level, pos)) else { return false };
-    let Some(mut st) = read_be(&*host, level, pos) else { return false };
+pub fn limited_take(
+    host: &mut dyn ServerHost,
+    player: PlayerRef,
+    level: LevelRef,
+    pos: [i32; 3],
+    slot: usize,
+    stack: bool,
+) -> bool {
+    let Some(kind) = kind_of_block(&block_id(&*host, level, pos)) else {
+        return false;
+    };
+    let Some(mut st) = read_be(&*host, level, pos) else {
+        return false;
+    };
     if is_packed(&st) {
         return false;
     }
     let mut c = Contents::read(&*host, &st, kind);
-    let Some(cur) = c.slots.get(slot).cloned().flatten().filter(|s| !contents::is_unknown(s)) else { return false };
+    let Some(cur) = c
+        .slots
+        .get(slot)
+        .cloned()
+        .flatten()
+        .filter(|s| !contents::is_unknown(s))
+    else {
+        return false;
+    };
     let max = host.max_stack_size(cur.item()).unwrap_or(64).max(1);
     let n = if stack { max.min(cur.count()) } else { 1 };
-    let Some(out) = contents::with_count(&cur, n) else { return false };
+    let Some(out) = contents::with_count(&cur, n) else {
+        return false;
+    };
     c.slots[slot] = contents::with_count(&cur, cur.count() - n);
     c.write(&*host, &mut st, kind);
     write_be(host, level, pos, Some(st));
@@ -789,7 +1084,12 @@ pub fn limited_take(host: &mut dyn ServerHost, player: PlayerRef, level: LevelRe
 }
 
 /// Where the player's look meets the front face of the block at `pos` (for a left click, which carries no point).
-pub fn look_point(host: &dyn Host, player: PlayerRef, pos: [i32; 3], facing: &str) -> Option<[f64; 3]> {
+pub fn look_point(
+    host: &dyn Host,
+    player: PlayerRef,
+    pos: [i32; 3],
+    facing: &str,
+) -> Option<[f64; 3]> {
     let e = player.entity();
     let eye = e.eye_position(host)?;
     let v = e.view_vector(host)?;
@@ -819,7 +1119,12 @@ pub struct Handler {
 
 impl Handler {
     pub fn new(level: LevelRef, pos: [i32; 3], kind: &'static StorageItem) -> Handler {
-        Handler { level, pos, kind, cache: Mutex::new(None) }
+        Handler {
+            level,
+            pos,
+            kind,
+            cache: Mutex::new(None),
+        }
     }
 
     fn with<R>(&self, host: &dyn Host, f: impl FnOnce(&ItemStack, &Contents) -> R) -> Option<R> {
@@ -836,13 +1141,29 @@ impl Handler {
         g.as_ref().map(|(_, s, c)| f(s, c))
     }
 
-    fn store(&self, host: &mut dyn ServerHost, tx: &Transaction, mut st: ItemStack, c: Contents) -> bool {
-        let Some(main) = self.cache.lock().unwrap_or_else(|e| e.into_inner()).as_ref().map(|(main, _, _)| *main) else {
+    fn store(
+        &self,
+        host: &mut dyn ServerHost,
+        tx: &Transaction,
+        mut st: ItemStack,
+        c: Contents,
+    ) -> bool {
+        let Some(main) = self
+            .cache
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .as_ref()
+            .map(|(main, _, _)| *main)
+        else {
             return false;
         };
         c.write(&*host, &mut st, self.kind);
-        let Some(be) = host.block_entity(self.level, main) else { return false };
-        let ok = be.set_item_slot(host, tx, 0, Some(st.clone())).is_ok_and(|b| b);
+        let Some(be) = host.block_entity(self.level, main) else {
+            return false;
+        };
+        let ok = be
+            .set_item_slot(host, tx, 0, Some(st.clone()))
+            .is_ok_and(|b| b);
         if ok {
             *self.cache.lock().unwrap_or_else(|e| e.into_inner()) = Some((main, st, c));
         }
@@ -850,21 +1171,30 @@ impl Handler {
     }
 
     fn limit(&self, host: &dyn Host, c: &Contents, stack: &ItemStack) -> u32 {
-        upgrades::limit(host, stack, upgrades::multiplier(host, self.kind, &c.upgrades))
+        upgrades::limit(
+            host,
+            stack,
+            upgrades::multiplier(host, self.kind, &c.upgrades),
+        )
     }
 
     /// The void upgrade's answer for `stack`: Some(true) voids it all, Some(false) only what doesn't fit.
     fn void(&self, host: &dyn Host, c: &Contents, stack: &ItemStack) -> Option<bool> {
         c.upgrades.iter().flatten().find_map(|u| {
             let k = upgrades::of(host, u)?;
-            (k.kind == Kind::Void && upgrades::matches(host, u, &k, stack)).then(|| !upgrades::flag(u, "shouldVoidOverflow", false))
+            (k.kind == Kind::Void && upgrades::matches(host, u, &k, stack))
+                .then(|| !upgrades::flag(u, "shouldVoidOverflow", false))
         })
     }
 }
 
 /// Slot `index`'s stack unless it is the stand-in of an unknown item (hidden from hoppers and other mods).
 fn movable(c: &Contents, index: usize) -> Option<ItemStack> {
-    c.slots.get(index).cloned().flatten().filter(|s| !contents::is_unknown(s))
+    c.slots
+        .get(index)
+        .cloned()
+        .flatten()
+        .filter(|s| !contents::is_unknown(s))
 }
 
 impl ResourceHandler<ItemResource> for Handler {
@@ -872,19 +1202,32 @@ impl ResourceHandler<ItemResource> for Handler {
         self.with(&*host, |_, c| c.slots.len()).unwrap_or(0)
     }
     fn resource(&self, host: &mut dyn ServerHost, index: usize) -> Option<ItemResource> {
-        self.with(&*host, |_, c| movable(c, index).map(|s| ItemResource::of(&s))).flatten()
+        self.with(&*host, |_, c| {
+            movable(c, index).map(|s| ItemResource::of(&s))
+        })
+        .flatten()
     }
     fn amount(&self, host: &mut dyn ServerHost, index: usize) -> u32 {
-        self.with(&*host, |_, c| movable(c, index).map_or(0, |s| s.count())).unwrap_or(0)
+        self.with(&*host, |_, c| movable(c, index).map_or(0, |s| s.count()))
+            .unwrap_or(0)
     }
     /// With no resource, the slot's limit for an item that stacks to 64 (`getSlotLimit`).
-    fn capacity(&self, host: &mut dyn ServerHost, _index: usize, resource: Option<&ItemResource>) -> u32 {
+    fn capacity(
+        &self,
+        host: &mut dyn ServerHost,
+        _index: usize,
+        resource: Option<&ItemResource>,
+    ) -> u32 {
         let h: &dyn Host = &*host;
         self.with(h, |_, c| match resource {
             Some(resource) => self.limit(h, c, resource.as_stack()),
             None => {
                 let v = (64.0 * upgrades::multiplier(h, self.kind, &c.upgrades)).floor();
-                if v >= f64::from(u32::MAX) { u32::MAX } else { (v as u32).max(1) }
+                if v >= f64::from(u32::MAX) {
+                    u32::MAX
+                } else {
+                    (v as u32).max(1)
+                }
             }
         })
         .unwrap_or(0)
@@ -892,10 +1235,22 @@ impl ResourceHandler<ItemResource> for Handler {
     fn is_valid(&self, host: &mut dyn ServerHost, _index: usize, resource: &ItemResource) -> bool {
         crate::menu::may_store(&*host, self.kind, resource.as_stack())
     }
-    fn insert_at(&self, host: &mut dyn ServerHost, tx: &Transaction, index: usize, resource: &ItemResource, amount: u32) -> u32 {
+    fn insert_at(
+        &self,
+        host: &mut dyn ServerHost,
+        tx: &Transaction,
+        index: usize,
+        resource: &ItemResource,
+        amount: u32,
+    ) -> u32 {
         let h: &dyn Host = &*host;
         let Some((st, mut c, lim, void)) = self.with(h, |s, c| {
-            (s.clone(), c.clone(), self.limit(h, c, resource.as_stack()), self.void(h, c, resource.as_stack()))
+            (
+                s.clone(),
+                c.clone(),
+                self.limit(h, c, resource.as_stack()),
+                self.void(h, c, resource.as_stack()),
+            )
         }) else {
             return 0;
         };
@@ -905,7 +1260,9 @@ impl ResourceHandler<ItemResource> for Handler {
         if void == Some(true) {
             return amount;
         }
-        let Some(slot) = c.slots.get_mut(index) else { return 0 };
+        let Some(slot) = c.slots.get_mut(index) else {
+            return 0;
+        };
         let have = match slot {
             Some(cur) if !resource.matches(cur) => return 0,
             Some(cur) => cur.count(),
@@ -920,9 +1277,20 @@ impl ResourceHandler<ItemResource> for Handler {
         }
         if void == Some(false) { amount } else { put }
     }
-    fn extract_at(&self, host: &mut dyn ServerHost, tx: &Transaction, index: usize, resource: &ItemResource, amount: u32) -> u32 {
-        let Some((st, mut c)) = self.with(&*host, |s, c| (s.clone(), c.clone())) else { return 0 };
-        let Some(slot) = c.slots.get_mut(index) else { return 0 };
+    fn extract_at(
+        &self,
+        host: &mut dyn ServerHost,
+        tx: &Transaction,
+        index: usize,
+        resource: &ItemResource,
+        amount: u32,
+    ) -> u32 {
+        let Some((st, mut c)) = self.with(&*host, |s, c| (s.clone(), c.clone())) else {
+            return 0;
+        };
+        let Some(slot) = c.slots.get_mut(index) else {
+            return 0;
+        };
         let Some(cur) = slot.clone() else { return 0 };
         if contents::is_unknown(&cur) || !resource.matches(&cur) {
             return 0;
@@ -935,10 +1303,21 @@ impl ResourceHandler<ItemResource> for Handler {
         take
     }
     /// Any slot: stacks onto what matches first, then empty slots (`insertItem` over the whole inventory).
-    fn insert(&self, host: &mut dyn ServerHost, tx: &Transaction, resource: &ItemResource, amount: u32) -> Result<u32, Overanswered> {
+    fn insert(
+        &self,
+        host: &mut dyn ServerHost,
+        tx: &Transaction,
+        resource: &ItemResource,
+        amount: u32,
+    ) -> Result<u32, Overanswered> {
         let h: &dyn Host = &*host;
         let Some((st, mut c, lim, void)) = self.with(h, |s, c| {
-            (s.clone(), c.clone(), self.limit(h, c, resource.as_stack()), self.void(h, c, resource.as_stack()))
+            (
+                s.clone(),
+                c.clone(),
+                self.limit(h, c, resource.as_stack()),
+                self.void(h, c, resource.as_stack()),
+            )
         }) else {
             return Ok(0);
         };
@@ -966,7 +1345,10 @@ pub struct Placed {
 
 impl Placed {
     pub fn note(&self, level: LevelRef, pos: [i32; 3]) {
-        self.at.lock().unwrap_or_else(|e| e.into_inner()).insert((level, pos));
+        self.at
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .insert((level, pos));
     }
 }
 
@@ -983,7 +1365,14 @@ fn dir_of(v: [i32; 3]) -> Direction {
 
 /// HopperUpgradeWrapper with its default directions: up to 1 item (advanced 4) every 8 ticks (advanced 2) from the
 /// inventory above, and as many to the inventory below.
-fn hopper(host: &mut dyn ServerHost, level: LevelRef, pos: [i32; 3], kind: &StorageItem, c: &mut Contents, advanced: bool) -> bool {
+fn hopper(
+    host: &mut dyn ServerHost,
+    level: LevelRef,
+    pos: [i32; 3],
+    kind: &StorageItem,
+    c: &mut Contents,
+    advanced: bool,
+) -> bool {
     let max = if advanced { 4 } else { 1 };
     let mut changed = false;
     let m = upgrades::multiplier(&*host, kind, &c.upgrades);
@@ -997,7 +1386,9 @@ fn hopper(host: &mut dyn ServerHost, level: LevelRef, pos: [i32; 3], kind: &Stor
             if left == 0 {
                 break;
             }
-            let Some(res) = src.resource(host, i) else { continue };
+            let Some(res) = src.resource(host, i) else {
+                continue;
+            };
             let stack = res.as_stack().clone();
             if !crate::menu::may_store(&*host, kind, &stack) {
                 continue;
@@ -1008,7 +1399,9 @@ fn hopper(host: &mut dyn ServerHost, level: LevelRef, pos: [i32; 3], kind: &Stor
             if fits == 0 {
                 continue;
             }
-            let got = host.transaction(|host, tx| Ok::<u32, ()>(src.extract_at(host, tx, i, &res, fits))).unwrap_or(0);
+            let got = host
+                .transaction(|host, tx| Ok::<u32, ()>(src.extract_at(host, tx, i, &res, fits)))
+                .unwrap_or(0);
             if got > 0 {
                 contents::insert(&mut c.slots, &stack, got, lim);
                 left -= got;
@@ -1025,10 +1418,14 @@ fn hopper(host: &mut dyn ServerHost, level: LevelRef, pos: [i32; 3], kind: &Stor
             if left == 0 {
                 break;
             }
-            let Some(st) = c.slots[i].clone().filter(|s| !contents::is_unknown(s)) else { continue };
+            let Some(st) = c.slots[i].clone().filter(|s| !contents::is_unknown(s)) else {
+                continue;
+            };
             let res = ItemResource::of(&st);
             let n = st.count().min(left);
-            let put = host.transaction(|host, tx| Ok::<u32, ()>(dst.insert(host, tx, &res, n).unwrap_or(0))).unwrap_or(0);
+            let put = host
+                .transaction(|host, tx| Ok::<u32, ()>(dst.insert(host, tx, &res, n).unwrap_or(0)))
+                .unwrap_or(0);
             if put > 0 {
                 c.slots[i] = st.clone().shrink(put);
                 left -= put;
@@ -1040,25 +1437,48 @@ fn hopper(host: &mut dyn ServerHost, level: LevelRef, pos: [i32; 3], kind: &Stor
 }
 
 /// MagnetUpgradeWrapper on a block: item entities within range (3, advanced 5) of the storage go in.
-fn magnet(host: &mut dyn ServerHost, level: LevelRef, pos: [i32; 3], kind: &StorageItem, c: &mut Contents) -> bool {
-    let ups: Vec<(ItemStack, upgrades::Upgrade)> =
-        c.upgrades.iter().flatten().filter_map(|u| upgrades::of(&*host, u).map(|k| (u.clone(), k))).collect();
-    let Some(r) = ups.iter().filter(|(u, k)| k.kind == Kind::Magnet && upgrades::flag(u, "pickupItems", true)).map(|(_, k)| if k.advanced { 5.0 } else { 3.0 }).reduce(f64::max) else {
+fn magnet(
+    host: &mut dyn ServerHost,
+    level: LevelRef,
+    pos: [i32; 3],
+    kind: &StorageItem,
+    c: &mut Contents,
+) -> bool {
+    let ups: Vec<(ItemStack, upgrades::Upgrade)> = c
+        .upgrades
+        .iter()
+        .flatten()
+        .filter_map(|u| upgrades::of(&*host, u).map(|k| (u.clone(), k)))
+        .collect();
+    let Some(r) = ups
+        .iter()
+        .filter(|(u, k)| k.kind == Kind::Magnet && upgrades::flag(u, "pickupItems", true))
+        .map(|(_, k)| if k.advanced { 5.0 } else { 3.0 })
+        .reduce(f64::max)
+    else {
         return false;
     };
     let center = pos.map(|v| f64::from(v) + 0.5);
     let min = [center[0] - r, center[1] - r, center[2] - r];
     let max = [center[0] + r, center[1] + r, center[2] + r];
-    let Some(ents) = entities_in(&*host, level, min, max) else { return false };
+    let Some(ents) = entities_in(&*host, level, min, max) else {
+        return false;
+    };
     let m = upgrades::multiplier(&*host, kind, &c.upgrades);
     let mut changed = false;
     for e in ents {
-        let Some(item) = host.item_entity(e) else { continue };
+        let Some(item) = host.item_entity(e) else {
+            continue;
+        };
         if item.pickup_delay(&*host).unwrap_or(0) > 0 {
             continue;
         }
-        let Some(st) = item.with_stack(&*host, |v| v.project()).flatten() else { continue };
-        let wanted = ups.iter().any(|(u, k)| k.kind == Kind::Magnet && upgrades::matches(&*host, u, k, &st));
+        let Some(st) = item.with_stack(&*host, |v| v.project()).flatten() else {
+            continue;
+        };
+        let wanted = ups
+            .iter()
+            .any(|(u, k)| k.kind == Kind::Magnet && upgrades::matches(&*host, u, k, &st));
         if !wanted || !crate::menu::may_store(&*host, kind, &st) {
             continue;
         }
@@ -1085,7 +1505,13 @@ pub fn tick(host: &mut dyn ServerHost, placed: &Placed, n: u64) {
     if !n.is_multiple_of(2) {
         return;
     }
-    let list: Vec<(LevelRef, [i32; 3])> = placed.at.lock().unwrap_or_else(|e| e.into_inner()).iter().copied().collect();
+    let list: Vec<(LevelRef, [i32; 3])> = placed
+        .at
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .iter()
+        .copied()
+        .collect();
     let mut gone = Vec::new();
     for (level, pos) in list {
         if !level.is_loaded(&*host, pos) {
@@ -1095,7 +1521,9 @@ pub fn tick(host: &mut dyn ServerHost, placed: &Placed, n: u64) {
             gone.push((level, pos));
             continue;
         };
-        let Some(mut st) = read_be(&*host, level, pos) else { continue };
+        let Some(mut st) = read_be(&*host, level, pos) else {
+            continue;
+        };
         if is_packed(&st) {
             continue;
         }
@@ -1105,7 +1533,12 @@ pub fn tick(host: &mut dyn ServerHost, placed: &Placed, n: u64) {
             continue;
         }
         let mut c = Contents::read(&*host, &st, kind);
-        let kinds: Vec<upgrades::Upgrade> = c.upgrades.iter().flatten().filter_map(|u| upgrades::of(&*host, u)).collect();
+        let kinds: Vec<upgrades::Upgrade> = c
+            .upgrades
+            .iter()
+            .flatten()
+            .filter_map(|u| upgrades::of(&*host, u))
+            .collect();
         let mut changed = false;
         for k in &kinds {
             if k.kind == Kind::Hopper && n.is_multiple_of(if k.advanced { 2 } else { 8 }) {
@@ -1133,7 +1566,10 @@ pub fn tick(host: &mut dyn ServerHost, placed: &Placed, n: u64) {
 
 /// The location the menu reads for the storage at `pos` (a double chest's main half).
 pub fn menu_loc(host: &dyn Host, dim: &str, level: LevelRef, pos: [i32; 3]) -> Loc {
-    Loc::Block { dim: dim.to_string(), pos: main_pos(host, level, pos) }
+    Loc::Block {
+        dim: dim.to_string(),
+        pos: main_pos(host, level, pos),
+    }
 }
 
 #[cfg(test)]
@@ -1142,17 +1578,50 @@ mod tests {
 
     #[test]
     fn tier_upgrades() {
-        assert_eq!(tier_upgrade("sophisticatedstorage:basic_tier_upgrade"), Some((None, 0)));
-        assert_eq!(tier_upgrade("sophisticatedstorage:basic_to_gold_tier_upgrade"), Some((None, 3)));
-        assert_eq!(tier_upgrade("sophisticatedstorage:iron_to_netherite_tier_upgrade"), Some((Some(2), 5)));
-        assert!(takes_click("sophisticatedstorage:basic_tier_upgrade", "minecraft:chest"));
-        assert!(!takes_click("sophisticatedstorage:basic_tier_upgrade", "sophisticatedstorage:chest"));
-        assert!(takes_click("sophisticatedstorage:basic_to_iron_tier_upgrade", "sophisticatedstorage:chest"));
-        assert!(!takes_click("sophisticatedstorage:basic_to_iron_tier_upgrade", "sophisticatedstorage:iron_chest"));
-        assert!(takes_click("sophisticatedstorage:iron_to_gold_tier_upgrade", "sophisticatedstorage:limited_iron_barrel_2"));
-        assert!(!takes_click("sophisticatedstorage:iron_to_gold_tier_upgrade", "sophisticatedstorage:copper_barrel"));
-        assert!(takes_click("sophisticatedstorage:packing_tape", "sophisticatedstorage:barrel"));
-        assert!(!takes_click("sophisticatedstorage:packing_tape", "sophisticatedstorage:shulker_box"));
+        assert_eq!(
+            tier_upgrade("sophisticatedstorage:basic_tier_upgrade"),
+            Some((None, 0))
+        );
+        assert_eq!(
+            tier_upgrade("sophisticatedstorage:basic_to_gold_tier_upgrade"),
+            Some((None, 3))
+        );
+        assert_eq!(
+            tier_upgrade("sophisticatedstorage:iron_to_netherite_tier_upgrade"),
+            Some((Some(2), 5))
+        );
+        assert!(takes_click(
+            "sophisticatedstorage:basic_tier_upgrade",
+            "minecraft:chest"
+        ));
+        assert!(!takes_click(
+            "sophisticatedstorage:basic_tier_upgrade",
+            "sophisticatedstorage:chest"
+        ));
+        assert!(takes_click(
+            "sophisticatedstorage:basic_to_iron_tier_upgrade",
+            "sophisticatedstorage:chest"
+        ));
+        assert!(!takes_click(
+            "sophisticatedstorage:basic_to_iron_tier_upgrade",
+            "sophisticatedstorage:iron_chest"
+        ));
+        assert!(takes_click(
+            "sophisticatedstorage:iron_to_gold_tier_upgrade",
+            "sophisticatedstorage:limited_iron_barrel_2"
+        ));
+        assert!(!takes_click(
+            "sophisticatedstorage:iron_to_gold_tier_upgrade",
+            "sophisticatedstorage:copper_barrel"
+        ));
+        assert!(takes_click(
+            "sophisticatedstorage:packing_tape",
+            "sophisticatedstorage:barrel"
+        ));
+        assert!(!takes_click(
+            "sophisticatedstorage:packing_tape",
+            "sophisticatedstorage:shulker_box"
+        ));
     }
 
     #[test]

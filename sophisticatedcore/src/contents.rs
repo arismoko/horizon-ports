@@ -35,7 +35,10 @@ impl Nbt for Compound {
 
 /// The stack's `minecraft:custom_data`, empty when it has none.
 pub fn custom_data(stack: &ItemStack) -> Compound {
-    match stack.components().and_then(|c| c.as_nbt().at("minecraft:custom_data")) {
+    match stack
+        .components()
+        .and_then(|c| c.as_nbt().at("minecraft:custom_data"))
+    {
         Some(Tag::Compound(c)) => c.clone(),
         _ => Compound::new(),
     }
@@ -44,7 +47,10 @@ pub fn custom_data(stack: &ItemStack) -> Compound {
 pub fn set_custom_data(stack: &mut ItemStack, data: Compound) {
     let mut patch = Compound::new();
     if data.is_empty() {
-        patch.insert("!minecraft:custom_data".into(), Tag::Compound(Compound::new()));
+        patch.insert(
+            "!minecraft:custom_data".into(),
+            Tag::Compound(Compound::new()),
+        );
     } else {
         patch.insert("minecraft:custom_data".into(), Tag::Compound(data));
     }
@@ -88,7 +94,10 @@ pub fn uuid(stack: &ItemStack) -> Option<[i32; 4]> {
 pub fn new_uuid() -> [i32; 4] {
     use std::sync::atomic::{AtomicU64, Ordering};
     static N: AtomicU64 = AtomicU64::new(0x9E37_79B9_7F4A_7C15);
-    let t = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_nanos() as u64).unwrap_or(0);
+    let t = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_nanos() as u64)
+        .unwrap_or(0);
     let mut x = t ^ N.fetch_add(0x9E37_79B9_7F4A_7C15, Ordering::Relaxed);
     let mut next = || {
         // splitmix64
@@ -128,7 +137,11 @@ fn json_nbt(v: &Value) -> Tag {
         },
         Value::String(s) => Tag::String(s.as_str().into()),
         Value::Array(a) => Tag::List(a.iter().map(json_nbt).collect()),
-        Value::Object(o) => Tag::Compound(o.iter().map(|(k, v)| (k.as_str().into(), json_nbt(v))).collect()),
+        Value::Object(o) => Tag::Compound(
+            o.iter()
+                .map(|(k, v)| (k.as_str().into(), json_nbt(v)))
+                .collect(),
+        ),
     }
 }
 
@@ -139,7 +152,10 @@ fn legacy_entry(e: &Compound) -> Compound {
     if let Some(id) = e.at("id") {
         out.insert("id".into(), id.clone());
     }
-    let count = get_int(e, "realCount").or_else(|| get_int(e, "Count")).unwrap_or(1).max(1);
+    let count = get_int(e, "realCount")
+        .or_else(|| get_int(e, "Count"))
+        .unwrap_or(1)
+        .max(1);
     put(&mut out, "count", Tag::Int(count));
     let mut comps = Compound::new();
     if let Some(Tag::Compound(tag)) = e.at("tag") {
@@ -163,7 +179,10 @@ fn legacy_entry(e: &Compound) -> Compound {
                 put(&mut rest, "display", Tag::Compound(display));
             }
         }
-        for (k, comp) in [("Enchantments", "minecraft:enchantments"), ("StoredEnchantments", "minecraft:stored_enchantments")] {
+        for (k, comp) in [
+            ("Enchantments", "minecraft:enchantments"),
+            ("StoredEnchantments", "minecraft:stored_enchantments"),
+        ] {
             if let Some(Tag::List(list)) = tag.at(k) {
                 let mut levels = Compound::new();
                 for t in list {
@@ -211,20 +230,40 @@ pub fn is_unknown(stack: &ItemStack) -> bool {
 /// A barrier standing in for `raw`, an entry whose item this game doesn't know, named after it ("Not ported:
 /// hexalia:salt"). None for an entry with no item (no id, air).
 pub fn stand_in(host: &dyn Host, raw: &Compound) -> Option<ItemStack> {
-    let id = get_str(raw, "id").filter(|id| !id.is_empty() && id != "minecraft:air" && id != "air")?;
-    let count = get_int(raw, "realCount").or_else(|| get_int(raw, "count")).or_else(|| get_int(raw, "Count")).unwrap_or(1).max(1);
+    let id =
+        get_str(raw, "id").filter(|id| !id.is_empty() && id != "minecraft:air" && id != "air")?;
+    let count = get_int(raw, "realCount")
+        .or_else(|| get_int(raw, "count"))
+        .or_else(|| get_int(raw, "Count"))
+        .unwrap_or(1)
+        .max(1);
     let key = host.item_key(&mod_api::Identifier::parse("minecraft:barrier").ok()?)?;
     let mut st = ItemStack::new(key, count.clamp(1, 64) as u32)?;
-    let line = |t: &str, color: &str| Tag::compound([("text", Tag::String(t.into())), ("color", Tag::String(color.into())), ("italic", Tag::Byte(0))]);
+    let line = |t: &str, color: &str| {
+        Tag::compound([
+            ("text", Tag::String(t.into())),
+            ("color", Tag::String(color.into())),
+            ("italic", Tag::Byte(0)),
+        ])
+    };
     let mut patch = Compound::new();
-    patch.insert("minecraft:custom_name".into(), line(&format!("Not ported: {id}"), "red"));
+    patch.insert(
+        "minecraft:custom_name".into(),
+        line(&format!("Not ported: {id}"), "red"),
+    );
     patch.insert(
         "minecraft:lore".into(),
-        Tag::List(vec![line(&format!("{count} kept here as saved"), "gray"), line("Comes back when its mod is installed", "gray")]),
+        Tag::List(vec![
+            line(&format!("{count} kept here as saved"), "gray"),
+            line("Comes back when its mod is installed", "gray"),
+        ]),
     );
     let mut raw = raw.clone();
     raw.del("Slot");
-    patch.insert("minecraft:custom_data".into(), Tag::compound([(UNKNOWN, Tag::Compound(raw))]));
+    patch.insert(
+        "minecraft:custom_data".into(),
+        Tag::compound([(UNKNOWN, Tag::Compound(raw))]),
+    );
     st.apply_components(&patch).ok()?;
     Some(st)
 }
@@ -257,7 +296,11 @@ pub fn read_items(host: &dyn Host, c: Option<&Tag>, size: usize) -> Vec<Option<I
 }
 
 /// `read_items`, plus the entries it can't place (a slot past `size`): they are kept and written back as they are.
-pub fn read_items_kept(host: &dyn Host, c: Option<&Tag>, size: usize) -> (Vec<Option<ItemStack>>, Vec<Compound>) {
+pub fn read_items_kept(
+    host: &dyn Host,
+    c: Option<&Tag>,
+    size: usize,
+) -> (Vec<Option<ItemStack>>, Vec<Compound>) {
     let mut out = vec![None; size];
     let mut kept = Vec::new();
     if let Some(Tag::Compound(c)) = c
@@ -266,7 +309,9 @@ pub fn read_items_kept(host: &dyn Host, c: Option<&Tag>, size: usize) -> (Vec<Op
         for t in items {
             let Tag::Compound(e) = t else { continue };
             match decode_entry(host, e) {
-                Some((slot, stack)) if slot < size && out[slot].is_none() => out[slot] = Some(stack),
+                Some((slot, stack)) if slot < size && out[slot].is_none() => {
+                    out[slot] = Some(stack)
+                }
                 Some(_) => kept.push(e.clone()),
                 None => {}
             }
@@ -283,7 +328,11 @@ pub fn write_items_kept(host: &dyn Host, stacks: &[Option<ItemStack>], kept: &[C
     let mut items: Vec<Tag> = stacks
         .iter()
         .enumerate()
-        .filter_map(|(i, s)| s.as_ref().and_then(|s| encode_entry(host, i, s)).map(Tag::Compound))
+        .filter_map(|(i, s)| {
+            s.as_ref()
+                .and_then(|s| encode_entry(host, i, s))
+                .map(Tag::Compound)
+        })
         .collect();
     items.extend(kept.iter().cloned().map(Tag::Compound));
     Tag::compound([("Items", Tag::List(items))])
@@ -304,13 +353,23 @@ pub const DOUBLE: &str = "doubleChest";
 
 /// How many slots the storage in `stack` has: its tier's, twice that for the main half of a double chest.
 pub fn slots_of(stack: &ItemStack, kind: &StorageItem) -> usize {
-    if kind.family == Family::Chest && get_bool(&custom_data(stack), DOUBLE) == Some(true) { kind.slot_count() * 2 } else { kind.slot_count() }
+    if kind.family == Family::Chest && get_bool(&custom_data(stack), DOUBLE) == Some(true) {
+        kind.slot_count() * 2
+    } else {
+        kind.slot_count()
+    }
 }
 
 /// A vanilla `minecraft:container` component (a vanilla shulker box crafted into a Sophisticated one), as slots.
-fn container_component(host: &dyn Host, stack: &ItemStack, size: usize) -> Option<Vec<Option<ItemStack>>> {
+fn container_component(
+    host: &dyn Host,
+    stack: &ItemStack,
+    size: usize,
+) -> Option<Vec<Option<ItemStack>>> {
     let comps = stack.components()?;
-    let Some(Tag::List(list)) = comps.as_nbt().at("minecraft:container") else { return None };
+    let Some(Tag::List(list)) = comps.as_nbt().at("minecraft:container") else {
+        return None;
+    };
     let mut out = vec![None; size];
     for t in list {
         if let Tag::Compound(e) = t
@@ -329,27 +388,62 @@ impl Contents {
         let data = custom_data(stack);
         let size = slots_of(stack, kind);
         let (slots, kept) = match data.at(INVENTORY) {
-            None => (container_component(host, stack, size).unwrap_or_else(|| vec![None; size]), Vec::new()),
+            None => (
+                container_component(host, stack, size).unwrap_or_else(|| vec![None; size]),
+                Vec::new(),
+            ),
             inv => read_items_kept(host, inv, size),
         };
-        let (upgrades, kept_upgrades) = read_items_kept(host, data.at(UPGRADES), kind.upgrade_count());
-        Contents { slots, upgrades, kept, kept_upgrades }
+        let (upgrades, kept_upgrades) =
+            read_items_kept(host, data.at(UPGRADES), kind.upgrade_count());
+        Contents {
+            slots,
+            upgrades,
+            kept,
+            kept_upgrades,
+        }
     }
 
     /// Writes the contents into `stack`'s custom_data, its other keys kept.
     pub fn write(&self, host: &dyn Host, stack: &mut ItemStack, kind: &StorageItem) {
         let mut data = custom_data(stack);
-        put(&mut data, INVENTORY, write_items_kept(host, &self.slots, &self.kept));
-        put(&mut data, UPGRADES, write_items_kept(host, &self.upgrades, &self.kept_upgrades));
-        put(&mut data, "inventorySlots", Tag::Int(self.slots.len() as i32));
-        put(&mut data, "upgradeSlots", Tag::Int(kind.upgrade_count() as i32));
+        put(
+            &mut data,
+            INVENTORY,
+            write_items_kept(host, &self.slots, &self.kept),
+        );
+        put(
+            &mut data,
+            UPGRADES,
+            write_items_kept(host, &self.upgrades, &self.kept_upgrades),
+        );
+        put(
+            &mut data,
+            "inventorySlots",
+            Tag::Int(self.slots.len() as i32),
+        );
+        put(
+            &mut data,
+            "upgradeSlots",
+            Tag::Int(kind.upgrade_count() as i32),
+        );
         if !data.has("contentsUuid") {
-            put(&mut data, "contentsUuid", Tag::IntArray(new_uuid().to_vec()));
+            put(
+                &mut data,
+                "contentsUuid",
+                Tag::IntArray(new_uuid().to_vec()),
+            );
         }
         set_custom_data(stack, data);
-        if stack.components().is_some_and(|c| c.as_nbt().has("minecraft:container")) {
+        if stack
+            .components()
+            .is_some_and(|c| c.as_nbt().has("minecraft:container"))
+        {
             let mut patch = Compound::new();
-            patch.insert("!minecraft:container".into(), Tag::Compound(Compound::new()));
+            patch.insert(
+                "!minecraft:container".into(),
+                Tag::Compound(Compound::new()),
+            );
             let _ = stack.apply_components(&patch);
         }
     }
@@ -357,27 +451,54 @@ impl Contents {
     /// The contents without the items (`inventory` and `upgradeInventory` removed from the stack).
     pub fn strip(stack: &mut ItemStack) {
         let mut data = custom_data(stack);
-        for k in [INVENTORY, UPGRADES, "inventorySlots", "upgradeSlots", "contentsUuid", DOUBLE, "packed"] {
+        for k in [
+            INVENTORY,
+            UPGRADES,
+            "inventorySlots",
+            "upgradeSlots",
+            "contentsUuid",
+            DOUBLE,
+            "packed",
+        ] {
             data.del(k);
         }
         set_custom_data(stack, data);
     }
 
     pub fn is_empty(&self) -> bool {
-        self.slots.iter().all(Option::is_none) && self.upgrades.iter().all(Option::is_none) && self.kept.is_empty() && self.kept_upgrades.is_empty()
+        self.slots.iter().all(Option::is_none)
+            && self.upgrades.iter().all(Option::is_none)
+            && self.kept.is_empty()
+            && self.kept_upgrades.is_empty()
     }
 
     /// Only what can't leave the storage: the stand-ins of unknown items (in their slots) and the kept entries.
     /// None when there is nothing of the kind.
     pub fn unknown_only(&self) -> Option<Contents> {
-        let only = |v: &[Option<ItemStack>]| v.iter().map(|s| s.clone().filter(is_unknown)).collect::<Vec<_>>();
-        let c = Contents { slots: only(&self.slots), upgrades: only(&self.upgrades), kept: self.kept.clone(), kept_upgrades: self.kept_upgrades.clone() };
+        let only = |v: &[Option<ItemStack>]| {
+            v.iter()
+                .map(|s| s.clone().filter(is_unknown))
+                .collect::<Vec<_>>()
+        };
+        let c = Contents {
+            slots: only(&self.slots),
+            upgrades: only(&self.upgrades),
+            kept: self.kept.clone(),
+            kept_upgrades: self.kept_upgrades.clone(),
+        };
         (!c.is_empty()).then_some(c)
     }
 
     /// How many stand-ins and kept entries the storage holds.
     pub fn unknown_count(&self) -> usize {
-        self.slots.iter().chain(self.upgrades.iter()).flatten().filter(|s| is_unknown(s)).count() + self.kept.len() + self.kept_upgrades.len()
+        self.slots
+            .iter()
+            .chain(self.upgrades.iter())
+            .flatten()
+            .filter(|s| is_unknown(s))
+            .count()
+            + self.kept.len()
+            + self.kept_upgrades.len()
     }
 }
 
@@ -448,7 +569,12 @@ pub fn extract(slots: &mut [Option<ItemStack>], stack: &ItemStack, amount: u32) 
 
 /// How many of `stack`'s item (same components) `slots` hold.
 pub fn count_of(slots: &[Option<ItemStack>], stack: &ItemStack) -> u64 {
-    slots.iter().flatten().filter(|s| same(s, stack)).map(|s| u64::from(s.count())).sum()
+    slots
+        .iter()
+        .flatten()
+        .filter(|s| same(s, stack))
+        .map(|s| u64::from(s.count()))
+        .sum()
 }
 
 #[cfg(test)]

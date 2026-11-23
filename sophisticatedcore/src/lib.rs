@@ -43,14 +43,17 @@ use std::sync::{Arc, Mutex};
 
 use mod_api::serde_json::json;
 use mod_api::{
-    BlockEntityOnLoadEvent, EntityJoinLevelEvent, EquipmentSlot, FinalizeSpawnEvent, Identifier, LivingDropsEvent, LivingRef, SpawnReason, BlockEntityPart, BlockPart, BlockSide, BlockState, BlockUpdateFlags, BreakBlockEvent,
-    BuildCreativeModeTabContentsEvent, CanFitInsideContainerItemsEvent, ClientHost, DataLoadContext, Flow, Hand, Host,
-    HostSide, Hooks, IPayloadContext, IPayloadHandler, ITEMS, InputKeyEvent, InteractionResult, ItemPart,
-    ItemPickedUpPostEvent, ItemResource, ItemStack, KeyAction, KeyRegistration, LeftClickBlockEvent,
-    LevelSide, LoopContext, LootTableLoadEvent, MenuClickedEvent, MenuPart, MenuClosedEvent, MenuReplace, ModContainer,
-    MouseButtonPostEvent, OnBlockPlacedByEvent, PayloadBytes, PayloadHandleError, PayloadId, Registrar, RegistrationContext,
-    ResourceHandler, RightClickBlockEvent, RightClickItemEvent, ServerHost, ServerTickEvent, ServerTickPhase,
-    SoundSource, StateForPlacementEvent, TooltipEvent, UseItemOnEvent, UseOnEvent, UseWithoutItemEvent,
+    BlockEntityOnLoadEvent, BlockEntityPart, BlockPart, BlockSide, BlockState, BlockUpdateFlags,
+    BreakBlockEvent, BuildCreativeModeTabContentsEvent, CanFitInsideContainerItemsEvent,
+    ClientHost, DataLoadContext, EntityJoinLevelEvent, EquipmentSlot, FinalizeSpawnEvent, Flow,
+    Hand, Hooks, Host, HostSide, IPayloadContext, IPayloadHandler, ITEMS, Identifier,
+    InputKeyEvent, InteractionResult, ItemPart, ItemPickedUpPostEvent, ItemResource, ItemStack,
+    KeyAction, KeyRegistration, LeftClickBlockEvent, LevelSide, LivingDropsEvent, LivingRef,
+    LoopContext, LootTableLoadEvent, MenuClickedEvent, MenuClosedEvent, MenuPart, MenuReplace,
+    ModContainer, MouseButtonPostEvent, OnBlockPlacedByEvent, PayloadBytes, PayloadHandleError,
+    PayloadId, Registrar, RegistrationContext, ResourceHandler, RightClickBlockEvent,
+    RightClickItemEvent, ServerHost, ServerTickEvent, ServerTickPhase, SoundSource, SpawnReason,
+    StateForPlacementEvent, TooltipEvent, UseItemOnEvent, UseOnEvent, UseWithoutItemEvent,
 };
 
 use contents::Contents;
@@ -67,23 +70,58 @@ const OPEN: &str = "sophisticatedcore:open";
 const KEY: &str = "open_backpack";
 const ACT: &str = "sophisticatedcore:action";
 
-
 /// The keys besides Open Backpack (`KeybindHandler`): id, label, the default key, the code sent to the server.
 /// The original binds Sort to the middle mouse button, Inventory Interaction to C, and the first two upgrade toggles to
 /// Z and X; the rest are unbound. (Tool Swap needs the tool swapper upgrade, which has no rules here.)
 const ACTIONS: [(&str, &str, &str, u8); 7] = [
-    ("sort", "keybind.sophisticatedbackpacks.sort", "key.mouse.middle", SORT),
-    ("inventory_interaction", "keybind.sophisticatedbackpacks.inventory_interaction", "key.keyboard.c", INTERACT),
-    ("toggle_upgrade_1", "keybind.sophisticatedbackpacks.toggle_upgrade_1", "key.keyboard.z", TOGGLE),
-    ("toggle_upgrade_2", "keybind.sophisticatedbackpacks.toggle_upgrade_2", "key.keyboard.x", TOGGLE + 1),
-    ("toggle_upgrade_3", "keybind.sophisticatedbackpacks.toggle_upgrade_3", "key.keyboard.unknown", TOGGLE + 2),
-    ("toggle_upgrade_4", "keybind.sophisticatedbackpacks.toggle_upgrade_4", "key.keyboard.unknown", TOGGLE + 3),
-    ("toggle_upgrade_5", "keybind.sophisticatedbackpacks.toggle_upgrade_5", "key.keyboard.unknown", TOGGLE + 4),
+    (
+        "sort",
+        "keybind.sophisticatedbackpacks.sort",
+        "key.mouse.middle",
+        SORT,
+    ),
+    (
+        "inventory_interaction",
+        "keybind.sophisticatedbackpacks.inventory_interaction",
+        "key.keyboard.c",
+        INTERACT,
+    ),
+    (
+        "toggle_upgrade_1",
+        "keybind.sophisticatedbackpacks.toggle_upgrade_1",
+        "key.keyboard.z",
+        TOGGLE,
+    ),
+    (
+        "toggle_upgrade_2",
+        "keybind.sophisticatedbackpacks.toggle_upgrade_2",
+        "key.keyboard.x",
+        TOGGLE + 1,
+    ),
+    (
+        "toggle_upgrade_3",
+        "keybind.sophisticatedbackpacks.toggle_upgrade_3",
+        "key.keyboard.unknown",
+        TOGGLE + 2,
+    ),
+    (
+        "toggle_upgrade_4",
+        "keybind.sophisticatedbackpacks.toggle_upgrade_4",
+        "key.keyboard.unknown",
+        TOGGLE + 3,
+    ),
+    (
+        "toggle_upgrade_5",
+        "keybind.sophisticatedbackpacks.toggle_upgrade_5",
+        "key.keyboard.unknown",
+        TOGGLE + 4,
+    ),
 ];
 /// `BACKPACK_CHECK_COOLDOWN`.
 const BACKPACK_CHECK: u64 = 40;
 /// `canBePlacedInContainerItems` as last read.
-static IN_CONTAINER_ITEMS: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+static IN_CONTAINER_ITEMS: std::sync::atomic::AtomicBool =
+    std::sync::atomic::AtomicBool::new(false);
 const SORT: u8 = 1;
 const INTERACT: u8 = 2;
 const TOGGLE: u8 = 10;
@@ -100,8 +138,14 @@ fn mouse_name(button: i32) -> String {
 
 /// The vanilla chests the jar's loot modifiers add its `inject/chests/*` tables to.
 const LOOT: [&str; 8] = [
-    "abandoned_mineshaft", "bastion_treasure", "desert_pyramid", "end_city_treasure", "nether_bridge", "shipwreck_treasure",
-    "simple_dungeon", "woodland_mansion",
+    "abandoned_mineshaft",
+    "bastion_treasure",
+    "desert_pyramid",
+    "end_city_treasure",
+    "nether_bridge",
+    "shipwreck_treasure",
+    "simple_dungeon",
+    "woodland_mansion",
 ];
 
 fn lock<T>(m: &Mutex<T>) -> std::sync::MutexGuard<'_, T> {
@@ -144,11 +188,17 @@ impl Shared {
     }
 
     fn just_used(&self, uuid: u128) -> bool {
-        lock(&self.used).get(&uuid).is_some_and(|t| self.tick().saturating_sub(*t) <= 2)
+        lock(&self.used)
+            .get(&uuid)
+            .is_some_and(|t| self.tick().saturating_sub(*t) <= 2)
     }
 
     fn open(&self, host: &mut dyn ServerHost, uuid: u128, loc: Loc) {
-        let replace = if lock(&self.sessions).contains_key(&uuid) { MenuReplace::InPlace } else { MenuReplace::CloseFirst };
+        let replace = if lock(&self.sessions).contains_key(&uuid) {
+            MenuReplace::InPlace
+        } else {
+            MenuReplace::CloseFirst
+        };
         if let Some(prev) = lock(&self.sessions).remove(&uuid) {
             self.closed_block(host, &prev.loc);
         }
@@ -161,7 +211,13 @@ impl Shared {
                 (Some((level, pos)), Family::Backpack) => {
                     let _ = (level, pos);
                     if let Some(p) = host.player(uuid) {
-                        let _ = p.play_sound(host, "minecraft:item.armor.equip_leather", SoundSource::Players, 0.5, 1.0);
+                        let _ = p.play_sound(
+                            host,
+                            "minecraft:item.armor.equip_leather",
+                            SoundSource::Players,
+                            0.5,
+                            1.0,
+                        );
                     }
                 }
                 (Some((level, pos)), family) => {
@@ -179,7 +235,13 @@ impl Shared {
                 }
                 (None, _) => {
                     if let Some(p) = host.player(uuid) {
-                        let _ = p.play_sound(host, "minecraft:item.armor.equip_leather", SoundSource::Players, 0.5, 1.0);
+                        let _ = p.play_sound(
+                            host,
+                            "minecraft:item.armor.equip_leather",
+                            SoundSource::Players,
+                            0.5,
+                            1.0,
+                        );
                     }
                 }
             }
@@ -194,7 +256,9 @@ impl Shared {
             return;
         }
         let Some(level) = host.level(dim) else { return };
-        let Some(kind) = storage::kind_of_block(&storage::block_id(&*host, level, *pos)) else { return };
+        let Some(kind) = storage::kind_of_block(&storage::block_id(&*host, level, *pos)) else {
+            return;
+        };
         let at = pos.map(|v| f64::from(v) + 0.5);
         let sound = match kind.family {
             Family::Chest => "minecraft:block.chest.close",
@@ -218,7 +282,9 @@ impl Shared {
         }
         candidates.extend((0..36).map(Loc::Inv));
         for loc in candidates {
-            if places::storage_at(host, uuid, &loc).is_some_and(|(_, k)| k.family == Family::Backpack) {
+            if places::storage_at(host, uuid, &loc)
+                .is_some_and(|(_, k)| k.family == Family::Backpack)
+            {
                 self.open(host, uuid, loc);
                 return;
             }
@@ -233,9 +299,9 @@ impl Shared {
             candidates.insert(1, Loc::Inv(sel as u32));
         }
         candidates.extend((0..36).map(Loc::Inv));
-        candidates
-            .into_iter()
-            .find(|loc| places::storage_at(host, uuid, loc).is_some_and(|(_, k)| k.family == Family::Backpack))
+        candidates.into_iter().find(|loc| {
+            places::storage_at(host, uuid, loc).is_some_and(|(_, k)| k.family == Family::Backpack)
+        })
     }
 
     /// A key's action: sort the open storage, run the inventory interaction upgrades on the block looked at, or
@@ -243,10 +309,16 @@ impl Shared {
     fn action(&self, host: &mut dyn ServerHost, uuid: u128, code: u8) {
         match code {
             SORT => {
-                let Some(mut s) = lock(&self.sessions).get(&uuid).cloned() else { return };
-                let Some(loc) = places::find(host, uuid, &s.loc, s.id) else { return };
+                let Some(mut s) = lock(&self.sessions).get(&uuid).cloned() else {
+                    return;
+                };
+                let Some(loc) = places::find(host, uuid, &s.loc, s.id) else {
+                    return;
+                };
                 s.loc = loc;
-                let Some((mut st, kind)) = places::storage_at(host, uuid, &s.loc) else { return };
+                let Some((mut st, kind)) = places::storage_at(host, uuid, &s.loc) else {
+                    return;
+                };
                 let mut c = Contents::read(&*host, &st, kind);
                 menu::sort(&*host, kind, &mut c);
                 c.write(&*host, &mut st, kind);
@@ -259,10 +331,18 @@ impl Shared {
                 }
             }
             INTERACT => {
-                let Some(loc) = self.key_backpack(host, uuid) else { return };
-                let Some(player) = host.player(uuid) else { return };
-                let Some(level) = player.entity().level(&*host) else { return };
-                let Some(hit) = player.entity().pick(&*host, 5.0).filter(|h| !h.miss) else { return };
+                let Some(loc) = self.key_backpack(host, uuid) else {
+                    return;
+                };
+                let Some(player) = host.player(uuid) else {
+                    return;
+                };
+                let Some(level) = player.entity().level(&*host) else {
+                    return;
+                };
+                let Some(hit) = player.entity().pick(&*host, 5.0).filter(|h| !h.miss) else {
+                    return;
+                };
                 let face = match hit.face {
                     mod_api::BlockFace::Down => [0, -1, 0],
                     mod_api::BlockFace::Up => [0, 1, 0],
@@ -275,8 +355,12 @@ impl Shared {
             }
             n if (TOGGLE..TOGGLE + 5).contains(&n) => {
                 let slot = usize::from(n - TOGGLE);
-                let Some(loc) = self.key_backpack(host, uuid) else { return };
-                let Some((mut st, kind)) = places::storage_at(host, uuid, &loc) else { return };
+                let Some(loc) = self.key_backpack(host, uuid) else {
+                    return;
+                };
+                let Some((mut st, kind)) = places::storage_at(host, uuid, &loc) else {
+                    return;
+                };
                 let mut c = Contents::read(&*host, &st, kind);
                 let Some(Some(up)) = c.upgrades.get_mut(slot) else {
                     places::message(host, uuid, "No upgrade in that slot");
@@ -286,7 +370,15 @@ impl Shared {
                 upgrades::set_flag(up, "enabled", on);
                 c.write(&*host, &mut st, kind);
                 places::write(host, uuid, &loc, Some(st));
-                places::message(host, uuid, if on { "Upgrade switched on" } else { "Upgrade switched off" });
+                places::message(
+                    host,
+                    uuid,
+                    if on {
+                        "Upgrade switched on"
+                    } else {
+                        "Upgrade switched off"
+                    },
+                );
             }
             _ => {}
         }
@@ -294,19 +386,37 @@ impl Shared {
 
     /// `CommonEventHandler.onWorldTick`: a player carrying more backpacks than allowed is slowed by the excess.
     fn too_many(&self, host: &mut dyn ServerHost, players: &[u128], opts: &options::Options) {
-        let Some(slowness) = host.effect_key("minecraft:slowness") else { return };
+        let Some(slowness) = host.effect_key("minecraft:slowness") else {
+            return;
+        };
         for &uuid in players {
-            let Some(player) = host.player(uuid) else { continue };
+            let Some(player) = host.player(uuid) else {
+                continue;
+            };
             let mut count = places::inventory(host, player)
                 .iter()
                 .flatten()
-                .filter(|st| storage_items::by_item(&contents::item_id(&*host, st)).is_some_and(|k| k.family == Family::Backpack))
+                .filter(|st| {
+                    storage_items::by_item(&contents::item_id(&*host, st))
+                        .is_some_and(|k| k.family == Family::Backpack)
+                })
                 .count();
-            if places::storage_at(host, uuid, &Loc::Worn(places::BACK.into())).is_some_and(|(_, k)| k.family == Family::Backpack) {
+            if places::storage_at(host, uuid, &Loc::Worn(places::BACK.into()))
+                .is_some_and(|(_, k)| k.family == Family::Backpack)
+            {
                 count += 1;
             }
-            if let Some(amplifier) = options::slowness_amplifier(count, opts.max_backpacks, opts.slowness_ratio) {
-                let effect = mod_api::ActiveEffect::new(slowness, (BACKPACK_CHECK * 2) as i32, amplifier, false, false, false);
+            if let Some(amplifier) =
+                options::slowness_amplifier(count, opts.max_backpacks, opts.slowness_ratio)
+            {
+                let effect = mod_api::ActiveEffect::new(
+                    slowness,
+                    (BACKPACK_CHECK * 2) as i32,
+                    amplifier,
+                    false,
+                    false,
+                    false,
+                );
                 mod_api::LivingRef::new(player.entity()).add_effect(host, &effect);
             }
         }
@@ -314,9 +424,13 @@ impl Shared {
 
     /// Shows the session's view again (the client predicted a pickup the server didn't make).
     fn refresh(&self, host: &mut dyn ServerHost, uuid: u128, s: &mut Session) -> bool {
-        let Some(loc) = places::find(host, uuid, &s.loc, s.id) else { return false };
+        let Some(loc) = places::find(host, uuid, &s.loc, s.id) else {
+            return false;
+        };
         s.loc = loc;
-        let Some((st, kind)) = places::storage_at(host, uuid, &s.loc) else { return false };
+        let Some((st, kind)) = places::storage_at(host, uuid, &s.loc) else {
+            return false;
+        };
         let c = Contents::read(&*host, &st, kind);
         if let menu::View::Main { page } = s.view
             && page >= s.pages()
@@ -338,7 +452,13 @@ impl Shared {
     /// A click in one of the storage menus; false when the window isn't one.
     fn click(&self, host: &mut dyn ServerHost, ev: &MenuClickedEvent) -> bool {
         let uuid = ev.uuid;
-        let Some(mut s) = lock(&self.sessions).get(&uuid).filter(|s| s.window == ev.window).cloned() else { return false };
+        let Some(mut s) = lock(&self.sessions)
+            .get(&uuid)
+            .filter(|s| s.window == ev.window)
+            .cloned()
+        else {
+            return false;
+        };
         let Some(loc) = places::find(host, uuid, &s.loc, s.id) else {
             self.close(host, uuid);
             return true;
@@ -371,7 +491,10 @@ impl Shared {
         {
             c2.write(&*host, &mut fresh, kind);
             if !places::write(host, uuid, &s.loc, Some(fresh)) {
-                eprintln!("[sophisticatedcore] the storage at {:?} wasn't written", s.loc);
+                eprintln!(
+                    "[sophisticatedcore] the storage at {:?} wasn't written",
+                    s.loc
+                );
             }
         }
         if let Some(m) = msg {
@@ -394,8 +517,11 @@ impl Shared {
         if ids.is_empty() {
             return;
         }
-        let open: Vec<(u128, Session)> =
-            lock(&self.sessions).iter().filter(|(_, s)| ids.contains(&s.id)).map(|(u, s)| (*u, s.clone())).collect();
+        let open: Vec<(u128, Session)> = lock(&self.sessions)
+            .iter()
+            .filter(|(_, s)| ids.contains(&s.id))
+            .map(|(u, s)| (*u, s.clone()))
+            .collect();
         for (uuid, mut s) in open {
             self.refresh(host, uuid, &mut s);
         }
@@ -405,7 +531,11 @@ impl Shared {
 struct OpenHandler(Arc<Shared>);
 
 impl IPayloadHandler for OpenHandler {
-    fn handle(&self, _payload: PayloadBytes, context: &mut dyn IPayloadContext) -> Result<(), PayloadHandleError> {
+    fn handle(
+        &self,
+        _payload: PayloadBytes,
+        context: &mut dyn IPayloadContext,
+    ) -> Result<(), PayloadHandleError> {
         if let Ok(p) = context.player() {
             self.0.queue(Job::Key(p.uuid()));
         }
@@ -416,7 +546,11 @@ impl IPayloadHandler for OpenHandler {
 struct ViewHandler;
 
 impl IPayloadHandler for ViewHandler {
-    fn handle(&self, payload: PayloadBytes, _context: &mut dyn IPayloadContext) -> Result<(), PayloadHandleError> {
+    fn handle(
+        &self,
+        payload: PayloadBytes,
+        _context: &mut dyn IPayloadContext,
+    ) -> Result<(), PayloadHandleError> {
         worn::heard(&payload.0);
         Ok(())
     }
@@ -425,7 +559,11 @@ impl IPayloadHandler for ViewHandler {
 struct ActionHandler(Arc<Shared>);
 
 impl IPayloadHandler for ActionHandler {
-    fn handle(&self, payload: PayloadBytes, context: &mut dyn IPayloadContext) -> Result<(), PayloadHandleError> {
+    fn handle(
+        &self,
+        payload: PayloadBytes,
+        context: &mut dyn IPayloadContext,
+    ) -> Result<(), PayloadHandleError> {
         if let (Ok(p), Some(code)) = (context.player(), payload.0.first()) {
             self.0.queue(Job::Action(p.uuid(), *code));
         }
@@ -444,17 +582,47 @@ fn hand_slot(host: &dyn mod_api::Host, uuid: u128, hand: Hand) -> Option<u32> {
 /// BackpackItem.useOn's placement: on the clicked face (or in the clicked block when it can be replaced), facing
 /// the player; the block entity keeps the backpack. Creative keeps the hand's backpack and places a copy with new
 /// contents id (BackpackWrapper.cloneBackpack).
-fn place(host: &mut dyn ServerHost, uuid: u128, hand: Hand, pos: [i32; 3], face: [i32; 3], stack: &ItemStack) -> bool {
-    let Some(kind) = storage_items::by_item(&contents::item_id(&*host, stack)) else { return false };
-    let Some(block) = kind.block else { return false };
-    let Some(player) = host.player(uuid) else { return false };
-    let Some(dim) = player.dimension(&*host).map(|d| d.to_string()) else { return false };
-    let Some(level) = host.level(&dim) else { return false };
+fn place(
+    host: &mut dyn ServerHost,
+    uuid: u128,
+    hand: Hand,
+    pos: [i32; 3],
+    face: [i32; 3],
+    stack: &ItemStack,
+) -> bool {
+    let Some(kind) = storage_items::by_item(&contents::item_id(&*host, stack)) else {
+        return false;
+    };
+    let Some(block) = kind.block else {
+        return false;
+    };
+    let Some(player) = host.player(uuid) else {
+        return false;
+    };
+    let Some(dim) = player.dimension(&*host).map(|d| d.to_string()) else {
+        return false;
+    };
+    let Some(level) = host.level(&dim) else {
+        return false;
+    };
     const REPLACEABLE: [&str; 9] = [
-        "minecraft:air", "minecraft:cave_air", "minecraft:void_air", "minecraft:short_grass", "minecraft:fern",
-        "minecraft:snow", "minecraft:dead_bush", "minecraft:vine", "minecraft:water",
+        "minecraft:air",
+        "minecraft:cave_air",
+        "minecraft:void_air",
+        "minecraft:short_grass",
+        "minecraft:fern",
+        "minecraft:snow",
+        "minecraft:dead_bush",
+        "minecraft:vine",
+        "minecraft:water",
     ];
-    let id_at = |host: &dyn mod_api::Host, p: [i32; 3]| level.block(host, p).and_then(|k| k.id(host)).unwrap_or_default().to_owned();
+    let id_at = |host: &dyn mod_api::Host, p: [i32; 3]| {
+        level
+            .block(host, p)
+            .and_then(|k| k.id(host))
+            .unwrap_or_default()
+            .to_owned()
+    };
     let target = if REPLACEABLE.contains(&id_at(&*host, pos).as_str()) {
         pos
     } else {
@@ -467,7 +635,9 @@ fn place(host: &mut dyn ServerHost, uuid: u128, hand: Hand, pos: [i32; 3], face:
     let yaw = player.entity().rotation(&*host).map_or(0.0, |r| r[0]);
     let quarter = ((f64::from(yaw) / 90.0).round() as i64).rem_euclid(4);
     let facing = ["north", "east", "south", "west"][quarter as usize];
-    let Some(state) = host.block_state_id(&format!("{block}[facing={facing}]")) else { return false };
+    let Some(state) = host.block_state_id(&format!("{block}[facing={facing}]")) else {
+        return false;
+    };
     let flags = BlockUpdateFlags::NEIGHBORS | BlockUpdateFlags::CLIENTS;
     if !matches!(level.set_block(host, target, state, flags), Ok(true)) {
         return false;
@@ -476,33 +646,71 @@ fn place(host: &mut dyn ServerHost, uuid: u128, hand: Hand, pos: [i32; 3], face:
     let creative = places::creative(&*host, uuid);
     if creative {
         let mut d = contents::custom_data(&placed);
-        contents::put(&mut d, "contentsUuid", mod_api::Tag::IntArray(contents::new_uuid().to_vec()));
+        contents::put(
+            &mut d,
+            "contentsUuid",
+            mod_api::Tag::IntArray(contents::new_uuid().to_vec()),
+        );
         contents::set_custom_data(&mut placed, d);
     } else {
         contents::ensure_uuid(&mut placed);
     }
-    if !places::write(host, uuid, &Loc::Block { dim: dim.clone(), pos: target }, Some(placed)) {
-        eprintln!("[sophisticatedcore] the placed backpack's block entity took nothing at {target:?}");
+    if !places::write(
+        host,
+        uuid,
+        &Loc::Block {
+            dim: dim.clone(),
+            pos: target,
+        },
+        Some(placed),
+    ) {
+        eprintln!(
+            "[sophisticatedcore] the placed backpack's block entity took nothing at {target:?}"
+        );
     }
     if !creative && let Some(slot) = hand_slot(&*host, uuid, hand) {
         places::set_slot(host, player, slot, stack.clone().shrink(1));
     }
     let at = target.map(|v| f64::from(v) + 0.5);
-    level.play_sound(host, "minecraft:block.wool.place", at, SoundSource::Blocks, 1.0, 0.8, None);
+    level.play_sound(
+        host,
+        "minecraft:block.wool.place",
+        at,
+        SoundSource::Blocks,
+        1.0,
+        0.8,
+        None,
+    );
     true
 }
 
 /// BackpackBlock.putInPlayersHandAndRemove: a sneak-click with an empty hand takes the backpack.
 fn pick_up(host: &mut dyn ServerHost, uuid: u128, dim: &str, pos: [i32; 3]) -> bool {
-    let loc = Loc::Block { dim: dim.to_string(), pos };
-    let Some(st) = places::read(host, uuid, &loc) else { return false };
-    let Some(player) = host.player(uuid) else { return false };
-    let Some(level) = host.level(dim) else { return false };
+    let loc = Loc::Block {
+        dim: dim.to_string(),
+        pos,
+    };
+    let Some(st) = places::read(host, uuid, &loc) else {
+        return false;
+    };
+    let Some(player) = host.player(uuid) else {
+        return false;
+    };
+    let Some(level) = host.level(dim) else {
+        return false;
+    };
     if !places::write(host, uuid, &loc, None) {
         return false;
     }
-    let Some(air) = host.block_state_id("minecraft:air") else { return false };
-    let _ = level.set_block(host, pos, air, BlockUpdateFlags::NEIGHBORS | BlockUpdateFlags::CLIENTS);
+    let Some(air) = host.block_state_id("minecraft:air") else {
+        return false;
+    };
+    let _ = level.set_block(
+        host,
+        pos,
+        air,
+        BlockUpdateFlags::NEIGHBORS | BlockUpdateFlags::CLIENTS,
+    );
     let main = hand_slot(&*host, uuid, Hand::Main);
     let inv = places::inventory(host, player);
     match main {
@@ -512,7 +720,15 @@ fn pick_up(host: &mut dyn ServerHost, uuid: u128, dim: &str, pos: [i32; 3]) -> b
         _ => places::give_or_drop(host, player, &st),
     }
     let at = pos.map(|v| f64::from(v) + 0.5);
-    level.play_sound(host, "minecraft:item.armor.equip_leather", at, SoundSource::Blocks, 0.5, 1.0, None);
+    level.play_sound(
+        host,
+        "minecraft:item.armor.equip_leather",
+        at,
+        SoundSource::Blocks,
+        0.5,
+        1.0,
+        None,
+    );
     true
 }
 
@@ -523,7 +739,9 @@ struct StorageItemPart(Arc<Shared>);
 #[mod_api::sunrise_part]
 impl ItemPart for StorageItemPart {
     fn use_on(&self, host: HostSide<'_>, event: &mut UseOnEvent<'_>) -> Option<InteractionResult> {
-        let HostSide::Server(host) = host else { return None };
+        let HostSide::Server(host) = host else {
+            return None;
+        };
         let slot = hand_slot(&*host, event.player, event.hand)?;
         if !places::sneaking(&*host, event.player) {
             // BackpackItem.useOn passes and Item.use opens it; Horizon's window doesn't send the item use after a
@@ -540,7 +758,14 @@ impl ItemPart for StorageItemPart {
             return Some(InteractionResult::Success);
         }
         let stack = event.stack.clone();
-        if place(host, event.player, event.hand, event.pos, event.face, &stack) {
+        if place(
+            host,
+            event.player,
+            event.hand,
+            event.pos,
+            event.face,
+            &stack,
+        ) {
             self.0.mark_used(event.player);
             return Some(InteractionResult::Success);
         }
@@ -548,26 +773,45 @@ impl ItemPart for StorageItemPart {
     }
 
     /// `canBePlacedInContainerItems`, read from the settings a tick ago (the context has none).
-    fn can_fit_inside_container_items(&self, _context: &dyn LoopContext, event: &mut CanFitInsideContainerItemsEvent<'_>) {
+    fn can_fit_inside_container_items(
+        &self,
+        _context: &dyn LoopContext,
+        event: &mut CanFitInsideContainerItemsEvent<'_>,
+    ) {
         event.fits = IN_CONTAINER_ITEMS.load(Ordering::Relaxed);
     }
 
-
     fn tooltip(&self, host: &dyn ClientHost, event: &mut TooltipEvent<'_>) {
-        let Some(kind) = storage_items::by_item(&contents::item_id(host, event.stack)) else { return };
+        let Some(kind) = storage_items::by_item(&contents::item_id(host, event.stack)) else {
+            return;
+        };
         let c = Contents::read(host, event.stack, kind);
         let used = c.slots.iter().flatten().count();
-        event.lines.push((mod_api::Text::literal(format!("§7{used} of {} slots used", kind.slot_count())), 0xFFAAAAAA));
+        event.lines.push((
+            mod_api::Text::literal(format!("§7{used} of {} slots used", kind.slot_count())),
+            0xFFAAAAAA,
+        ));
         for u in c.upgrades.iter().flatten() {
-            let name = host.hover_name(u).map(|n| host.text_string(&n)).unwrap_or_default();
-            event.lines.push((mod_api::Text::literal(format!("§9{name}")), 0xFF5555FF));
+            let name = host
+                .hover_name(u)
+                .map(|n| host.text_string(&n))
+                .unwrap_or_default();
+            event
+                .lines
+                .push((mod_api::Text::literal(format!("§9{name}")), 0xFF5555FF));
         }
         let unknown = c.unknown_count();
         if unknown > 0 {
-            event.lines.push((mod_api::Text::literal(format!("§c{unknown} stacks of mods not installed (kept)")), 0xFFFF5555));
+            event.lines.push((
+                mod_api::Text::literal(format!("§c{unknown} stacks of mods not installed (kept)")),
+                0xFFFF5555,
+            ));
         }
         if used == 0 && c.upgrades.iter().all(Option::is_none) {
-            event.lines.push((mod_api::Text::literal("§8Use to open; sneak-use on a block to place"), 0xFF555555));
+            event.lines.push((
+                mod_api::Text::literal("§8Use to open; sneak-use on a block to place"),
+                0xFF555555,
+            ));
         }
     }
 }
@@ -577,7 +821,11 @@ struct StorageBlockPart(Arc<Shared>);
 
 #[mod_api::sunrise_part]
 impl BlockPart for StorageBlockPart {
-    fn use_item_on(&self, host: &mut dyn ServerHost, event: &mut UseItemOnEvent<'_>) -> Option<InteractionResult> {
+    fn use_item_on(
+        &self,
+        host: &mut dyn ServerHost,
+        event: &mut UseItemOnEvent<'_>,
+    ) -> Option<InteractionResult> {
         let click = event.click;
         if !matches!(click.hand, Hand::Main) {
             return Some(InteractionResult::Success);
@@ -585,17 +833,30 @@ impl BlockPart for StorageBlockPart {
         // An empty hand goes on to use_without_item (the vanilla TRY_WITH_EMPTY_HAND), where sneaking takes it.
         let empty = host
             .player(click.player)
-            .and_then(|p| mod_api::LivingRef::new(p.entity()).with_hand_item(&*host, Hand::Main, |s| s.count()))
+            .and_then(|p| {
+                mod_api::LivingRef::new(p.entity())
+                    .with_hand_item(&*host, Hand::Main, |s| s.count())
+            })
             .is_none_or(|n| n == 0);
         if empty {
             return None;
         }
         let dim = click.dimension.key().id().to_string();
-        self.0.queue(Job::Open(click.player, Loc::Block { dim, pos: click.pos }));
+        self.0.queue(Job::Open(
+            click.player,
+            Loc::Block {
+                dim,
+                pos: click.pos,
+            },
+        ));
         Some(InteractionResult::Success)
     }
 
-    fn use_without_item(&self, host: &mut dyn ServerHost, event: &mut UseWithoutItemEvent<'_>) -> Option<InteractionResult> {
+    fn use_without_item(
+        &self,
+        host: &mut dyn ServerHost,
+        event: &mut UseWithoutItemEvent<'_>,
+    ) -> Option<InteractionResult> {
         let click = event.click;
         if !matches!(click.hand, Hand::Main) {
             return Some(InteractionResult::Success);
@@ -604,7 +865,13 @@ impl BlockPart for StorageBlockPart {
         if places::sneaking(&*host, click.player) {
             pick_up(host, click.player, &dim, click.pos);
         } else {
-            self.0.queue(Job::Open(click.player, Loc::Block { dim, pos: click.pos }));
+            self.0.queue(Job::Open(
+                click.player,
+                Loc::Block {
+                    dim,
+                    pos: click.pos,
+                },
+            ));
         }
         Some(InteractionResult::Success)
     }
@@ -632,26 +899,52 @@ impl ItemPart for PlacedItemPart {
     }
 
     fn tooltip(&self, host: &dyn ClientHost, event: &mut TooltipEvent<'_>) {
-        let Some(kind) = storage_items::by_item(&contents::item_id(host, event.stack)) else { return };
+        let Some(kind) = storage_items::by_item(&contents::item_id(host, event.stack)) else {
+            return;
+        };
         if kind.family == Family::LimitedBarrel {
-            let s = if kind.slot_count() == 1 { "slot" } else { "slots" };
-            event.lines.push((mod_api::Text::literal(format!("§8{} {s}, {}x base stack size multiplier", kind.slot_count(), kind.base_multiplier())), 0xFF555555));
+            let s = if kind.slot_count() == 1 {
+                "slot"
+            } else {
+                "slots"
+            };
+            event.lines.push((
+                mod_api::Text::literal(format!(
+                    "§8{} {s}, {}x base stack size multiplier",
+                    kind.slot_count(),
+                    kind.base_multiplier()
+                )),
+                0xFF555555,
+            ));
         }
         let c = Contents::read(host, event.stack, kind);
         if storage::is_packed(event.stack) {
-            event.lines.push((mod_api::Text::literal("§6Packed".to_string()), 0xFFFFAA00));
+            event
+                .lines
+                .push((mod_api::Text::literal("§6Packed".to_string()), 0xFFFFAA00));
         }
         let used = c.slots.iter().flatten().count();
         if used > 0 {
-            event.lines.push((mod_api::Text::literal(format!("§7{used} of {} slots used", c.slots.len())), 0xFFAAAAAA));
+            event.lines.push((
+                mod_api::Text::literal(format!("§7{used} of {} slots used", c.slots.len())),
+                0xFFAAAAAA,
+            ));
         }
         for u in c.upgrades.iter().flatten() {
-            let name = host.hover_name(u).map(|n| host.text_string(&n)).unwrap_or_default();
-            event.lines.push((mod_api::Text::literal(format!("§9{name}")), 0xFF5555FF));
+            let name = host
+                .hover_name(u)
+                .map(|n| host.text_string(&n))
+                .unwrap_or_default();
+            event
+                .lines
+                .push((mod_api::Text::literal(format!("§9{name}")), 0xFF5555FF));
         }
         let unknown = c.unknown_count();
         if unknown > 0 {
-            event.lines.push((mod_api::Text::literal(format!("§c{unknown} stacks of mods not installed (kept)")), 0xFFFF5555));
+            event.lines.push((
+                mod_api::Text::literal(format!("§c{unknown} stacks of mods not installed (kept)")),
+                0xFFFF5555,
+            ));
         }
     }
 }
@@ -661,20 +954,37 @@ struct StorageBlock(Arc<Shared>);
 
 #[mod_api::sunrise_part]
 impl BlockPart for StorageBlock {
-    fn state_for_placement(&self, level: LevelSide<'_>, event: &mut StateForPlacementEvent<'_>) -> Option<Option<BlockState>> {
+    fn state_for_placement(
+        &self,
+        level: LevelSide<'_>,
+        event: &mut StateForPlacementEvent<'_>,
+    ) -> Option<Option<BlockState>> {
         let (LevelSide::Server(level) | LevelSide::Client(level)) = level;
         let block = level.state_block(event.state)?.to_string();
         let kind = storage::kind_of_block(&block)?;
         let ctx = event.context;
         let facing = storage::placement_facing(kind.family, ctx.yaw, ctx.pitch, ctx.face);
         let current = level.state_string(event.state)?;
-        let rest = current.split_once('[').map(|(_, r)| r.trim_end_matches(']').to_string()).unwrap_or_default();
-        let mut props: Vec<String> = rest.split(',').filter(|kv| !kv.is_empty() && !kv.starts_with("facing=")).map(str::to_string).collect();
+        let rest = current
+            .split_once('[')
+            .map(|(_, r)| r.trim_end_matches(']').to_string())
+            .unwrap_or_default();
+        let mut props: Vec<String> = rest
+            .split(',')
+            .filter(|kv| !kv.is_empty() && !kv.starts_with("facing="))
+            .map(str::to_string)
+            .collect();
         props.push(format!("facing={facing}"));
-        level.block_state_id(&format!("{block}[{}]", props.join(","))).map(Some)
+        level
+            .block_state_id(&format!("{block}[{}]", props.join(",")))
+            .map(Some)
     }
 
-    fn use_item_on(&self, host: &mut dyn ServerHost, event: &mut UseItemOnEvent<'_>) -> Option<InteractionResult> {
+    fn use_item_on(
+        &self,
+        host: &mut dyn ServerHost,
+        event: &mut UseItemOnEvent<'_>,
+    ) -> Option<InteractionResult> {
         let click = event.click;
         if !matches!(click.hand, Hand::Main) {
             return Some(InteractionResult::Success);
@@ -686,7 +996,11 @@ impl BlockPart for StorageBlock {
         self.0.use_storage(host, click, true)
     }
 
-    fn use_without_item(&self, host: &mut dyn ServerHost, event: &mut UseWithoutItemEvent<'_>) -> Option<InteractionResult> {
+    fn use_without_item(
+        &self,
+        host: &mut dyn ServerHost,
+        event: &mut UseWithoutItemEvent<'_>,
+    ) -> Option<InteractionResult> {
         let click = event.click;
         if !matches!(click.hand, Hand::Main) {
             return Some(InteractionResult::Success);
@@ -701,7 +1015,11 @@ struct StorageMenu(Arc<Shared>);
 #[mod_api::sunrise_part]
 impl MenuPart for StorageMenu {
     fn menu_clicked(&self, host: &mut dyn ServerHost, event: &mut MenuClickedEvent<'_>) -> Flow {
-        if self.0.click(host, event) { Flow::Cancel } else { Flow::Continue }
+        if self.0.click(host, event) {
+            Flow::Cancel
+        } else {
+            Flow::Continue
+        }
     }
 }
 
@@ -714,7 +1032,9 @@ impl BlockPart for StorageEntity {}
 #[mod_api::sunrise_part]
 impl BlockEntityPart for StorageEntity {
     fn block_entity_on_load(&self, event: &mut BlockEntityOnLoadEvent<'_>) {
-        let mod_api::BlockEntitySideScope::Server(scope) = &mut event.subject else { return };
+        let mod_api::BlockEntitySideScope::Server(scope) = &mut event.subject else {
+            return;
+        };
         if let Some((level, pos)) = scope.with_view(|view| (view.level(), view.position())) {
             self.0.placed.note(level, pos);
         }
@@ -724,23 +1044,36 @@ impl BlockEntityPart for StorageEntity {
 impl Shared {
     /// StorageBlockBase.use: opens the storage (a double chest's main half); a packed storage doesn't open; a limited
     /// barrel's front takes the held stack (twice in 10 ticks: every stack of that item) instead.
-    fn use_storage(&self, host: &mut dyn ServerHost, click: &mod_api::BlockClick<'_>, holding: bool) -> Option<InteractionResult> {
+    fn use_storage(
+        &self,
+        host: &mut dyn ServerHost,
+        click: &mod_api::BlockClick<'_>,
+        holding: bool,
+    ) -> Option<InteractionResult> {
         let dim = click.dimension.key().id().to_string();
         let level = host.level(&dim)?;
         let pos = click.pos;
         let kind = storage::kind_of_block(&storage::block_id(&*host, level, pos))?;
         let main = storage::main_pos(&*host, level, pos);
         if storage::read_be(&*host, level, main).is_some_and(|s| storage::is_packed(&s)) {
-            places::message(host, click.player, "Packed: break it to take it with its contents");
+            places::message(
+                host,
+                click.player,
+                "Packed: break it to take it with its contents",
+            );
             return Some(InteractionResult::Success);
         }
         if kind.family == Family::LimitedBarrel && !places::sneaking(&*host, click.player) {
-            let facing = level.block_property(&*host, pos, "facing").unwrap_or_default();
+            let facing = level
+                .block_property(&*host, pos, "facing")
+                .unwrap_or_default();
             if click.hit.face == storage::dir_vec(&facing) {
                 let player = host.player(click.player)?;
                 let slot = storage::limited_slot(kind, &facing, pos, click.hit.point);
                 let now = self.tick();
-                let again = lock(&self.deposits).get(&click.player).is_some_and(|(t, p)| *p == pos && now.saturating_sub(*t) < 10);
+                let again = lock(&self.deposits)
+                    .get(&click.player)
+                    .is_some_and(|(t, p)| *p == pos && now.saturating_sub(*t) < 10);
                 lock(&self.deposits).insert(click.player, (now, pos));
                 if holding || again {
                     storage::limited_deposit(host, player, level, pos, slot, again);
@@ -748,7 +1081,10 @@ impl Shared {
                 return Some(InteractionResult::Success);
             }
         }
-        self.queue(Job::Open(click.player, storage::menu_loc(&*host, &dim, level, pos)));
+        self.queue(Job::Open(
+            click.player,
+            storage::menu_loc(&*host, &dim, level, pos),
+        ));
         Some(InteractionResult::Success)
     }
 }
@@ -765,17 +1101,29 @@ impl Hooks for Mod {
         let backpacks = has("sophisticatedbackpacks");
         let storage_loaded = has("sophisticatedstorage");
         let keys = crafting::keys(r, backpacks, storage_loaded);
-        r.register_crafting_recipe_serializer(UPGRADE_NEXT_TIER, crafting::UpgradeNextTier { keys: keys.clone() });
+        r.register_crafting_recipe_serializer(
+            UPGRADE_NEXT_TIER,
+            crafting::UpgradeNextTier { keys: keys.clone() },
+        );
         r.register_crafting_recipe_serializer(STORAGE_DYE, crafting::StorageDye { keys });
         let mut blocks = Vec::new();
         let mut tiers = Vec::new();
-        for s in storage_items::BACKPACKS.iter().filter(|s| has(storage_items::namespace(s))) {
+        for s in storage_items::BACKPACKS
+            .iter()
+            .filter(|s| has(storage_items::namespace(s)))
+        {
             let item = r.item_key(s.id);
             r.item_part(item, StorageItemPart(self.shared.clone()));
             if let Some(b) = s.block {
                 let key = r.block_key(b);
                 r.block_part(key, StorageBlockPart(self.shared.clone()));
-                r.block_container(&key, ModContainer { slots: 1, ..Default::default() });
+                r.block_container(
+                    &key,
+                    ModContainer {
+                        slots: 1,
+                        ..Default::default()
+                    },
+                );
                 blocks.push(b);
                 tiers.push((s.tier, key));
             }
@@ -788,30 +1136,50 @@ impl Hooks for Mod {
             }
         }
         let mut storage_blocks = Vec::new();
-        for s in storage_items::STORAGE.iter().filter(|s| has(storage_items::namespace(s))) {
+        for s in storage_items::STORAGE
+            .iter()
+            .filter(|s| has(storage_items::namespace(s)))
+        {
             let item = r.item_key(s.id);
             r.item_part(item, PlacedItemPart(self.shared.clone()));
             let key = r.block_key(s.id);
             r.block_part(key, StorageBlock(self.shared.clone()));
-            r.block_container(&key, ModContainer { slots: 1, ..Default::default() });
+            r.block_container(
+                &key,
+                ModContainer {
+                    slots: 1,
+                    ..Default::default()
+                },
+            );
             let kind: &'static storage_items::StorageItem = s;
             r.block_capability_before_game(&ITEMS, &key, move |_, at: BlockSide, _, _, offer| {
-                offer.offer(|| Box::new(storage::Handler::new(at.level, at.pos, kind)) as Box<dyn ResourceHandler<ItemResource>>);
+                offer.offer(|| {
+                    Box::new(storage::Handler::new(at.level, at.pos, kind))
+                        as Box<dyn ResourceHandler<ItemResource>>
+                });
             });
             storage_blocks.push(s.id);
         }
         if !storage_blocks.is_empty() {
-            let kind = r.block_entity_type("storage").blocks(&storage_blocks).build();
+            let kind = r
+                .block_entity_type("storage")
+                .blocks(&storage_blocks)
+                .build();
             if let Err(e) = r.block_entity_part(&kind, StorageEntity(self.shared.clone())) {
                 eprintln!("[sophisticatedcore] storage block entity part refused: {e:?}");
             }
         }
         // The original's default, B (unbound in vanilla 26.3).
-        r.register_key_mapping(KeyRegistration::new(KEY, "key.keyboard.b").label("keybind.sophisticatedbackpacks.open_backpack"));
+        r.register_key_mapping(
+            KeyRegistration::new(KEY, "key.keyboard.b")
+                .label("keybind.sophisticatedbackpacks.open_backpack"),
+        );
         for (name, kind) in options::SPECS {
             let label = format!("sophisticatedcore.config.{name}");
             let spec = match kind {
-                options::Kind::Toggle(default) => mod_api::SettingSpec::toggle(*name, &label, *default),
+                options::Kind::Toggle(default) => {
+                    mod_api::SettingSpec::toggle(*name, &label, *default)
+                }
                 options::Kind::Range(min, max, step, default) => {
                     mod_api::SettingSpec::range(*name, &label, *min, *max, *step, *default)
                 }
@@ -821,20 +1189,31 @@ impl Hooks for Mod {
         for (name, kind) in options::tier_specs() {
             let label = format!("sophisticatedcore.config.{name}");
             if let options::Kind::Range(min, max, step, default) = kind {
-                let _ = r.register_setting(mod_api::SettingSpec::range(&name, &label, min, max, step, default));
+                let _ = r.register_setting(mod_api::SettingSpec::range(
+                    &name, &label, min, max, step, default,
+                ));
             }
         }
         for (id, label, key, _) in ACTIONS.iter() {
             r.register_key_mapping(KeyRegistration::new(id, key).label(label));
         }
         for rows in 1..=6 {
-            r.menu_part(&format!("minecraft:generic_9x{rows}"), StorageMenu(self.shared.clone()));
+            r.menu_part(
+                &format!("minecraft:generic_9x{rows}"),
+                StorageMenu(self.shared.clone()),
+            );
         }
         r.payload_handlers()
             .registrar("1")
             .optional()
-            .play_to_server(PayloadId(OPEN.into()), Arc::new(OpenHandler(self.shared.clone())))
-            .play_to_server(PayloadId(ACT.into()), Arc::new(ActionHandler(self.shared.clone())))
+            .play_to_server(
+                PayloadId(OPEN.into()),
+                Arc::new(OpenHandler(self.shared.clone())),
+            )
+            .play_to_server(
+                PayloadId(ACT.into()),
+                Arc::new(ActionHandler(self.shared.clone())),
+            )
             .play_to_client(PayloadId(worn::VIEW.into()), Some(Arc::new(ViewHandler)));
     }
 
@@ -858,14 +1237,32 @@ impl Hooks for Mod {
             return Flow::Continue;
         };
         let (mob, edits) = (event.mob, event.edits);
-        let Some(mut pack) = mobs::backpack(host, wearer.tier) else { return Flow::Continue };
+        let Some(mut pack) = mobs::backpack(host, wearer.tier) else {
+            return Flow::Continue;
+        };
         let jukebox = opts.mob_jukebox
-            && mobs::add_jukebox(host, &mut pack, &[event.pos[0].to_bits(), event.pos[1].to_bits(), event.pos[2].to_bits()], &options::Lists::get(host).disc_block);
+            && mobs::add_jukebox(
+                host,
+                &mut pack,
+                &[
+                    event.pos[0].to_bits(),
+                    event.pos[1].to_bits(),
+                    event.pos[2].to_bits(),
+                ],
+                &options::Lists::get(host).disc_block,
+            );
         if jukebox {
             let _ = edits.add_tag(mob, mobs::JUKEBOX_TAG);
         }
         let _ = edits.set_equipment(mob, EquipmentSlot::Chest, Some(pack));
-        for (slot, id) in [EquipmentSlot::Head, EquipmentSlot::Legs, EquipmentSlot::Feet].into_iter().zip(&wearer.armour) {
+        for (slot, id) in [
+            EquipmentSlot::Head,
+            EquipmentSlot::Legs,
+            EquipmentSlot::Feet,
+        ]
+        .into_iter()
+        .zip(&wearer.armour)
+        {
             if let Some(stack) = id.as_deref().and_then(|id| mobs::armour_stack(host, id)) {
                 let _ = edits.set_equipment(mob, slot, Some(stack));
             }
@@ -873,7 +1270,8 @@ impl Hooks for Mod {
         if opts.mob_health
             && let Ok(id) = Identifier::parse("minecraft:max_health")
             && let Ok(base) = mob.attribute_base(host, &id)
-            && let Some(bonus) = mobs::health_bonus(base, wearer.min_difficulty).and_then(mobs::health_modifier)
+            && let Some(bonus) =
+                mobs::health_bonus(base, wearer.min_difficulty).and_then(mobs::health_modifier)
         {
             let _ = edits.add_attribute_modifier(mob, &id, bonus);
         }
@@ -888,19 +1286,40 @@ impl Hooks for Mod {
 
     /// `applyPotions`: a bearer new to a level is given its effects (they need the live mob, which the spawn hook
     /// doesn't have).
-    fn entity_join_level(&self, host: &mut dyn ServerHost, event: &mut EntityJoinLevelEvent<'_>) -> Flow {
-        let Some(entity) = host.entity(event.entity) else { return Flow::Continue };
-        if entity.tags(&*host).is_some_and(|t| t.contains(mobs::JUKEBOX_TAG)) {
+    fn entity_join_level(
+        &self,
+        host: &mut dyn ServerHost,
+        event: &mut EntityJoinLevelEvent<'_>,
+    ) -> Flow {
+        let Some(entity) = host.entity(event.entity) else {
+            return Flow::Continue;
+        };
+        if entity
+            .tags(&*host)
+            .is_some_and(|t| t.contains(mobs::JUKEBOX_TAG))
+        {
             jukebox::mob_starts(host, event.entity, u64::from(event.entity));
         }
         if event.loaded_from_disk {
             return Flow::Continue;
         }
-        let Some((difficulty, min_difficulty)) = mobs::effects_owed(&*host, entity) else { return Flow::Continue };
+        let Some((difficulty, min_difficulty)) = mobs::effects_owed(&*host, entity) else {
+            return Flow::Continue;
+        };
         let living = LivingRef::new(entity);
         for (id, amplifier) in mobs::effects(event.entity, event.pos, difficulty, min_difficulty) {
             if let Some(key) = host.effect_key(id) {
-                living.add_effect(host, &mod_api::ActiveEffect::new(key, mobs::EFFECT_TICKS, amplifier, false, true, true));
+                living.add_effect(
+                    host,
+                    &mod_api::ActiveEffect::new(
+                        key,
+                        mobs::EFFECT_TICKS,
+                        amplifier,
+                        false,
+                        true,
+                        true,
+                    ),
+                );
             }
         }
         entity.add_tag(host, mobs::EFFECTS_DONE_TAG);
@@ -910,21 +1329,37 @@ impl Hooks for Mod {
     /// `handleBackpackDrop`: a monster that spawned with a backpack drops it, filled with loot, to a player's kill by
     /// the drop chance (plus looting); otherwise the backpack is lost.
     fn living_drops(&self, host: &mut dyn ServerHost, event: &mut LivingDropsEvent<'_>) -> Flow {
-        let Some(entity) = host.entity(event.entity) else { return Flow::Continue };
-        let Some((tier, difficulty)) = mobs::tags_of(&*host, entity) else { return Flow::Continue };
-        event.drops.retain(|d| !mobs::is_backpack(&contents::item_id(&*host, &d.stack)));
+        let Some(entity) = host.entity(event.entity) else {
+            return Flow::Continue;
+        };
+        let Some((tier, difficulty)) = mobs::tags_of(&*host, entity) else {
+            return Flow::Continue;
+        };
+        event
+            .drops
+            .retain(|d| !mobs::is_backpack(&contents::item_id(&*host, &d.stack)));
         let killer = host
             .players()
             .server_players()
             .into_iter()
             .find(|p| i64::from(p.entity().id()) == i64::from(event.source.causing));
-        let (Some(killer), Some(pos)) = (killer, entity.position(&*host)) else { return Flow::Continue };
+        let (Some(killer), Some(pos)) = (killer, entity.position(&*host)) else {
+            return Flow::Continue;
+        };
         let opts = options::Options::read(&*host);
         let looting = LivingRef::new(killer.entity())
-            .with_hand_item(&*host, Hand::Main, |held| held.project().map_or(0, |s| mobs::looting_level(&s)))
+            .with_hand_item(&*host, Hand::Main, |held| {
+                held.project().map_or(0, |s| mobs::looting_level(&s))
+            })
             .unwrap_or(0);
-        if mobs::drops(tier, looting, opts.drop_chance, opts.looting_chance, mobs::drop_roll(event.entity, pos))
-            && let Some(drop) = mobs::dropped_backpack(host, entity, event.kind, tier, difficulty, pos)
+        if mobs::drops(
+            tier,
+            looting,
+            opts.drop_chance,
+            opts.looting_chance,
+            mobs::drop_roll(event.entity, pos),
+        ) && let Some(drop) =
+            mobs::dropped_backpack(host, entity, event.kind, tier, difficulty, pos)
         {
             event.drops.push(drop);
         }
@@ -932,21 +1367,40 @@ impl Hooks for Mod {
     }
 
     /// The layer that draws a worn backpack on its bearer.
-    fn register_entity_layers(&self, _: &RegistrationContext, event: &mut mod_api::RegisterEntityLayersEvent<'_>) {
+    fn register_entity_layers(
+        &self,
+        _: &RegistrationContext,
+        event: &mut mod_api::RegisterEntityLayersEvent<'_>,
+    ) {
         worn::register(event.layers);
     }
 
     /// A client that starts tracking a bearer is told it wears a backpack.
-    fn player_start_tracking(&self, host: &mut dyn ServerHost, event: &mut mod_api::PlayerStartTrackingEvent<'_>) {
-        let tier = if event.kind == "minecraft:player" { self.shared.told.of(event.entity) } else { worn::mob_tier(&*host, event.entity) };
+    fn player_start_tracking(
+        &self,
+        host: &mut dyn ServerHost,
+        event: &mut mod_api::PlayerStartTrackingEvent<'_>,
+    ) {
+        let tier = if event.kind == "minecraft:player" {
+            self.shared.told.of(event.entity)
+        } else {
+            worn::mob_tier(&*host, event.entity)
+        };
         // Always told: a client's note of a dead bearer must not outlive its entity id.
         if let Some(p) = host.player(event.player) {
-            let _ = p.send_payload(host, &PayloadId(worn::VIEW.into()), worn::encode(event.entity, tier));
+            let _ = p.send_payload(
+                host,
+                &PayloadId(worn::VIEW.into()),
+                worn::encode(event.entity, tier),
+            );
         }
     }
 
     fn client_tick_post(&self, host: &mut dyn ClientHost, _: &mut mod_api::ClientTickPostEvent) {
-        IN_CONTAINER_ITEMS.store(options::Options::read(&*host).in_container_items, Ordering::Relaxed);
+        IN_CONTAINER_ITEMS.store(
+            options::Options::read(&*host).in_container_items,
+            Ordering::Relaxed,
+        );
         static N: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
         if N.fetch_add(1, Ordering::Relaxed).is_multiple_of(20) {
             options::refresh(&*host);
@@ -955,7 +1409,9 @@ impl Hooks for Mod {
 
     /// SBPLootInjectModifier: the jar's chest tables join the vanilla chests'.
     fn loot_table_load(&self, _context: &dyn DataLoadContext, event: &mut LootTableLoadEvent<'_>) {
-        let Some(chest) = event.id.strip_prefix("minecraft:chests/") else { return };
+        let Some(chest) = event.id.strip_prefix("minecraft:chests/") else {
+            return;
+        };
         if _context.setting(options::MOD, options::key::CHEST_LOOT) == Some("false") {
             return;
         }
@@ -987,7 +1443,12 @@ impl Hooks for Mod {
                 Job::Action(uuid, code) => self.shared.action(host, uuid, code),
             }
         }
-        let players: Vec<u128> = host.players().server_players().iter().map(|p| p.uuid()).collect();
+        let players: Vec<u128> = host
+            .players()
+            .server_players()
+            .iter()
+            .map(|p| p.uuid())
+            .collect();
         if opts.slowness && n.is_multiple_of(BACKPACK_CHECK) {
             self.shared.too_many(host, &players, &opts);
         }
@@ -1006,21 +1467,32 @@ impl Hooks for Mod {
     /// open).
     fn right_click_block(&self, host: HostSide<'_>, event: &mut RightClickBlockEvent<'_>) -> Flow {
         let click = event.click;
-        let HostSide::Server(host) = host else { return Flow::Continue };
+        let HostSide::Server(host) = host else {
+            return Flow::Continue;
+        };
         if !matches!(click.hand, Hand::Main) {
             return Flow::Continue;
         }
-        let Some(stack) = click.stack.filter(|s| s.count() > 0) else { return Flow::Continue };
+        let Some(stack) = click.stack.filter(|s| s.count() > 0) else {
+            return Flow::Continue;
+        };
         let held = contents::item_id(&*host, stack);
         if !held.starts_with("sophisticatedstorage:") {
             return Flow::Continue;
         }
         let dim = click.dimension.key().id().to_string();
-        let Some(level) = host.level(&dim) else { return Flow::Continue };
+        let Some(level) = host.level(&dim) else {
+            return Flow::Continue;
+        };
         if !storage::takes_click(&held, &storage::block_id(&*host, level, click.pos)) {
             return Flow::Continue;
         }
-        let (Some(player), Some(slot)) = (host.player(click.player), hand_slot(&*host, click.player, Hand::Main)) else { return Flow::Continue };
+        let (Some(player), Some(slot)) = (
+            host.player(click.player),
+            hand_slot(&*host, click.player, Hand::Main),
+        ) else {
+            return Flow::Continue;
+        };
         let stack = stack.clone();
         if storage::use_tool(host, player, slot, &stack, level, click.pos) {
             self.shared.placed.note(level, click.pos);
@@ -1033,9 +1505,15 @@ impl Hooks for Mod {
 
     /// A player breaks a placed storage: its contents spill (or stay, packed / shulker box) before it drops.
     fn break_block(&self, host: &mut dyn ServerHost, event: &mut BreakBlockEvent<'_>) -> Flow {
-        let Some(player) = host.players().acting_player() else { return Flow::Continue };
-        let Some(dim) = player.dimension(&*host).map(|d| d.to_string()) else { return Flow::Continue };
-        let Some(level) = host.level(&dim) else { return Flow::Continue };
+        let Some(player) = host.players().acting_player() else {
+            return Flow::Continue;
+        };
+        let Some(dim) = player.dimension(&*host).map(|d| d.to_string()) else {
+            return Flow::Continue;
+        };
+        let Some(level) = host.level(&dim) else {
+            return Flow::Continue;
+        };
         if storage::kind_of_block(&storage::block_id(&*host, level, event.pos)).is_some() {
             storage::broken(host, player, level, event.pos);
         }
@@ -1044,18 +1522,30 @@ impl Hooks for Mod {
 
     /// LimitedBarrelBlock.attack: a left click on the front takes one of the slot's item (a stack when sneaking).
     fn left_click_block(&self, host: &mut dyn ServerHost, event: &mut LeftClickBlockEvent) -> Flow {
-        let Some(player) = host.players().acting_player() else { return Flow::Continue };
-        let Some(dim) = player.dimension(&*host).map(|d| d.to_string()) else { return Flow::Continue };
-        let Some(level) = host.level(&dim) else { return Flow::Continue };
-        let Some(kind) = storage::kind_of_block(&storage::block_id(&*host, level, event.pos)) else { return Flow::Continue };
+        let Some(player) = host.players().acting_player() else {
+            return Flow::Continue;
+        };
+        let Some(dim) = player.dimension(&*host).map(|d| d.to_string()) else {
+            return Flow::Continue;
+        };
+        let Some(level) = host.level(&dim) else {
+            return Flow::Continue;
+        };
+        let Some(kind) = storage::kind_of_block(&storage::block_id(&*host, level, event.pos))
+        else {
+            return Flow::Continue;
+        };
         if kind.family != Family::LimitedBarrel {
             return Flow::Continue;
         }
-        let facing = level.block_property(&*host, event.pos, "facing").unwrap_or_default();
+        let facing = level
+            .block_property(&*host, event.pos, "facing")
+            .unwrap_or_default();
         if event.face != storage::dir_vec(&facing) {
             return Flow::Continue;
         }
-        let point = storage::look_point(&*host, player, event.pos, &facing).unwrap_or(event.pos.map(|v| f64::from(v) + 0.5));
+        let point = storage::look_point(&*host, player, event.pos, &facing)
+            .unwrap_or(event.pos.map(|v| f64::from(v) + 0.5));
         let slot = storage::limited_slot(kind, &facing, event.pos, point);
         let sneak = places::sneaking(&*host, player.uuid());
         storage::limited_take(host, player, level, event.pos, slot, sneak);
@@ -1069,7 +1559,11 @@ impl Hooks for Mod {
     /// The jar's creative tab lists every wood of a chest or barrel (WoodStorageBlockBase.addCreativeTabItems); the
     /// tab's json leaves them out, so they come here, after its shulker boxes, blocks and upgrades. (The dyed variants
     /// the jar lists too are left out: Horizon draws storage untinted.)
-    fn build_creative_mode_tab_contents(&self, host: HostSide<'_>, event: &mut BuildCreativeModeTabContentsEvent<'_>) {
+    fn build_creative_mode_tab_contents(
+        &self,
+        host: HostSide<'_>,
+        event: &mut BuildCreativeModeTabContentsEvent<'_>,
+    ) {
         if event.tab != "sophisticatedstorage:main" {
             return;
         }
@@ -1077,13 +1571,27 @@ impl Hooks for Mod {
             HostSide::Server(host) => &**host,
             HostSide::Client(host) => &**host,
         };
-        for kind in storage_items::STORAGE.iter().filter(|k| storage_items::wooden(k)) {
-            let Some(st) = storage::new_stack(h, kind.id) else { continue };
-            let woods = if options::Options::read(h).single_wood { &storage_items::WOODS[..1] } else { &storage_items::WOODS[..] };
+        for kind in storage_items::STORAGE
+            .iter()
+            .filter(|k| storage_items::wooden(k))
+        {
+            let Some(st) = storage::new_stack(h, kind.id) else {
+                continue;
+            };
+            let woods = if options::Options::read(h).single_wood {
+                &storage_items::WOODS[..1]
+            } else {
+                &storage_items::WOODS[..]
+            };
             for w in woods.iter().copied() {
                 let mut s = st.clone();
                 storage::set_wood(&mut s, kind, w);
-                let placed = event.edit.insert(h, mod_api::CreativeTabPlacement::Last, s, mod_api::CreativeTabVisibility::Both);
+                let placed = event.edit.insert(
+                    h,
+                    mod_api::CreativeTabPlacement::Last,
+                    s,
+                    mod_api::CreativeTabVisibility::Both,
+                );
                 if let Err(e) = placed {
                     eprintln!("[sophisticatedcore] creative tab entry refused: {e:?}");
                 }
@@ -1094,8 +1602,12 @@ impl Hooks for Mod {
     /// BackpackItem.use: opens the backpack in hand.
     fn right_click_item(&self, host: HostSide<'_>, event: &mut RightClickItemEvent<'_>) -> Flow {
         let click = event.click;
-        let HostSide::Server(host) = host else { return Flow::Continue };
-        if storage_items::by_item(&contents::item_id(&*host, click.stack)).is_none_or(|k| k.family != Family::Backpack) {
+        let HostSide::Server(host) = host else {
+            return Flow::Continue;
+        };
+        if storage_items::by_item(&contents::item_id(&*host, click.stack))
+            .is_none_or(|k| k.family != Family::Backpack)
+        {
             return Flow::Continue;
         }
         if !self.shared.just_used(click.player)
@@ -1111,7 +1623,14 @@ impl Hooks for Mod {
     fn menu_closed(&self, host: &mut dyn ServerHost, event: &mut MenuClosedEvent) {
         let prev = {
             let mut sessions = lock(&self.shared.sessions);
-            if sessions.get(&event.uuid).is_some_and(|s| s.window == event.window) { sessions.remove(&event.uuid) } else { None }
+            if sessions
+                .get(&event.uuid)
+                .is_some_and(|s| s.window == event.window)
+            {
+                sessions.remove(&event.uuid)
+            } else {
+                None
+            }
         };
         if let Some(prev) = prev {
             self.shared.closed_block(host, &prev.loc);
@@ -1119,9 +1638,17 @@ impl Hooks for Mod {
     }
 
     /// What vanilla's pickup put in the inventory goes on into a backpack with a pickup upgrade.
-    fn item_picked_up_post(&self, host: &mut dyn ServerHost, event: &mut ItemPickedUpPostEvent<'_>) {
+    fn item_picked_up_post(
+        &self,
+        host: &mut dyn ServerHost,
+        event: &mut ItemPickedUpPostEvent<'_>,
+    ) {
         let left = event.remaining.as_ref().map_or(0, |s| s.count());
-        let Some(picked) = contents::with_count(event.original, event.original.count().saturating_sub(left)) else { return };
+        let Some(picked) =
+            contents::with_count(event.original, event.original.count().saturating_sub(left))
+        else {
+            return;
+        };
         let ids = ticking::picked_up(host, event.player, &picked);
         self.shared.refresh_ids(host, &ids);
     }
@@ -1150,9 +1677,13 @@ fn press(host: &mut dyn ClientHost, name: &str) {
             == Some(true)
     };
     if bound(&*host, KEY) {
-        let inventory = host.observed_screen_id().is_some_and(|s| s.id == "inventory") && host.screen_title().is_none();
+        let inventory = host
+            .observed_screen_id()
+            .is_some_and(|s| s.id == "inventory")
+            && host.screen_title().is_none();
         if (host.playing() || inventory)
-            && let Err(e) = host.send_payload_to_server(&PayloadId(OPEN.into()), PayloadBytes(Vec::new()))
+            && let Err(e) =
+                host.send_payload_to_server(&PayloadId(OPEN.into()), PayloadBytes(Vec::new()))
         {
             eprintln!("[sophisticatedcore] open: {e:?}");
         }

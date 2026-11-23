@@ -1,8 +1,8 @@
 //! Where a storage item is: a player's inventory slot, a trinkets slot, or a placed block's block entity; and the
 //! player's inventory as the menu and the upgrades read and write it.
 use mod_api::{
-    AttachmentCodec, AttachmentError, AttachmentType, Compound, Holder, Host, HostTransaction, ItemStack, PlayerRef,
-    ServerHost, Tag, Text,
+    AttachmentCodec, AttachmentError, AttachmentType, Compound, Holder, Host, HostTransaction,
+    ItemStack, PlayerRef, ServerHost, Tag, Text,
 };
 
 use crate::contents::{self, Nbt};
@@ -21,7 +21,10 @@ pub static WORN: AttachmentType<Compound> = AttachmentType {
     namespace: "trinkets",
     name: "worn",
     default: empty,
-    codec: Some(AttachmentCodec { encode: same_compound, decode: same_compound }),
+    codec: Some(AttachmentCodec {
+        encode: same_compound,
+        decode: same_compound,
+    }),
     copy_on_death: true,
     sync: true,
 };
@@ -89,7 +92,12 @@ pub fn complete(host: &dyn Host, player: PlayerRef) -> bool {
     readable(host, player).is_some_and(|(_, whole)| whole)
 }
 
-pub fn set_slot(host: &mut dyn ServerHost, player: PlayerRef, slot: u32, stack: Option<ItemStack>) -> bool {
+pub fn set_slot(
+    host: &mut dyn ServerHost,
+    player: PlayerRef,
+    slot: u32,
+    stack: Option<ItemStack>,
+) -> bool {
     match player.set_inventory_slot(host, slot, stack) {
         Ok(()) => true,
         Err(e) => {
@@ -122,9 +130,17 @@ pub fn write(host: &mut dyn ServerHost, uuid: u128, loc: &Loc, stack: Option<Ite
         },
         Loc::Worn(slot) => set_worn(host, uuid, slot, stack),
         Loc::Block { dim, pos } => {
-            let Some(level) = host.level(dim) else { return false };
-            let Some(be) = host.block_entity(level, *pos) else { return false };
-            let ok = host.transaction(|host, tx| be.set_item_slot(host, tx, 0, stack.clone()).map_err(|_| ())).is_ok();
+            let Some(level) = host.level(dim) else {
+                return false;
+            };
+            let Some(be) = host.block_entity(level, *pos) else {
+                return false;
+            };
+            let ok = host
+                .transaction(|host, tx| {
+                    be.set_item_slot(host, tx, 0, stack.clone()).map_err(|_| ())
+                })
+                .is_ok();
             if ok {
                 let _ = be.set_changed(host);
             }
@@ -134,7 +150,11 @@ pub fn write(host: &mut dyn ServerHost, uuid: u128, loc: &Loc, stack: Option<Ite
 }
 
 /// The storage item at `loc`, if it is one.
-pub fn storage_at(host: &mut dyn ServerHost, uuid: u128, loc: &Loc) -> Option<(ItemStack, &'static StorageItem)> {
+pub fn storage_at(
+    host: &mut dyn ServerHost,
+    uuid: u128,
+    loc: &Loc,
+) -> Option<(ItemStack, &'static StorageItem)> {
     let st = read(host, uuid, loc)?;
     let kind = storage_items::by_item(&contents::item_id(&*host, &st))?;
     Some((st, kind))
@@ -215,10 +235,20 @@ pub fn give_or_drop(host: &mut dyn ServerHost, player: PlayerRef, stack: &ItemSt
 }
 
 pub fn drop_at_player(host: &mut dyn ServerHost, player: PlayerRef, stack: ItemStack) {
-    let Some(dim) = player.dimension(&*host).map(|d| d.to_string()) else { return };
-    let Some(level) = host.level(&dim) else { return };
-    let Some(pos) = player.entity().position(&*host) else { return };
-    let at = [pos[0].floor() as i32, pos[1].floor() as i32, pos[2].floor() as i32];
+    let Some(dim) = player.dimension(&*host).map(|d| d.to_string()) else {
+        return;
+    };
+    let Some(level) = host.level(&dim) else {
+        return;
+    };
+    let Some(pos) = player.entity().position(&*host) else {
+        return;
+    };
+    let at = [
+        pos[0].floor() as i32,
+        pos[1].floor() as i32,
+        pos[2].floor() as i32,
+    ];
     let _ = level.pop_resource(host, at, stack);
 }
 
@@ -233,5 +263,7 @@ pub fn creative(host: &dyn Host, uuid: u128) -> bool {
 }
 
 pub fn sneaking(host: &dyn Host, uuid: u128) -> bool {
-    host.player(uuid).and_then(|p| p.entity().is_shift_key_down(host)) == Some(true)
+    host.player(uuid)
+        .and_then(|p| p.entity().is_shift_key_down(host))
+        == Some(true)
 }

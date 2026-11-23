@@ -4,8 +4,10 @@
 //! `shouldVoidOverflow`; magnet: `pickupItems`, `pickupXp`; refill/crafting below).
 use mod_api::{Compound, Host, ItemStack, Tag};
 
+use crate::contents::{
+    self, Nbt, custom_data, get_bool, get_str, put, read_items, set_custom_data, write_items,
+};
 use crate::storage_items::{Family, StorageItem};
-use crate::contents::{self, Nbt, custom_data, get_bool, get_str, put, read_items, set_custom_data, write_items};
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum Kind {
@@ -47,7 +49,14 @@ pub fn upgrade(id: &str) -> Option<Upgrade> {
     let advanced = path.starts_with("advanced_");
     let base = path.strip_prefix("advanced_").unwrap_or(path);
     let f = if advanced { 16 } else { 9 };
-    let u = |kind, filters, allow_default| Some(Upgrade { kind, advanced, filters, allow_default });
+    let u = |kind, filters, allow_default| {
+        Some(Upgrade {
+            kind,
+            advanced,
+            filters,
+            allow_default,
+        })
+    };
     match base {
         "pickup_upgrade" => u(Kind::Pickup, f, false),
         "filter_upgrade" => u(Kind::Filter, f, false),
@@ -88,11 +97,22 @@ pub fn of(host: &dyn Host, stack: &ItemStack) -> Option<Upgrade> {
 pub fn group(id: &str, family: Family) -> Option<(&'static str, usize)> {
     let path = id.split_once(':').map_or(id, |(_, p)| p);
     let t = crate::options::tune();
-    let limits = if family == Family::Backpack { t.backpack_groups } else { t.storage_groups };
+    let limits = if family == Family::Backpack {
+        t.backpack_groups
+    } else {
+        t.storage_groups
+    };
     if path.starts_with("stack_upgrade") || path.starts_with("stack_downgrade") {
         (family != Family::LimitedBarrel).then_some(("stack_upgrades", limits[0]))
-    } else if ["smelting_upgrade", "auto_smelting_upgrade", "smoking_upgrade", "auto_smoking_upgrade", "blasting_upgrade", "auto_blasting_upgrade"]
-        .contains(&path)
+    } else if [
+        "smelting_upgrade",
+        "auto_smelting_upgrade",
+        "smoking_upgrade",
+        "auto_smoking_upgrade",
+        "blasting_upgrade",
+        "auto_blasting_upgrade",
+    ]
+    .contains(&path)
     {
         Some(("furnace_upgrades", limits[1]))
     } else if path == "jukebox_upgrade" || path == "advanced_jukebox_upgrade" {
@@ -112,7 +132,11 @@ pub fn multiplier(host: &dyn Host, kind: &StorageItem, upgrades: &[Option<ItemSt
 pub fn stack_multiplier(host: &dyn Host, upgrades: &[Option<ItemStack>]) -> f64 {
     let mut m = 1.0f64;
     for u in upgrades.iter().flatten() {
-        if let Some(Upgrade { kind: Kind::Stack(x), .. }) = of(host, u) {
+        if let Some(Upgrade {
+            kind: Kind::Stack(x),
+            ..
+        }) = of(host, u)
+        {
             m *= x;
         }
     }
@@ -121,7 +145,8 @@ pub fn stack_multiplier(host: &dyn Host, upgrades: &[Option<ItemStack>]) -> f64 
 
 /// `stackUpgrade.nonStackableItems`: items stack upgrades don't change (the list file; shulker boxes always).
 fn never_stacked(host: &dyn Host, id: &str) -> bool {
-    id.ends_with("_shulker_box") || crate::options::listed(&crate::options::Lists::get(host).non_stackable, id)
+    id.ends_with("_shulker_box")
+        || crate::options::listed(&crate::options::Lists::get(host).non_stackable, id)
 }
 
 /// InventoryHandler.getBaseStackLimit: how many of `stack` one slot holds.
@@ -131,7 +156,11 @@ pub fn limit(host: &dyn Host, stack: &ItemStack, multiplier: f64) -> u32 {
         return max;
     }
     let v = (f64::from(max) * multiplier).floor();
-    if v >= f64::from(u32::MAX) { u32::MAX } else { (v as u32).max(1) }
+    if v >= f64::from(u32::MAX) {
+        u32::MAX
+    } else {
+        (v as u32).max(1)
+    }
 }
 
 // ---- filters (FilterLogic) ----
@@ -182,8 +211,20 @@ pub fn matches(host: &dyn Host, upgrade: &ItemStack, u: &Upgrade, stack: &ItemSt
     }
     let f = filters(host, upgrade, u.filters);
     let by_mod = match_mod(upgrade);
-    let ns = |s: &ItemStack| contents::item_id(host, s).split(':').next().unwrap_or("").to_string();
-    let hit = f.iter().flatten().any(|x| if by_mod { ns(x) == ns(stack) } else { x.same_item(stack) });
+    let ns = |s: &ItemStack| {
+        contents::item_id(host, s)
+            .split(':')
+            .next()
+            .unwrap_or("")
+            .to_string()
+    };
+    let hit = f.iter().flatten().any(|x| {
+        if by_mod {
+            ns(x) == ns(stack)
+        } else {
+            x.same_item(stack)
+        }
+    });
     if allow_list(upgrade, u) { hit } else { !hit }
 }
 
@@ -200,14 +241,30 @@ pub fn set_grid(host: &dyn Host, upgrade: &mut ItemStack, g: &[Option<ItemStack>
 
 /// A copy of `c` without the keys a settings view writes (so two upgrades compare by kind).
 pub fn _settings_keys(c: &mut Compound) {
-    for k in ["filters", "isAllowList", "primaryMatch", "shouldVoidOverflow", "pickupItems", "pickupXp", "craftingInventory", "discInventory", "isPlaying", "shuffle", "repeatMode", "discSlotActive", "discPlayed"] {
+    for k in [
+        "filters",
+        "isAllowList",
+        "primaryMatch",
+        "shouldVoidOverflow",
+        "pickupItems",
+        "pickupXp",
+        "craftingInventory",
+        "discInventory",
+        "isPlaying",
+        "shuffle",
+        "repeatMode",
+        "discSlotActive",
+        "discPlayed",
+    ] {
         c.del(k);
     }
 }
 
 /// Feeding's food: (nutrition, saturation modifier) of an edible stack (`minecraft:food` with nutrition >= 1).
 pub fn food(host: &dyn Host, stack: &ItemStack) -> Option<(i32, f32)> {
-    let own = stack.components().and_then(|c| c.as_nbt().at("minecraft:food").cloned());
+    let own = stack
+        .components()
+        .and_then(|c| c.as_nbt().at("minecraft:food").cloned());
     let t = own.or_else(|| host.item_default_component(stack.item(), "minecraft:food"))?;
     let Tag::Compound(c) = t else { return None };
     let n = contents::get_int(&c, "nutrition")?;
@@ -221,7 +278,9 @@ pub fn food(host: &dyn Host, stack: &ItemStack) -> Option<(i32, f32)> {
 
 /// What eating leaves (`minecraft:use_remainder`), e.g. a bowl.
 pub fn use_remainder(host: &dyn Host, stack: &ItemStack) -> Option<ItemStack> {
-    let own = stack.components().and_then(|c| c.as_nbt().at("minecraft:use_remainder").cloned());
+    let own = stack
+        .components()
+        .and_then(|c| c.as_nbt().at("minecraft:use_remainder").cloned());
     let t = own.or_else(|| host.item_default_component(stack.item(), "minecraft:use_remainder"))?;
     let Tag::Compound(c) = t else { return None };
     ItemStack::from_nbt(host, &c)
@@ -239,14 +298,38 @@ mod tests {
 
     #[test]
     fn kinds() {
-        assert_eq!(upgrade("sophisticatedbackpacks:pickup_upgrade").unwrap().kind, Kind::Pickup);
+        assert_eq!(
+            upgrade("sophisticatedbackpacks:pickup_upgrade")
+                .unwrap()
+                .kind,
+            Kind::Pickup
+        );
         let a = upgrade("sophisticatedbackpacks:advanced_magnet_upgrade").unwrap();
         assert!(a.advanced && a.filters == 16 && a.kind == Kind::Magnet);
-        assert_eq!(upgrade("sophisticatedbackpacks:stack_upgrade_tier_2").unwrap().kind, Kind::Stack(4.0));
-        assert_eq!(upgrade("sophisticatedbackpacks:tank_upgrade").unwrap().kind, Kind::Inert);
+        assert_eq!(
+            upgrade("sophisticatedbackpacks:stack_upgrade_tier_2")
+                .unwrap()
+                .kind,
+            Kind::Stack(4.0)
+        );
+        assert_eq!(
+            upgrade("sophisticatedbackpacks:tank_upgrade").unwrap().kind,
+            Kind::Inert
+        );
         assert!(upgrade("sophisticatedbackpacks:upgrade_base").is_none());
         assert!(upgrade("minecraft:stick").is_none());
-        assert_eq!(group("sophisticatedbackpacks:stack_downgrade_tier_1", Family::Backpack), Some(("stack_upgrades", 3)));
-        assert_eq!(upgrade("sophisticatedstorage:stack_upgrade_tier_5").unwrap().kind, Kind::Stack(32.0));
+        assert_eq!(
+            group(
+                "sophisticatedbackpacks:stack_downgrade_tier_1",
+                Family::Backpack
+            ),
+            Some(("stack_upgrades", 3))
+        );
+        assert_eq!(
+            upgrade("sophisticatedstorage:stack_upgrade_tier_5")
+                .unwrap()
+                .kind,
+            Kind::Stack(32.0)
+        );
     }
 }

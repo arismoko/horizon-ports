@@ -97,8 +97,16 @@ pub const EFFECT_TICKS: i32 = 36_000;
 
 /// `applyPotions`: `difficulty + 2` of the effects (each at most once), each with an amplifier between the tier's
 /// minimum difficulty and a roll up to the difficulty, capped by what the effect allows. (effect id, amplifier)
-pub fn effects(entity: u32, pos: [f64; 3], difficulty: i32, min_difficulty: i32) -> Vec<(&'static str, i32)> {
-    let mut dice = Dice::seeded(&[u64::from(entity), pos[0].to_bits(), pos[2].to_bits()], "effects");
+pub fn effects(
+    entity: u32,
+    pos: [f64; 3],
+    difficulty: i32,
+    min_difficulty: i32,
+) -> Vec<(&'static str, i32)> {
+    let mut dice = Dice::seeded(
+        &[u64::from(entity), pos[0].to_bits(), pos[2].to_bits()],
+        "effects",
+    );
     let mut left: Vec<usize> = (0..EFFECTS.len()).collect();
     let mut out = Vec::new();
     for _ in 0..(difficulty + 2).max(0) {
@@ -106,7 +114,9 @@ pub fn effects(entity: u32, pos: [f64; 3], difficulty: i32, min_difficulty: i32)
             break;
         }
         let (names, max) = EFFECTS[left.remove(dice.below(left.len() as u64) as usize)];
-        let amplifier = min_difficulty.max(dice.below(difficulty.max(0) as u64 + 1) as i32).min(max);
+        let amplifier = min_difficulty
+            .max(dice.below(difficulty.max(0) as u64 + 1) as i32)
+            .min(max);
         out.push((names[dice.below(names.len() as u64) as usize], amplifier));
     }
     out
@@ -301,25 +311,44 @@ pub const JUKEBOX_TAG: &str = "sophisticatedbackpacks:jukebox";
 /// `addJukeboxUpgradeAndRandomDisc`: one spawn in four (`play_jukebox`) puts a jukebox upgrade in the backpack's
 /// first upgrade slot, advanced one time in four, with a random disc not on the block list: one in the basic
 /// upgrade, `1 + rnd(slots / 3)` in the advanced. True when it did.
-pub fn add_jukebox(host: &dyn Host, pack: &mut ItemStack, entity_key: &[u64], blocked: &[String]) -> bool {
+pub fn add_jukebox(
+    host: &dyn Host,
+    pack: &mut ItemStack,
+    entity_key: &[u64],
+    blocked: &[String],
+) -> bool {
     let mut dice = Dice::seeded(entity_key, "jukebox");
     if dice.below(4) != 0 {
         return false;
     }
-    let Some(kind) = storage_items::by_item(&contents::item_id(host, pack)) else { return false };
+    let Some(kind) = storage_items::by_item(&contents::item_id(host, pack)) else {
+        return false;
+    };
     if kind.upgrade_count() == 0 {
         return false;
     }
     let advanced = dice.unit() < 0.25;
-    let id = if advanced { "sophisticatedbackpacks:advanced_jukebox_upgrade" } else { "sophisticatedbackpacks:jukebox_upgrade" };
-    let Some(mut up) = storage::new_stack(host, id) else { return false };
-    let Some(info) = upgrades::of(host, &up) else { return false };
+    let id = if advanced {
+        "sophisticatedbackpacks:advanced_jukebox_upgrade"
+    } else {
+        "sophisticatedbackpacks:jukebox_upgrade"
+    };
+    let Some(mut up) = storage::new_stack(host, id) else {
+        return false;
+    };
+    let Some(info) = upgrades::of(host, &up) else {
+        return false;
+    };
     let discs = crate::jukebox::mob_discs(blocked);
     if discs.is_empty() {
         return false;
     }
     let slots = upgrades::disc_slots(&info);
-    let count = if advanced { dice.below((slots / 3).max(1) as u64) as usize + 1 } else { 1 };
+    let count = if advanced {
+        dice.below((slots / 3).max(1) as u64) as usize + 1
+    } else {
+        1
+    };
     let mut deck = crate::jukebox::Deck::read(host, &up, slots);
     for slot in deck.discs.iter_mut().take(count) {
         *slot = storage::new_stack(host, &discs[dice.below(discs.len() as u64) as usize]);
@@ -349,7 +378,10 @@ pub fn effects_owed(host: &dyn Host, entity: mod_api::EntityRef) -> Option<(i32,
     }
     let difficulty = (0..=MAX_DIFFICULTY).find(|d| tags.contains(&format!("{EFFECTS_TAG}{d}")))?;
     let tier = (0..6).find(|t| tags.contains(&format!("{TIER_TAG}{t}")))?;
-    Some((difficulty, ADDITIONS.iter().find(|a| a.tier == tier)?.min_difficulty))
+    Some((
+        difficulty,
+        ADDITIONS.iter().find(|a| a.tier == tier)?.min_difficulty,
+    ))
 }
 
 /// A drop of a backpack of `tier`, with loot of the mob's kind rolled in: one roll per difficulty level (nothing at

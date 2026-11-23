@@ -32,74 +32,327 @@ pub struct StorageItem {
 }
 
 const fn bp(id: &'static str, slots: usize, name: &'static str, tier: u8) -> StorageItem {
-    StorageItem { id, block: Some(id), slots, name, family: Family::Backpack, base: 1, tier }
+    StorageItem {
+        id,
+        block: Some(id),
+        slots,
+        name,
+        family: Family::Backpack,
+        base: 1,
+        tier,
+    }
 }
 
 pub const BACKPACKS: [StorageItem; 6] = [
     bp("sophisticatedbackpacks:backpack", 27, "Backpack", 0),
-    bp("sophisticatedbackpacks:copper_backpack", 45, "Copper Backpack", 1),
-    bp("sophisticatedbackpacks:iron_backpack", 54, "Iron Backpack", 2),
-    bp("sophisticatedbackpacks:gold_backpack", 81, "Gold Backpack", 3),
-    bp("sophisticatedbackpacks:diamond_backpack", 108, "Diamond Backpack", 4),
-    bp("sophisticatedbackpacks:netherite_backpack", 120, "Netherite Backpack", 5),
+    bp(
+        "sophisticatedbackpacks:copper_backpack",
+        45,
+        "Copper Backpack",
+        1,
+    ),
+    bp(
+        "sophisticatedbackpacks:iron_backpack",
+        54,
+        "Iron Backpack",
+        2,
+    ),
+    bp(
+        "sophisticatedbackpacks:gold_backpack",
+        81,
+        "Gold Backpack",
+        3,
+    ),
+    bp(
+        "sophisticatedbackpacks:diamond_backpack",
+        108,
+        "Diamond Backpack",
+        4,
+    ),
+    bp(
+        "sophisticatedbackpacks:netherite_backpack",
+        120,
+        "Netherite Backpack",
+        5,
+    ),
 ];
 
 /// The tiers' default slots (Homestead's sophisticatedstorage-server.toml).
 const SLOTS: [usize; 6] = [27, 45, 54, 81, 108, 132];
 
 const fn st(id: &'static str, family: Family, tier: u8, name: &'static str) -> StorageItem {
-    StorageItem { id, block: Some(id), slots: SLOTS[tier as usize], name, family, base: 1, tier }
+    StorageItem {
+        id,
+        block: Some(id),
+        slots: SLOTS[tier as usize],
+        name,
+        family,
+        base: 1,
+        tier,
+    }
 }
 
 const fn lim(id: &'static str, tier: u8, n: usize, base: u32, name: &'static str) -> StorageItem {
-    StorageItem { id, block: Some(id), slots: n, name, family: Family::LimitedBarrel, base, tier }
+    StorageItem {
+        id,
+        block: Some(id),
+        slots: n,
+        name,
+        family: Family::LimitedBarrel,
+        base,
+        tier,
+    }
 }
 
 use Family::{Barrel, Chest, ShulkerBox};
 
 pub const STORAGE: [StorageItem; 42] = [
     st("sophisticatedstorage:chest", Chest, 0, "Chest"),
-    st("sophisticatedstorage:copper_chest", Chest, 1, "Copper Chest"),
+    st(
+        "sophisticatedstorage:copper_chest",
+        Chest,
+        1,
+        "Copper Chest",
+    ),
     st("sophisticatedstorage:iron_chest", Chest, 2, "Iron Chest"),
     st("sophisticatedstorage:gold_chest", Chest, 3, "Gold Chest"),
-    st("sophisticatedstorage:diamond_chest", Chest, 4, "Diamond Chest"),
-    st("sophisticatedstorage:netherite_chest", Chest, 5, "Netherite Chest"),
+    st(
+        "sophisticatedstorage:diamond_chest",
+        Chest,
+        4,
+        "Diamond Chest",
+    ),
+    st(
+        "sophisticatedstorage:netherite_chest",
+        Chest,
+        5,
+        "Netherite Chest",
+    ),
     st("sophisticatedstorage:barrel", Barrel, 0, "Barrel"),
-    st("sophisticatedstorage:copper_barrel", Barrel, 1, "Copper Barrel"),
+    st(
+        "sophisticatedstorage:copper_barrel",
+        Barrel,
+        1,
+        "Copper Barrel",
+    ),
     st("sophisticatedstorage:iron_barrel", Barrel, 2, "Iron Barrel"),
     st("sophisticatedstorage:gold_barrel", Barrel, 3, "Gold Barrel"),
-    st("sophisticatedstorage:diamond_barrel", Barrel, 4, "Diamond Barrel"),
-    st("sophisticatedstorage:netherite_barrel", Barrel, 5, "Netherite Barrel"),
-    st("sophisticatedstorage:shulker_box", ShulkerBox, 0, "Shulker Box"),
-    st("sophisticatedstorage:copper_shulker_box", ShulkerBox, 1, "Copper Shulker Box"),
-    st("sophisticatedstorage:iron_shulker_box", ShulkerBox, 2, "Iron Shulker Box"),
-    st("sophisticatedstorage:gold_shulker_box", ShulkerBox, 3, "Gold Shulker Box"),
-    st("sophisticatedstorage:diamond_shulker_box", ShulkerBox, 4, "Diamond Shulker Box"),
-    st("sophisticatedstorage:netherite_shulker_box", ShulkerBox, 5, "Netherite Shulker Box"),
-    lim("sophisticatedstorage:limited_barrel_1", 0, 1, 32, "Limited Barrel I"),
-    lim("sophisticatedstorage:limited_copper_barrel_1", 1, 1, 53, "Limited Copper Barrel I"),
-    lim("sophisticatedstorage:limited_iron_barrel_1", 2, 1, 64, "Limited Iron Barrel I"),
-    lim("sophisticatedstorage:limited_gold_barrel_1", 3, 1, 96, "Limited Gold Barrel I"),
-    lim("sophisticatedstorage:limited_diamond_barrel_1", 4, 1, 128, "Limited Diamond Barrel I"),
-    lim("sophisticatedstorage:limited_netherite_barrel_1", 5, 1, 160, "Limited Netherite Barrel I"),
-    lim("sophisticatedstorage:limited_barrel_2", 0, 2, 16, "Limited Barrel II"),
-    lim("sophisticatedstorage:limited_copper_barrel_2", 1, 2, 27, "Limited Copper Barrel II"),
-    lim("sophisticatedstorage:limited_iron_barrel_2", 2, 2, 32, "Limited Iron Barrel II"),
-    lim("sophisticatedstorage:limited_gold_barrel_2", 3, 2, 48, "Limited Gold Barrel II"),
-    lim("sophisticatedstorage:limited_diamond_barrel_2", 4, 2, 64, "Limited Diamond Barrel II"),
-    lim("sophisticatedstorage:limited_netherite_barrel_2", 5, 2, 80, "Limited Netherite Barrel II"),
-    lim("sophisticatedstorage:limited_barrel_3", 0, 3, 10, "Limited Barrel III"),
-    lim("sophisticatedstorage:limited_copper_barrel_3", 1, 3, 17, "Limited Copper Barrel III"),
-    lim("sophisticatedstorage:limited_iron_barrel_3", 2, 3, 20, "Limited Iron Barrel III"),
-    lim("sophisticatedstorage:limited_gold_barrel_3", 3, 3, 30, "Limited Gold Barrel III"),
-    lim("sophisticatedstorage:limited_diamond_barrel_3", 4, 3, 40, "Limited Diamond Barrel III"),
-    lim("sophisticatedstorage:limited_netherite_barrel_3", 5, 3, 50, "Limited Netherite Barrel III"),
-    lim("sophisticatedstorage:limited_barrel_4", 0, 4, 8, "Limited Barrel IV"),
-    lim("sophisticatedstorage:limited_copper_barrel_4", 1, 4, 13, "Limited Copper Barrel IV"),
-    lim("sophisticatedstorage:limited_iron_barrel_4", 2, 4, 16, "Limited Iron Barrel IV"),
-    lim("sophisticatedstorage:limited_gold_barrel_4", 3, 4, 24, "Limited Gold Barrel IV"),
-    lim("sophisticatedstorage:limited_diamond_barrel_4", 4, 4, 32, "Limited Diamond Barrel IV"),
-    lim("sophisticatedstorage:limited_netherite_barrel_4", 5, 4, 40, "Limited Netherite Barrel IV"),
+    st(
+        "sophisticatedstorage:diamond_barrel",
+        Barrel,
+        4,
+        "Diamond Barrel",
+    ),
+    st(
+        "sophisticatedstorage:netherite_barrel",
+        Barrel,
+        5,
+        "Netherite Barrel",
+    ),
+    st(
+        "sophisticatedstorage:shulker_box",
+        ShulkerBox,
+        0,
+        "Shulker Box",
+    ),
+    st(
+        "sophisticatedstorage:copper_shulker_box",
+        ShulkerBox,
+        1,
+        "Copper Shulker Box",
+    ),
+    st(
+        "sophisticatedstorage:iron_shulker_box",
+        ShulkerBox,
+        2,
+        "Iron Shulker Box",
+    ),
+    st(
+        "sophisticatedstorage:gold_shulker_box",
+        ShulkerBox,
+        3,
+        "Gold Shulker Box",
+    ),
+    st(
+        "sophisticatedstorage:diamond_shulker_box",
+        ShulkerBox,
+        4,
+        "Diamond Shulker Box",
+    ),
+    st(
+        "sophisticatedstorage:netherite_shulker_box",
+        ShulkerBox,
+        5,
+        "Netherite Shulker Box",
+    ),
+    lim(
+        "sophisticatedstorage:limited_barrel_1",
+        0,
+        1,
+        32,
+        "Limited Barrel I",
+    ),
+    lim(
+        "sophisticatedstorage:limited_copper_barrel_1",
+        1,
+        1,
+        53,
+        "Limited Copper Barrel I",
+    ),
+    lim(
+        "sophisticatedstorage:limited_iron_barrel_1",
+        2,
+        1,
+        64,
+        "Limited Iron Barrel I",
+    ),
+    lim(
+        "sophisticatedstorage:limited_gold_barrel_1",
+        3,
+        1,
+        96,
+        "Limited Gold Barrel I",
+    ),
+    lim(
+        "sophisticatedstorage:limited_diamond_barrel_1",
+        4,
+        1,
+        128,
+        "Limited Diamond Barrel I",
+    ),
+    lim(
+        "sophisticatedstorage:limited_netherite_barrel_1",
+        5,
+        1,
+        160,
+        "Limited Netherite Barrel I",
+    ),
+    lim(
+        "sophisticatedstorage:limited_barrel_2",
+        0,
+        2,
+        16,
+        "Limited Barrel II",
+    ),
+    lim(
+        "sophisticatedstorage:limited_copper_barrel_2",
+        1,
+        2,
+        27,
+        "Limited Copper Barrel II",
+    ),
+    lim(
+        "sophisticatedstorage:limited_iron_barrel_2",
+        2,
+        2,
+        32,
+        "Limited Iron Barrel II",
+    ),
+    lim(
+        "sophisticatedstorage:limited_gold_barrel_2",
+        3,
+        2,
+        48,
+        "Limited Gold Barrel II",
+    ),
+    lim(
+        "sophisticatedstorage:limited_diamond_barrel_2",
+        4,
+        2,
+        64,
+        "Limited Diamond Barrel II",
+    ),
+    lim(
+        "sophisticatedstorage:limited_netherite_barrel_2",
+        5,
+        2,
+        80,
+        "Limited Netherite Barrel II",
+    ),
+    lim(
+        "sophisticatedstorage:limited_barrel_3",
+        0,
+        3,
+        10,
+        "Limited Barrel III",
+    ),
+    lim(
+        "sophisticatedstorage:limited_copper_barrel_3",
+        1,
+        3,
+        17,
+        "Limited Copper Barrel III",
+    ),
+    lim(
+        "sophisticatedstorage:limited_iron_barrel_3",
+        2,
+        3,
+        20,
+        "Limited Iron Barrel III",
+    ),
+    lim(
+        "sophisticatedstorage:limited_gold_barrel_3",
+        3,
+        3,
+        30,
+        "Limited Gold Barrel III",
+    ),
+    lim(
+        "sophisticatedstorage:limited_diamond_barrel_3",
+        4,
+        3,
+        40,
+        "Limited Diamond Barrel III",
+    ),
+    lim(
+        "sophisticatedstorage:limited_netherite_barrel_3",
+        5,
+        3,
+        50,
+        "Limited Netherite Barrel III",
+    ),
+    lim(
+        "sophisticatedstorage:limited_barrel_4",
+        0,
+        4,
+        8,
+        "Limited Barrel IV",
+    ),
+    lim(
+        "sophisticatedstorage:limited_copper_barrel_4",
+        1,
+        4,
+        13,
+        "Limited Copper Barrel IV",
+    ),
+    lim(
+        "sophisticatedstorage:limited_iron_barrel_4",
+        2,
+        4,
+        16,
+        "Limited Iron Barrel IV",
+    ),
+    lim(
+        "sophisticatedstorage:limited_gold_barrel_4",
+        3,
+        4,
+        24,
+        "Limited Gold Barrel IV",
+    ),
+    lim(
+        "sophisticatedstorage:limited_diamond_barrel_4",
+        4,
+        4,
+        32,
+        "Limited Diamond Barrel IV",
+    ),
+    lim(
+        "sophisticatedstorage:limited_netherite_barrel_4",
+        5,
+        4,
+        40,
+        "Limited Netherite Barrel IV",
+    ),
 ];
 
 impl StorageItem {
@@ -155,7 +408,11 @@ pub fn by_block(id: &str) -> Option<&'static StorageItem> {
 
 /// The same family's storage of tier `tier` (a limited barrel keeps its slot count).
 pub fn with_tier(s: &StorageItem, tier: u8) -> Option<&'static StorageItem> {
-    STORAGE.iter().find(|o| o.family == s.family && o.tier == tier && (s.family != Family::LimitedBarrel || o.slots == s.slots))
+    STORAGE.iter().find(|o| {
+        o.family == s.family
+            && o.tier == tier
+            && (s.family != Family::LimitedBarrel || o.slots == s.slots)
+    })
 }
 
 /// The namespaces whose content must be loaded for the table's entries to be registered.
@@ -164,7 +421,10 @@ pub fn namespace(s: &StorageItem) -> &'static str {
 }
 
 /// Sophisticated Storage's wood types (WoodType.values() in 1.20, the jar's `woodType` values).
-pub const WOODS: [&str; 11] = ["oak", "spruce", "birch", "acacia", "jungle", "dark_oak", "crimson", "mangrove", "warped", "cherry", "bamboo"];
+pub const WOODS: [&str; 11] = [
+    "oak", "spruce", "birch", "acacia", "jungle", "dark_oak", "crimson", "mangrove", "warped",
+    "cherry", "bamboo",
+];
 
 pub fn wood_name(w: &str) -> &'static str {
     match w {
@@ -185,7 +445,10 @@ pub fn wood_name(w: &str) -> &'static str {
 
 /// Whether the family keeps a wood type (chests and barrels).
 pub fn wooden(s: &StorageItem) -> bool {
-    matches!(s.family, Family::Chest | Family::Barrel | Family::LimitedBarrel)
+    matches!(
+        s.family,
+        Family::Chest | Family::Barrel | Family::LimitedBarrel
+    )
 }
 
 #[cfg(test)]
@@ -195,10 +458,21 @@ mod tests {
     #[test]
     fn tiers() {
         let c = by_item("sophisticatedstorage:chest").unwrap();
-        assert_eq!(with_tier(c, 3).unwrap().id, "sophisticatedstorage:gold_chest");
+        assert_eq!(
+            with_tier(c, 3).unwrap().id,
+            "sophisticatedstorage:gold_chest"
+        );
         let l = by_item("sophisticatedstorage:limited_barrel_3").unwrap();
         assert_eq!((l.slots, l.base), (3, 10));
-        assert_eq!(with_tier(l, 5).unwrap().id, "sophisticatedstorage:limited_netherite_barrel_3");
-        assert_eq!(by_block("sophisticatedstorage:netherite_shulker_box").unwrap().slots, 132);
+        assert_eq!(
+            with_tier(l, 5).unwrap().id,
+            "sophisticatedstorage:limited_netherite_barrel_3"
+        );
+        assert_eq!(
+            by_block("sophisticatedstorage:netherite_shulker_box")
+                .unwrap()
+                .slots,
+            132
+        );
     }
 }
