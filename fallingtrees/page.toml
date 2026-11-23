@@ -6,17 +6,19 @@ A port of [Panda's Falling Trees](https://github.com/PandaMods-Dev/Pandas-Fallin
 
 What it does:
 
-- Breaking a log with an axe fells its tree: every log above it, the leaves that belong to it (not a neighbouring tree's), and the vines, cocoa and bee nests on it.
-- Each block drops what it would when mined with your axe (so Silk Touch and Fortune count), and the drops land at the stump.
-- The axe wears one point per log and you tire as if you had chopped each log, as in the original; Unbreaking applies.
-- Sneak to chop a single log. Persistent (player-placed) leaves are never part of a tree, and a tree of more than 256 logs is left alone.
-- Bigger trees take longer to chop: the more logs, the slower the bottom one breaks (up to nine times slower), as the original's dynamic mining speed.
-- Works in survival and creative, with any item named as an axe.
+- Breaking a stem fells its tree. Four kinds: ordinary trees (stems found by the log tag, leaves by the leaves tag and their distance, plus vines, cocoa and bee nests), cactus and bamboo (from the chopped block up), chorus plants with their flowers, and giant mushrooms with their caps.
+- The tree is a falling entity: it tips away from you about its far edge, bounces, and after its lifetime drops the loot at the stump. The loot is each block's own, rolled with your tool (Silk Touch and Fortune count).
+- Fall and landing sounds, the fall, bounce and lifetime lengths, the leaf radius, the stem limit, persistent leaves and the volumes are settings.
+- The tool wears one point per stem and you tire as if you had chopped each one (each can be cut down to one block's worth in settings). Unbreaking applies.
+- Sneak to chop a single block (settings invert or drop this). Each kind can be switched off or made to need an axe.
+- Bigger trees take longer to chop: the more blocks, the slower the first one breaks, up to a cap, as the original's dynamic mining speed (settings).
+- Works in survival and creative.
 
 Differences from the original:
 
-- The tree does not topple as an animated entity with its sounds: it comes down at once, at the end of the tick.
-- Cactus, bamboo and chorus plants are left to vanilla.
+- Options are Sunrise mod settings, not a config file, so the original's editable block and item lists (which blocks count as stems or leaves, which items count as axes, per-kind block filters) are not editable: stems and leaves come from the `logs` and `leaves` tags, and the tool is any item named like an axe.
+- "One block's tiredness only" charges one block's exhaustion (0.005); the original's flat charge for this option is far larger, which looks like a slip in it.
+- The tree's blocks are drawn as plain block models rotated about the stump; the original draws its own baked model.
 """
 categories = ["game-mechanics", "utility"]
 
