@@ -1,6 +1,6 @@
-//! The decoration table (DecorationTableBlockEntity, DecorationHelper, DecorationTableMenu): dyes a backpack's main
-//! and accent colours. The backpack, the red, green and blue dyes sit in the block entity's four slots; the chosen
-//! colours and the dye parts left over from earlier work are its state. A colour is paid in dye parts, split over
+//! The decoration table (DecorationTableBlockEntity, DecorationHelper, DecorationTableMenu): dyes the main and accent
+//! colours of a backpack, a storage item or a paintbrush. The item and the red, green and blue dyes sit in the block entity's four slots; the
+//! chosen colours and the dye parts left over from earlier work are its state. A colour is paid in dye parts, split over
 //! the three dyes by its red, green and blue shares, and one dye item is worth 24 parts.
 use std::collections::HashMap;
 
@@ -9,7 +9,7 @@ use mod_api::{
     BlockPart, Compound, Host, HostTransaction, ItemStack, LevelRef, ServerHost, Tag,
 };
 
-use crate::contents::{self, get_int, put};
+use crate::contents::{self, custom_data, get_int, put, set_custom_data};
 use crate::crafting;
 use crate::menu::{button, filler};
 use crate::places;
@@ -193,10 +193,64 @@ pub fn dye_channel(host: &dyn Host, stack: &ItemStack) -> Option<usize> {
     (0..3).find(|&c| tags.iter().any(|t| t.to_string() == DYE_TAGS[c]) || id == DYE_ITEMS[c])
 }
 
-/// Whether `stack` is a backpack, which the table decorates.
-pub fn is_backpack(host: &dyn Host, stack: &ItemStack) -> bool {
-    storage_items::by_item(&contents::item_id(host, stack))
-        .is_some_and(|k| k.family == Family::Backpack)
+/// What the table decorates: backpacks (cloth and border colours, with defaults), storage items (their own main and
+/// accent colours, none until dyed) and the paintbrush (the colours it paints with, free of dye).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Kind {
+    Backpack,
+    Storage,
+    Paintbrush,
+}
+
+const PAINTBRUSH: &str = "sophisticatedstorage:paintbrush";
+
+impl Kind {
+    pub fn of(host: &dyn Host, stack: &ItemStack) -> Option<Self> {
+        let id = contents::item_id(host, stack);
+        if id == PAINTBRUSH {
+            return Some(Self::Paintbrush);
+        }
+        storage_items::by_item(&id).map(|k| match k.family {
+            Family::Backpack => Self::Backpack,
+            _ => Self::Storage,
+        })
+    }
+
+    /// The colours `stack` has now (`UNSET` for one it has none of).
+    pub fn colors(self, stack: &ItemStack) -> (i32, i32) {
+        match self {
+            Self::Backpack => crafting::colors(stack, MAIN_DEFAULT, ACCENT_DEFAULT),
+            Self::Storage | Self::Paintbrush => {
+                let d = custom_data(stack);
+                (
+                    get_int(&d, "mainColor").unwrap_or(UNSET),
+                    get_int(&d, "accentColor").unwrap_or(UNSET),
+                )
+            }
+        }
+    }
+
+    /// Writes the chosen colours (`UNSET` ones are left as they were).
+    fn paint(self, stack: &mut ItemStack, main: i32, accent: i32) {
+        let pick = |set, was| if set == UNSET { was } else { set };
+        if self == Self::Backpack {
+            let (m, a) = self.colors(stack);
+            crafting::set_colors(stack, pick(main, m), pick(accent, a));
+            return;
+        }
+        let mut d = custom_data(stack);
+        for (key, v) in [("mainColor", main), ("accentColor", accent)] {
+            if v != UNSET {
+                put(&mut d, key, Tag::Int(v & 0xFF_FFFF));
+            }
+        }
+        set_custom_data(stack, d);
+    }
+
+    /// Whether the dye is used up: the paintbrush is painted for free (`consumesIngredientsOnCraft`).
+    fn costs_dye(self) -> bool {
+        self != Self::Paintbrush
+    }
 }
 
 /// The table's contents, read from its slots and state.
@@ -218,51 +272,43 @@ impl Table {
         std::array::from_fn(|c| self.slots[1 + c].as_ref().map_or(0, ItemStack::count))
     }
 
-    /// The backpack's colours now.
-    pub fn current(&self) -> Option<(i32, i32)> {
-        let st = self.slots[0].as_ref()?;
-        Some(crafting::colors(st, MAIN_DEFAULT, ACCENT_DEFAULT))
+    /// What the stack in the first slot is, if the table decorates it.
+    fn kind(&self, host: &dyn Host) -> Option<Kind> {
+        Kind::of(host, self.slots[0].as_ref()?)
     }
 
-    /// The colours the result gets: the chosen ones, else the backpack's own.
-    fn target(&self) -> Option<(i32, i32)> {
-        let (m, a) = self.current()?;
-        Some((
-            if self.state.main == UNSET {
-                m
-            } else {
-                self.state.main
-            },
-            if self.state.accent == UNSET {
-                a
-            } else {
-                self.state.accent
-            },
-        ))
+    /// The colours the first slot's stack has now.
+    pub fn current(&self, host: &dyn Host) -> Option<(i32, i32)> {
+        Some(self.kind(host)?.colors(self.slots[0].as_ref()?))
     }
 
     /// The parts the chosen colours cost.
-    pub fn need(&self) -> [i32; 3] {
-        self.current().map_or([0; 3], |cur| {
-            parts_needed((self.state.main, self.state.accent), cur)
-        })
+    pub fn need(&self, host: &dyn Host) -> [i32; 3] {
+        match (self.kind(host), self.current(host)) {
+            (Some(k), Some(cur)) if k.costs_dye() => {
+                parts_needed((self.state.main, self.state.accent), cur)
+            }
+            _ => [0; 3],
+        }
     }
 
     /// Whether the dyes in the slots and the parts left over cover the cost.
-    pub fn enough(&self) -> bool {
-        spend(self.need(), self.state.parts, self.dye_counts()).is_some()
+    pub fn enough(&self, host: &dyn Host) -> bool {
+        spend(self.need(host), self.state.parts, self.dye_counts()).is_some()
     }
 
-    /// The decorated backpack, if the chosen colours change it (`colorsTransparentOrSameAs`).
+    /// The decorated stack, if the chosen colours change it (`colorsTransparentOrSameAs`).
     pub fn result(&self, host: &dyn Host) -> Option<ItemStack> {
-        let st = self.slots[0].as_ref().filter(|s| is_backpack(host, s))?;
-        let cur = self.current()?;
-        let target = self.target()?;
-        if target == cur {
+        let kind = self.kind(host)?;
+        let st = self.slots[0].as_ref()?;
+        let (m, a) = kind.colors(st);
+        let (main, accent) = (self.state.main, self.state.accent);
+        let same = |set: i32, was: i32| set == UNSET || (was != UNSET && set == was);
+        if same(main, m) && same(accent, a) {
             return None;
         }
         let mut out = contents::with_count(st, 1)?;
-        crafting::set_colors(&mut out, target.0, target.1);
+        kind.paint(&mut out, main, accent);
         Some(out)
     }
 }
@@ -328,7 +374,7 @@ fn cells(host: &mut dyn ServerHost, t: &Table) -> Vec<Option<ItemStack>> {
     out[CELL_STORAGE + 1] = button(&*host, "minecraft:arrow", "Decorate", &[]);
     let result = t.result(&*host);
     out[CELL_RESULT] = match &result {
-        Some(r) if t.enough() => Some(r.clone()),
+        Some(r) if t.enough(&*host) => Some(r.clone()),
         Some(_) => button(
             &*host,
             "minecraft:barrier",
@@ -352,7 +398,7 @@ fn cells(host: &mut dyn ServerHost, t: &Table) -> Vec<Option<ItemStack>> {
             .clone()
             .or_else(|| hint(&format!("{} dye", CHANNELS[c]), ids[c]));
     }
-    let need = t.need();
+    let need = t.need(&*host);
     let lines: Vec<String> = (0..3)
         .map(|c| {
             format!(
@@ -368,8 +414,12 @@ fn cells(host: &mut dyn ServerHost, t: &Table) -> Vec<Option<ItemStack>> {
         .collect();
     out[CELL_INFO] = button(&*host, "minecraft:paper", "Dye needed", &lore);
     for (row, (name, set, have)) in [
-        ("Main colour", t.state.main, t.current().map(|c| c.0)),
-        ("Accent colour", t.state.accent, t.current().map(|c| c.1)),
+        ("Main colour", t.state.main, t.current(&*host).map(|c| c.0)),
+        (
+            "Accent colour",
+            t.state.accent,
+            t.current(&*host).map(|c| c.1),
+        ),
     ]
     .into_iter()
     .enumerate()
@@ -457,7 +507,7 @@ pub fn click(
             _ => return None,
         };
         let st = places::inventory(host, player)[inv as usize].clone()?;
-        let target = if is_backpack(&*host, &st) {
+        let target = if Kind::of(&*host, &st).is_some() {
             0
         } else if let Some(c) = dye_channel(&*host, &st) {
             1 + c
@@ -501,7 +551,7 @@ pub fn click(
         }
         CELL_RESULT => {
             let result = t.result(&*host)?;
-            let Some((parts, used)) = spend(t.need(), t.state.parts, t.dye_counts()) else {
+            let Some((parts, used)) = spend(t.need(&*host), t.state.parts, t.dye_counts()) else {
                 return Some("Not enough dye");
             };
             let dyes: Vec<(usize, Option<ItemStack>)> = (0..3)
@@ -537,7 +587,7 @@ pub fn click(
             let (channel, up) = (k / 2, k % 2 == 1);
             let step = if right { 1 } else { 16 };
             let delta = if up { step } else { -step };
-            let from = t.current().map(|c| if row == 0 { c.0 } else { c.1 });
+            let from = t.current(&*host).map(|c| if row == 0 { c.0 } else { c.1 });
             edit_state(host, be, |st| {
                 let chosen = if row == 0 {
                     &mut st.main
