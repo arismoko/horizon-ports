@@ -213,6 +213,7 @@ pub fn write_be(
         .is_ok();
     if ok {
         let _ = be.set_changed(host);
+        host.block_entity_sync(pos);
     }
     ok
 }

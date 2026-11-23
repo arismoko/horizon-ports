@@ -41,6 +41,7 @@ mod menu;
 mod mobs;
 mod options;
 mod places;
+mod render;
 mod station;
 mod storage;
 mod storage_items;
@@ -1236,6 +1237,27 @@ impl BlockPart for StorageEntity {}
 
 #[mod_api::sunrise_part]
 impl BlockEntityPart for StorageEntity {
+    fn block_entity_update_tag(
+        &self,
+        event: &mut mod_api::BlockEntityUpdateTagEvent<'_>,
+    ) -> Option<mod_api::Compound> {
+        render::update_tag(event.entity)
+    }
+
+    fn block_entity_submit(
+        &self,
+        host: &dyn ClientHost,
+        event: &mut mod_api::BlockEntitySubmitEvent<'_>,
+    ) {
+        render::submit(
+            host,
+            event.state,
+            event.block,
+            event.entity,
+            &mut *event.draw,
+        );
+    }
+
     fn block_entity_on_load(&self, event: &mut BlockEntityOnLoadEvent<'_>) {
         let mod_api::BlockEntitySideScope::Server(scope) = &mut event.subject else {
             return;
@@ -1937,7 +1959,7 @@ impl Hooks for Mod {
 
     /// The jar's creative tab lists every wood of a chest or barrel (WoodStorageBlockBase.addCreativeTabItems); the
     /// tab's json leaves them out, so they come here, after its shulker boxes, blocks and upgrades. (The dyed variants
-    /// the jar lists too are left out: Horizon draws storage untinted.)
+    /// the jar lists too are left out: a creative tab entry cannot carry its colours here.)
     fn build_creative_mode_tab_contents(
         &self,
         host: HostSide<'_>,

@@ -143,6 +143,7 @@ pub fn write(host: &mut dyn ServerHost, uuid: u128, loc: &Loc, stack: Option<Ite
                 .is_ok();
             if ok {
                 let _ = be.set_changed(host);
+                host.block_entity_sync(*pos);
             }
             ok
         }
