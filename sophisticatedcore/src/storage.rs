@@ -1183,7 +1183,7 @@ impl Handler {
         c.upgrades.iter().flatten().find_map(|u| {
             let k = upgrades::of(host, u)?;
             (k.kind == Kind::Void && upgrades::matches(host, u, &k, stack))
-                .then(|| !upgrades::flag(u, "shouldVoidOverflow", false))
+                .then(|| !upgrades::void_overflow(&k, u))
         })
     }
 }
@@ -1363,7 +1363,7 @@ fn dir_of(v: [i32; 3]) -> Direction {
     }
 }
 
-/// HopperUpgradeWrapper with its default directions: up to 1 item (advanced 4) every 8 ticks (advanced 2) from the
+/// HopperUpgradeWrapper with its default directions: up to `maxTransferStackSize` items every `transferSpeedTicks` from the
 /// inventory above, and as many to the inventory below.
 fn hopper(
     host: &mut dyn ServerHost,
@@ -1373,7 +1373,7 @@ fn hopper(
     c: &mut Contents,
     advanced: bool,
 ) -> bool {
-    let max = if advanced { 4 } else { 1 };
+    let max = crate::options::tune().hopper_stack[usize::from(advanced)] as u32;
     let mut changed = false;
     let m = upgrades::multiplier(&*host, kind, &c.upgrades);
     let above = add(pos, [0, 1, 0]);
@@ -1540,8 +1540,11 @@ pub fn tick(host: &mut dyn ServerHost, placed: &Placed, n: u64) {
             .filter_map(|u| upgrades::of(&*host, u))
             .collect();
         let mut changed = false;
+        let tune = crate::options::tune();
         for k in &kinds {
-            if k.kind == Kind::Hopper && n.is_multiple_of(if k.advanced { 2 } else { 8 }) {
+            if k.kind == Kind::Hopper
+                && n.is_multiple_of(tune.hopper_ticks[usize::from(k.advanced)] as u64)
+            {
                 changed |= hopper(host, level, pos, kind, &mut c, k.advanced);
             }
         }

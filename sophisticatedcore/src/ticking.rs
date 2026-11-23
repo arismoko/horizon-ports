@@ -114,8 +114,8 @@ pub fn accept(host: &dyn mod_api::Host, c: &mut Carried, stack: &ItemStack, magn
         .iter()
         .find(|(u, k)| k.kind == Kind::Void && upgrades::matches(host, u, k, stack));
     let n = stack.count();
-    if let Some((u, _)) = void
-        && !upgrades::flag(u, "shouldVoidOverflow", false)
+    if let Some((u, k)) = void
+        && !upgrades::void_overflow(k, u)
     {
         return n;
     }

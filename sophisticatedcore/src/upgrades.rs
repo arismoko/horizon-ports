@@ -48,7 +48,7 @@ pub fn upgrade(id: &str) -> Option<Upgrade> {
     }
     let advanced = path.starts_with("advanced_");
     let base = path.strip_prefix("advanced_").unwrap_or(path);
-    let f = if advanced { 16 } else { 9 };
+    let f = crate::options::filter_slots(base.strip_suffix("_upgrade").unwrap_or(base), advanced);
     let u = |kind, filters, allow_default| {
         Some(Upgrade {
             kind,
@@ -66,7 +66,7 @@ pub fn upgrade(id: &str) -> Option<Upgrade> {
         "void_upgrade" => u(Kind::Void, f, true),
         "restock_upgrade" => u(Kind::Restock, f, false),
         "deposit_upgrade" => u(Kind::Deposit, f, false),
-        "refill_upgrade" => u(Kind::Refill, if advanced { 12 } else { 6 }, true),
+        "refill_upgrade" => u(Kind::Refill, f, true),
         "crafting_upgrade" => u(Kind::Crafting, 0, false),
         "jukebox_upgrade" => u(Kind::Jukebox, 0, false),
         "hopper_upgrade" => u(Kind::Hopper, 0, false),
@@ -286,10 +286,19 @@ pub fn use_remainder(host: &dyn Host, stack: &ItemStack) -> Option<ItemStack> {
     ItemStack::from_nbt(host, &c)
 }
 
-/// Disc slots of a jukebox upgrade (the basic one holds one, the advanced one twelve: `advancedJukeboxUpgrade`'s
-/// default).
+/// Disc slots of a jukebox upgrade (the basic one holds one, the advanced one `advancedJukeboxUpgrade`'s `numberOfSlots`).
 pub fn disc_slots(u: &Upgrade) -> usize {
-    if u.advanced { 12 } else { 1 }
+    if u.advanced {
+        crate::options::tune().jukebox_slots
+    } else {
+        1
+    }
+}
+
+/// `VoidUpgradeWrapper.shouldVoidOverflow`: overflow only, always when the setting turns "void anything" off.
+pub fn void_overflow(u: &Upgrade, stack: &ItemStack) -> bool {
+    !crate::options::tune().void_anything[usize::from(u.advanced)]
+        || flag(stack, "shouldVoidOverflow", false)
 }
 
 #[cfg(test)]

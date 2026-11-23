@@ -29,6 +29,8 @@ pub mod key {
     pub const BACKPACK_DROP_CHANCE: &str = "mob_backpack_drop_chance";
     pub const MOB_JUKEBOX: &str = "mob_backpack_plays_jukebox";
     pub const LOOTING_CHANCE: &str = "mob_backpack_looting_chance";
+    pub const BACKPACK_CONTAINERS_DENIED: &str = "backpack_container_items_disallowed";
+    pub const STORAGE_CONTAINERS_DENIED: &str = "shulker_box_container_items_disallowed";
 }
 
 const TIERS: [&str; 6] = ["leather", "copper", "iron", "gold", "diamond", "netherite"];
@@ -41,6 +43,24 @@ const STORAGE_UPGRADES: [i64; 6] = [1, 1, 2, 3, 4, 5];
 pub const GROUPS: [&str; 3] = ["stack_upgrades", "furnace_upgrades", "jukebox_upgrade"];
 const BACKPACK_GROUP_DEFAULTS: [i64; 3] = [3, 1, 1];
 const STORAGE_GROUP_DEFAULTS: [i64; 3] = [2, 1, 1];
+
+/// The filtered upgrades and their `filterSlots` defaults, basic and advanced.
+pub const FILTERED: [(&str, i64, i64); 9] = [
+    ("pickup", 9, 16),
+    ("filter", 9, 16),
+    ("magnet", 9, 16),
+    ("feeding", 9, 16),
+    ("compacting", 9, 16),
+    ("void", 9, 16),
+    ("restock", 9, 16),
+    ("deposit", 9, 16),
+    ("refill", 6, 12),
+];
+/// `JukeboxUpgradeConfig.numberOfSlots` of the advanced jukebox upgrade (the basic one holds one disc).
+const JUKEBOX_SLOTS: i64 = 12;
+/// `HopperUpgradeConfig`: ticks between transfers and the most items per transfer, basic then advanced.
+const HOPPER_TICKS: [i64; 2] = [8, 2];
+const HOPPER_STACK: [i64; 2] = [1, 4];
 
 pub enum Kind {
     Toggle(bool),
@@ -68,6 +88,8 @@ pub const SPECS: &[(&str, Kind)] = &[
     (key::BACKPACK_DROP_CHANCE, Kind::Range(0.0, 1.0, 0.01, 0.5)),
     (key::MOB_JUKEBOX, Kind::Toggle(true)),
     (key::LOOTING_CHANCE, Kind::Range(0.0, 0.3, 0.01, 0.15)),
+    (key::BACKPACK_CONTAINERS_DENIED, Kind::Toggle(false)),
+    (key::STORAGE_CONTAINERS_DENIED, Kind::Toggle(false)),
 ];
 
 /// The options as they stand now.
@@ -90,6 +112,9 @@ pub struct Options {
     pub mob_armour: bool,
     pub drop_chance: f64,
     pub looting_chance: f64,
+    /// `containerItemsDisallowed` of the backpacks and of the shulker boxes.
+    pub backpack_containers_denied: bool,
+    pub storage_containers_denied: bool,
 }
 
 fn flag(text: Option<&str>, default: bool) -> bool {
@@ -122,6 +147,11 @@ impl Options {
             mob_armour: flag(get(key::MOB_ARMOUR).as_deref(), true),
             drop_chance: number(get(key::BACKPACK_DROP_CHANCE).as_deref(), 0.5),
             looting_chance: number(get(key::LOOTING_CHANCE).as_deref(), 0.15),
+            backpack_containers_denied: flag(
+                get(key::BACKPACK_CONTAINERS_DENIED).as_deref(),
+                false,
+            ),
+            storage_containers_denied: flag(get(key::STORAGE_CONTAINERS_DENIED).as_deref(), false),
         }
     }
 
@@ -159,6 +189,28 @@ mod tests {
         assert_eq!(t.storage_groups, [2, 1, 1]);
         let t = read_tune(&|k| (k == "backpack_iron_slots").then(|| "60".to_owned()));
         assert_eq!(t.backpack_slots[2], 60);
+    }
+
+    #[test]
+    fn upgrade_settings_start_at_the_jars_defaults() {
+        let t = read_tune(&|_| None);
+        assert_eq!(&t.filters[..2], &[9, 16]);
+        assert_eq!(&t.filters[16..], &[6, 12]);
+        assert_eq!(t.jukebox_slots, 12);
+        assert_eq!((t.hopper_ticks, t.hopper_stack), ([8, 2], [1, 4]));
+        assert_eq!(t.void_anything, [true, true]);
+        let t = read_tune(&|k| match k {
+            "advanced_void_upgrade_filter_slots" => Some("30".to_owned()),
+            "hopper_upgrade_transfer_speed_ticks" => Some("20".to_owned()),
+            "void_upgrade_void_anything_enabled" => Some("false".to_owned()),
+            _ => None,
+        });
+        assert_eq!(
+            t.filters[11], 20,
+            "filter slots stop at the setting's maximum"
+        );
+        assert_eq!(t.hopper_ticks[0], 20);
+        assert_eq!(t.void_anything, [false, true]);
     }
 
     #[test]
@@ -234,6 +286,38 @@ pub fn tier_specs() -> Vec<(String, Kind)> {
             );
         }
     }
+    for (name, basic, advanced) in FILTERED {
+        range(format!("{name}_upgrade_filter_slots"), 1, 20, basic);
+        range(
+            format!("advanced_{name}_upgrade_filter_slots"),
+            1,
+            20,
+            advanced,
+        );
+    }
+    range(
+        "advanced_jukebox_upgrade_slots".to_owned(),
+        1,
+        16,
+        JUKEBOX_SLOTS,
+    );
+    for (a, name) in ["hopper_upgrade", "advanced_hopper_upgrade"]
+        .iter()
+        .enumerate()
+    {
+        range(
+            format!("{name}_transfer_speed_ticks"),
+            1,
+            100,
+            HOPPER_TICKS[a],
+        );
+        range(
+            format!("{name}_max_transfer_stack_size"),
+            1,
+            64,
+            HOPPER_STACK[a],
+        );
+    }
     for (g, name) in GROUPS.iter().enumerate() {
         range(
             format!("backpack_max_{name}"),
@@ -247,6 +331,9 @@ pub fn tier_specs() -> Vec<(String, Kind)> {
             10,
             STORAGE_GROUP_DEFAULTS[g],
         );
+    }
+    for name in ["void_upgrade", "advanced_void_upgrade"] {
+        out.push((format!("{name}_void_anything_enabled"), Kind::Toggle(true)));
     }
     out
 }
@@ -263,6 +350,13 @@ pub struct Tune {
     pub limited_base: [[u32; 6]; 4],
     pub backpack_groups: [usize; 3],
     pub storage_groups: [usize; 3],
+    /// Filter slots by [`FILTERED`] index, basic at `2 * i`, advanced after it.
+    pub filters: [usize; 18],
+    pub jukebox_slots: usize,
+    /// Basic then advanced.
+    pub hopper_ticks: [usize; 2],
+    pub hopper_stack: [usize; 2],
+    pub void_anything: [bool; 2],
 }
 
 static TUNE: RwLock<Option<Tune>> = RwLock::new(None);
@@ -315,6 +409,40 @@ fn read_tune(get: &dyn Fn(&str) -> Option<String>) -> Tune {
             ) as u32;
         }
     }
+    for (i, (name, basic, advanced)) in FILTERED.iter().enumerate() {
+        t.filters[2 * i] =
+            int(get(&format!("{name}_upgrade_filter_slots")), *basic, 1, 20) as usize;
+        t.filters[2 * i + 1] = int(
+            get(&format!("advanced_{name}_upgrade_filter_slots")),
+            *advanced,
+            1,
+            20,
+        ) as usize;
+    }
+    t.jukebox_slots = int(get("advanced_jukebox_upgrade_slots"), JUKEBOX_SLOTS, 1, 16) as usize;
+    for (a, name) in ["hopper_upgrade", "advanced_hopper_upgrade"]
+        .iter()
+        .enumerate()
+    {
+        t.hopper_ticks[a] = int(
+            get(&format!("{name}_transfer_speed_ticks")),
+            HOPPER_TICKS[a],
+            1,
+            100,
+        ) as usize;
+        t.hopper_stack[a] = int(
+            get(&format!("{name}_max_transfer_stack_size")),
+            HOPPER_STACK[a],
+            1,
+            64,
+        ) as usize;
+    }
+    for (a, name) in ["void_upgrade", "advanced_void_upgrade"].iter().enumerate() {
+        t.void_anything[a] = flag(
+            get(&format!("{name}_void_anything_enabled")).as_deref(),
+            true,
+        );
+    }
     for (g, name) in GROUPS.iter().enumerate() {
         t.backpack_groups[g] = int(
             get(&format!("backpack_max_{name}")),
@@ -330,6 +458,22 @@ fn read_tune(get: &dyn Fn(&str) -> Option<String>) -> Tune {
         ) as usize;
     }
     t
+}
+
+/// Filter slots of the filtered upgrade `base` (`pickup`, `void`...).
+pub fn filter_slots(base: &str, advanced: bool) -> usize {
+    let at = FILTERED.iter().position(|f| f.0 == base).unwrap_or(0);
+    let i = 2 * at + usize::from(advanced);
+    match TUNE.read() {
+        Ok(g) if g.is_some() => g.as_ref().map_or(0, |t| t.filters[i]),
+        _ => {
+            (if advanced {
+                FILTERED[at].2
+            } else {
+                FILTERED[at].1
+            }) as usize
+        }
+    }
 }
 
 /// Re-reads the settings into the tables.

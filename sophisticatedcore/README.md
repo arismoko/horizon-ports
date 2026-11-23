@@ -22,6 +22,7 @@ A port of [Sophisticated Backpacks](https://github.com/Salandora/SophisticatedBa
 - The original's own screen (tabs, sort buttons, memory and no-sort slots) is a chest menu here.
 - The furnace, tank, battery, pump, XP pump, tool swapper, stonecutter, anvil, smithing, inception, everlasting and infinity upgrades sit in their slot and do nothing yet; the filter upgrade and the storage network blocks do not work yet.
 - Worn backpacks are drawn on the body in their default colours; dyed and spawn-egg colours are not drawn. A monster's potion effects are given when it joins the level; a creeper bearer loses its beneficial effects when it explodes.
+- Backpacks now take vanilla shulker boxes, and shulker boxes take backpacks, as the original does; the container-item switches in settings refuse them again.
 - The jukebox upgrade plays the vanilla discs only (modded and data-pack discs wait for an API to read a jukebox song); its shuffle plays each disc once per round, and "previous" goes to the disc in the slot before.
 
 ## Building

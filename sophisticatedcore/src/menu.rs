@@ -250,7 +250,7 @@ pub fn render(host: &mut dyn ServerHost, s: &Session, c: &Contents) -> Vec<Optio
             }
             match u.kind {
                 Kind::Void => {
-                    out[base + 4] = if upgrades::flag(&up, "shouldVoidOverflow", false) {
+                    out[base + 4] = if upgrades::void_overflow(&u, &up) {
                         button(
                             &*host,
                             "minecraft:lava_bucket",
@@ -474,16 +474,17 @@ fn inventory_slot(s: &Session, slot: i32) -> Option<u32> {
     }
 }
 
-/// Whether `stack` may go in a storage of `kind`: a backpack takes no backpack (`canBePlacedInContainerItems` false)
-/// and no shulker box, a shulker box no shulker box and no backpack (`canFitInsideContainerItems`); chests and barrels
-/// take anything.
+/// Whether `stack` may go in a storage of `kind` (the disallowed lists and the container rules of
+/// [`refuses_container`]); chests and barrels take anything.
 pub fn may_store(host: &dyn Host, kind: &StorageItem, stack: &ItemStack) -> bool {
     if !matches!(kind.family, Family::Backpack | Family::ShulkerBox) {
         return true;
     }
     let id = contents::item_id(host, stack);
     let lists = crate::options::Lists::get(host);
-    let refused = if kind.family == Family::Backpack {
+    let opts = crate::options::Options::read(host);
+    let backpack = kind.family == Family::Backpack;
+    let refused = if backpack {
         &lists.backpack_disallowed
     } else {
         &lists.shulker_disallowed
@@ -491,9 +492,37 @@ pub fn may_store(host: &dyn Host, kind: &StorageItem, stack: &ItemStack) -> bool
     if crate::options::listed(refused, &id) {
         return false;
     }
-    let other = storage_items::by_item(&id);
-    !(id.ends_with("shulker_box")
-        || other.is_some_and(|o| matches!(o.family, Family::Backpack | Family::ShulkerBox)))
+    !refuses_container(
+        &id,
+        storage_items::by_item(&id).map(|o| o.family),
+        backpack,
+        if backpack {
+            opts.backpack_containers_denied
+        } else {
+            opts.storage_containers_denied
+        },
+        opts.in_container_items,
+    )
+}
+
+/// The container rules of `BackpackInventoryHandler.isAllowed` and `StackStorageWrapper.isAllowedInStorage`: a
+/// backpack never goes in a backpack (no inception upgrade), no shulker box goes in a shulker box, and with
+/// `containerItemsDisallowed` on, nothing that cannot fit inside container items goes in: shulker boxes always,
+/// backpacks unless `canBePlacedInContainerItems`.
+fn refuses_container(
+    id: &str,
+    family: Option<Family>,
+    into_backpack: bool,
+    denied: bool,
+    backpacks_fit: bool,
+) -> bool {
+    let shulker = id.ends_with("shulker_box") || family == Some(Family::ShulkerBox);
+    let backpack = family == Some(Family::Backpack);
+    if into_backpack {
+        backpack || (denied && shulker)
+    } else {
+        shulker || (denied && backpack && !backpacks_fit)
+    }
 }
 
 /// Can `u` go into upgrade slot `j`? (UpgradeHandler: slot free, the group's limit, a downgrade only when every
@@ -801,8 +830,11 @@ fn click_settings(
             };
             upgrades::set_str(&mut up, "primaryMatch", v);
         } else if i == base + 4 && u.kind == Kind::Void {
-            let v = !upgrades::flag(&up, "shouldVoidOverflow", false);
-            upgrades::set_flag(&mut up, "shouldVoidOverflow", v);
+            // `setShouldVoidOverflow`: "void all" is refused when the setting turns it off.
+            let v = !upgrades::void_overflow(&u, &up);
+            if v || crate::options::tune().void_anything[usize::from(u.advanced)] {
+                upgrades::set_flag(&mut up, "shouldVoidOverflow", v);
+            }
         } else if i == base + 4 && u.kind == Kind::Magnet {
             let v = !upgrades::flag(&up, "pickupItems", true);
             upgrades::set_flag(&mut up, "pickupItems", v);
@@ -1107,6 +1139,70 @@ fn title(host: &dyn Host, st: &ItemStack, kind: &StorageItem) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn container_rules_follow_the_original() {
+        let sh = Some(Family::ShulkerBox);
+        let bp = Some(Family::Backpack);
+        // A backpack never goes in a backpack; a shulker box goes in one unless the setting denies containers.
+        assert!(refuses_container(
+            "sophisticatedbackpacks:backpack",
+            bp,
+            true,
+            false,
+            false
+        ));
+        assert!(!refuses_container(
+            "minecraft:red_shulker_box",
+            None,
+            true,
+            false,
+            false
+        ));
+        assert!(refuses_container(
+            "minecraft:red_shulker_box",
+            None,
+            true,
+            true,
+            false
+        ));
+        assert!(!refuses_container(
+            "minecraft:stone",
+            None,
+            true,
+            true,
+            false
+        ));
+        // No shulker box in a shulker box; a backpack goes in unless the setting denies it and it cannot fit.
+        assert!(refuses_container(
+            "sophisticatedstorage:shulker_box",
+            sh,
+            false,
+            false,
+            false
+        ));
+        assert!(!refuses_container(
+            "sophisticatedbackpacks:backpack",
+            bp,
+            false,
+            false,
+            false
+        ));
+        assert!(refuses_container(
+            "sophisticatedbackpacks:backpack",
+            bp,
+            false,
+            true,
+            false
+        ));
+        assert!(!refuses_container(
+            "sophisticatedbackpacks:backpack",
+            bp,
+            false,
+            true,
+            true
+        ));
+    }
 
     #[test]
     fn rows() {
