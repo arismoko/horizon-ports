@@ -608,7 +608,7 @@ pub fn broken(host: &mut dyn ServerHost, player: PlayerRef, level: LevelRef, pos
 // ---- tier upgrades and packing tape ----
 
 /// A tier upgrade item's tiers: what it upgrades from (`None` vanilla and basic, for `basic_*`) and to.
-fn tier_upgrade(id: &str) -> Option<(Option<u8>, u8)> {
+pub fn tier_upgrade(id: &str) -> Option<(Option<u8>, u8)> {
     let path = id
         .strip_prefix("sophisticatedstorage:")?
         .strip_suffix("_tier_upgrade")?;

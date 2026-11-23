@@ -2030,7 +2030,6 @@ impl Hooks for Mod {
                 event.cancelled = true;
                 return Flow::Cancel;
             }
-            return Flow::Continue;
         }
         if !held.starts_with("sophisticatedstorage:") {
             return Flow::Continue;

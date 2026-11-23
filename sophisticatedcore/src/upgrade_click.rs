@@ -15,7 +15,10 @@ pub fn add_one(host: &mut dyn ServerHost, level: LevelRef, pos: [i32; 3], up: &I
     let Some(kind) = kind_of_block(&block_id(&*host, level, main)) else {
         return false;
     };
-    if upgrades::of(&*host, up).is_none() {
+    // A tier upgrade is an upgrade item too, but it goes onto the block, not into a slot.
+    if upgrades::of(&*host, up).is_none()
+        || storage::tier_upgrade(&contents::item_id(&*host, up)).is_some()
+    {
         return false;
     }
     let Some(mut stack) = read_be(&*host, level, main) else {
