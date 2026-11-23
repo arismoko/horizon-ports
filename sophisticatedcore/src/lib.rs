@@ -1177,6 +1177,7 @@ impl Hooks for Mod {
                     as Box<dyn ResourceHandler<mod_api::FluidResource>>)
             },
         );
+        let _ = everlasting::SPARKLE.set(r.particle_key("minecraft:happy_villager"));
         let keys = crafting::keys(r, backpacks, storage_loaded);
         r.register_crafting_recipe_serializer(
             UPGRADE_NEXT_TIER,

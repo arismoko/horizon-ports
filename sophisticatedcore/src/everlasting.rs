@@ -1,7 +1,10 @@
 //! The everlasting upgrade (EverlastingUpgradeItem): a backpack that carries it survives where it falls. Its item
 //! entity can't be hurt (fire, explosions, cactus) and never despawns, and the placed backpack has bedrock's
 //! explosion resistance and can't be destroyed by an entity. One per storage.
-use mod_api::{Compound, EntityRef, ItemStack, ServerHost, Tag};
+use std::sync::OnceLock;
+use std::sync::atomic::{AtomicU64, Ordering};
+
+use mod_api::{Compound, EntityRef, ItemStack, ParticleKey, ParticleOptions, ServerHost, Tag};
 
 use crate::contents::{self, Nbt, UPGRADES};
 
@@ -21,8 +24,44 @@ const FLOATED_TAG: &str = "sophisticatedcore:everlasting_floated";
 const RISE: f64 = 0.1;
 const RISE_MAX: f64 = 1.8;
 
-/// EverlastingBackpackItemEntity.tick: in water or lava the item rises; once it is out it
-/// stops and hangs without gravity.
+/// `ParticleTypes.HAPPY_VILLAGER`, requested once when the mod registers.
+pub static SPARKLE: OnceLock<ParticleKey> = OnceLock::new();
+
+/// A cheap source of noise for the sparkle's one-in-twenty chance and its offsets (0 to 1).
+fn noise() -> f64 {
+    static STATE: AtomicU64 = AtomicU64::new(0x9E37_79B9_7F4A_7C15);
+    let mut x = STATE.fetch_add(0x9E37_79B9_7F4A_7C15, Ordering::Relaxed);
+    x = (x ^ (x >> 30)).wrapping_mul(0xBF58_476D_1CE4_E5B9);
+    x = (x ^ (x >> 27)).wrapping_mul(0x94D0_49BB_1331_11EB);
+    ((x ^ (x >> 31)) >> 11) as f64 / (1u64 << 53) as f64
+}
+
+/// EverlastingBackpackItemEntity.tick: one tick in twenty a happy-villager sparkle near the item.
+fn sparkle(host: &mut dyn ServerHost, entity: EntityRef) {
+    let Some(key) = SPARKLE.get() else {
+        return;
+    };
+    if noise() >= 0.05 {
+        return;
+    }
+    let (Some(level), Some([x, y, z])) = (entity.level(&*host), entity.position(&*host)) else {
+        return;
+    };
+    let at = [x + 0.5 - noise(), y + noise() * 0.5, z + 0.5 - noise()];
+    level.send_particles(
+        host,
+        &ParticleOptions::simple(*key),
+        None,
+        at,
+        [0.0, 0.0, 0.1],
+        0.0,
+        0,
+    );
+}
+
+/// EverlastingBackpackItemEntity.tick: in water or lava, or at the world's floor (`isInWater` also holds one block
+/// above `getMinBuildHeight`, so the void never takes it), the item rises; once it is out it stops and hangs without
+/// gravity.
 pub fn float(host: &mut dyn ServerHost, entity: EntityRef) {
     let Some(tags) = entity.tags(&*host) else {
         return;
@@ -30,14 +69,23 @@ pub fn float(host: &mut dyn ServerHost, entity: EntityRef) {
     if !tags.contains(TAG) {
         return;
     }
-    let wet = entity.is_in_water(&*host) == Some(true) || entity.is_in_lava(&*host) == Some(true);
+    let floated = tags.contains(FLOATED_TAG);
+    sparkle(host, entity);
+    let floor = entity
+        .level(&*host)
+        .and_then(|l| l.height(&*host))
+        .zip(entity.position(&*host))
+        .is_some_and(|((min_y, _), p)| p[1] < f64::from(min_y) + 1.0);
+    let wet = floor
+        || entity.is_in_water(&*host) == Some(true)
+        || entity.is_in_lava(&*host) == Some(true);
     let Some([vx, vy, vz]) = entity.velocity(&*host) else {
         return;
     };
     if wet {
         entity.set_velocity(host, [vx, (vy + RISE).min(RISE_MAX), vz]);
         entity.add_tag(host, FLOATED_TAG);
-    } else if tags.contains(FLOATED_TAG) {
+    } else if floated {
         entity.set_no_gravity(host, true);
         entity.set_velocity(host, [0.0; 3]);
         entity.remove_tag(host, FLOATED_TAG);
