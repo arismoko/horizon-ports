@@ -21,38 +21,38 @@ pub enum Family {
 pub struct StorageItem {
     pub id: &'static str,
     pub block: Option<&'static str>,
+    /// The jar's default slot count (a limited barrel's slots are fixed); the settings' values are read through
+    /// `slot_count` and `upgrade_count`.
     pub slots: usize,
-    pub upgrades: usize,
     pub name: &'static str,
     pub family: Family,
-    pub base: u32,
+    base: u32,
     /// The tier: 0 basic (leather for backpacks) to 5 netherite.
     pub tier: u8,
 }
 
-const fn bp(id: &'static str, slots: usize, upgrades: usize, name: &'static str, tier: u8) -> StorageItem {
-    StorageItem { id, block: Some(id), slots, upgrades, name, family: Family::Backpack, base: 1, tier }
+const fn bp(id: &'static str, slots: usize, name: &'static str, tier: u8) -> StorageItem {
+    StorageItem { id, block: Some(id), slots, name, family: Family::Backpack, base: 1, tier }
 }
 
 pub const BACKPACKS: [StorageItem; 6] = [
-    bp("sophisticatedbackpacks:backpack", 27, 1, "Backpack", 0),
-    bp("sophisticatedbackpacks:copper_backpack", 45, 1, "Copper Backpack", 1),
-    bp("sophisticatedbackpacks:iron_backpack", 54, 2, "Iron Backpack", 2),
-    bp("sophisticatedbackpacks:gold_backpack", 81, 3, "Gold Backpack", 3),
-    bp("sophisticatedbackpacks:diamond_backpack", 108, 5, "Diamond Backpack", 4),
-    bp("sophisticatedbackpacks:netherite_backpack", 120, 7, "Netherite Backpack", 5),
+    bp("sophisticatedbackpacks:backpack", 27, "Backpack", 0),
+    bp("sophisticatedbackpacks:copper_backpack", 45, "Copper Backpack", 1),
+    bp("sophisticatedbackpacks:iron_backpack", 54, "Iron Backpack", 2),
+    bp("sophisticatedbackpacks:gold_backpack", 81, "Gold Backpack", 3),
+    bp("sophisticatedbackpacks:diamond_backpack", 108, "Diamond Backpack", 4),
+    bp("sophisticatedbackpacks:netherite_backpack", 120, "Netherite Backpack", 5),
 ];
 
-/// The tiers' slots and upgrade slots (Homestead's sophisticatedstorage-server.toml).
+/// The tiers' default slots (Homestead's sophisticatedstorage-server.toml).
 const SLOTS: [usize; 6] = [27, 45, 54, 81, 108, 132];
-const UPGRADES: [usize; 6] = [1, 1, 2, 3, 4, 5];
 
 const fn st(id: &'static str, family: Family, tier: u8, name: &'static str) -> StorageItem {
-    StorageItem { id, block: Some(id), slots: SLOTS[tier as usize], upgrades: UPGRADES[tier as usize], name, family, base: 1, tier }
+    StorageItem { id, block: Some(id), slots: SLOTS[tier as usize], name, family, base: 1, tier }
 }
 
 const fn lim(id: &'static str, tier: u8, n: usize, base: u32, name: &'static str) -> StorageItem {
-    StorageItem { id, block: Some(id), slots: n, upgrades: UPGRADES[tier as usize], name, family: Family::LimitedBarrel, base, tier }
+    StorageItem { id, block: Some(id), slots: n, name, family: Family::LimitedBarrel, base, tier }
 }
 
 use Family::{Barrel, Chest, ShulkerBox};
@@ -101,6 +101,42 @@ pub const STORAGE: [StorageItem; 42] = [
     lim("sophisticatedstorage:limited_diamond_barrel_4", 4, 4, 32, "Limited Diamond Barrel IV"),
     lim("sophisticatedstorage:limited_netherite_barrel_4", 5, 4, 40, "Limited Netherite Barrel IV"),
 ];
+
+impl StorageItem {
+    /// The inventory slots (`inventorySlotCount`).
+    pub fn slot_count(&self) -> usize {
+        let t = crate::options::tune();
+        match self.family {
+            Family::Backpack => t.backpack_slots[self.tier as usize],
+            Family::LimitedBarrel => self.slots,
+            _ => t.storage_slots[self.tier as usize],
+        }
+    }
+
+    /// The upgrade slots (`upgradeSlotCount`).
+    pub fn upgrade_count(&self) -> usize {
+        let t = crate::options::tune();
+        match self.family {
+            Family::Backpack => t.backpack_upgrades[self.tier as usize],
+            Family::LimitedBarrel => t.limited_upgrades[self.tier as usize],
+            _ => t.storage_upgrades[self.tier as usize],
+        }
+    }
+
+    /// A slot's base multiplier (`baseSlotLimitMultiplier`; 1 outside the limited barrels).
+    pub fn base_multiplier(&self) -> u32 {
+        if self.family == Family::LimitedBarrel {
+            crate::options::tune().limited_base[self.slots - 1][self.tier as usize]
+        } else {
+            1
+        }
+    }
+
+    /// The jar's default base multiplier.
+    pub fn default_base(&self) -> u32 {
+        self.base
+    }
+}
 
 /// Every storage item the core knows.
 pub fn all() -> impl Iterator<Item = &'static StorageItem> {

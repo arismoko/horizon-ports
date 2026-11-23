@@ -14,12 +14,14 @@ What it does:
 - Backpacks in vanilla chest loot, as in the original.
 - Keys in Controls: Open Backpack (B), Sort (middle mouse button, in a storage screen), Inventory Interaction (C, restock and deposit on the block you look at), and switches for the upgrades in slots 1 to 5 (Z and X for the first two): a switched-off upgrade does nothing.
 - Settings (Options > Mods): backpack slowness for carrying too many, only the worn backpack's upgrades, chest loot, backpacks in container items, chests and barrels dropping packed, the drop count that forces packing, one wood variant in the creative tab, and the magnet ranges.
+- Monsters (zombies, skeletons, creepers and the other listed kinds) may spawn wearing a backpack, with armour and extra health; a player's kill may drop it filled with loot. Chance, loot, health, armour, drop chance and looting bonus are settings.
+- Per-tier settings for slot counts, upgrade slots, limited-barrel multipliers and the most upgrades of each kind, and text files in `config/sophisticatedcore/` for items a backpack or shulker box refuses, blocks the interaction key skips, items that never stack, and which monsters wear a backpack. All are read while the game runs.
 
 Differences from the original:
 
 - The original's own screen (tabs, sort buttons, memory and no-sort slots) is a chest menu here.
 - The furnace, jukebox, tank, battery, pump, XP pump, tool swapper, stonecutter, anvil, smithing, inception, everlasting and infinity upgrades sit in their slot and do nothing yet; the filter upgrade and the storage network blocks do not work yet.
-- Backpacks are not drawn on the player's back, and mobs don't spawn wearing them.
+- Backpacks are not drawn on the player's back or on the monsters wearing them, and no potion effects are given to them.
 """
 categories = ["storage", "equipment"]
 

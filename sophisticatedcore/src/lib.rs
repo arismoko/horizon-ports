@@ -27,6 +27,7 @@
 mod contents;
 mod crafting;
 mod menu;
+mod mobs;
 mod options;
 mod places;
 mod storage;
@@ -40,7 +41,7 @@ use std::sync::{Arc, Mutex};
 
 use mod_api::serde_json::json;
 use mod_api::{
-    BlockEntityOnLoadEvent, BlockEntityPart, BlockPart, BlockSide, BlockState, BlockUpdateFlags, BreakBlockEvent,
+    BlockEntityOnLoadEvent, EquipmentSlot, FinalizeSpawnEvent, Identifier, LivingDropsEvent, LivingRef, SpawnReason, BlockEntityPart, BlockPart, BlockSide, BlockState, BlockUpdateFlags, BreakBlockEvent,
     BuildCreativeModeTabContentsEvent, CanFitInsideContainerItemsEvent, ClientHost, DataLoadContext, Flow, Hand, Host,
     HostSide, Hooks, IPayloadContext, IPayloadHandler, ITEMS, InputKeyEvent, InteractionResult, ItemPart,
     ItemPickedUpPostEvent, ItemResource, ItemStack, KeyAction, KeyRegistration, LeftClickBlockEvent,
@@ -542,7 +543,7 @@ impl ItemPart for StorageItemPart {
         let Some(kind) = storage_items::by_item(&contents::item_id(host, event.stack)) else { return };
         let c = Contents::read(host, event.stack, kind);
         let used = c.slots.iter().flatten().count();
-        event.lines.push((mod_api::Text::literal(format!("§7{used} of {} slots used", kind.slots)), 0xFFAAAAAA));
+        event.lines.push((mod_api::Text::literal(format!("§7{used} of {} slots used", kind.slot_count())), 0xFFAAAAAA));
         for u in c.upgrades.iter().flatten() {
             let name = host.hover_name(u).map(|n| host.text_string(&n)).unwrap_or_default();
             event.lines.push((mod_api::Text::literal(format!("§9{name}")), 0xFF5555FF));
@@ -619,8 +620,8 @@ impl ItemPart for PlacedItemPart {
     fn tooltip(&self, host: &dyn ClientHost, event: &mut TooltipEvent<'_>) {
         let Some(kind) = storage_items::by_item(&contents::item_id(host, event.stack)) else { return };
         if kind.family == Family::LimitedBarrel {
-            let s = if kind.slots == 1 { "slot" } else { "slots" };
-            event.lines.push((mod_api::Text::literal(format!("§8{} {s}, {}x base stack size multiplier", kind.slots, kind.base)), 0xFF555555));
+            let s = if kind.slot_count() == 1 { "slot" } else { "slots" };
+            event.lines.push((mod_api::Text::literal(format!("§8{} {s}, {}x base stack size multiplier", kind.slot_count(), kind.base_multiplier())), 0xFF555555));
         }
         let c = Contents::read(host, event.stack, kind);
         if storage::is_packed(event.stack) {
@@ -800,6 +801,12 @@ impl Hooks for Mod {
             };
             let _ = r.register_setting(spec);
         }
+        for (name, kind) in options::tier_specs() {
+            let label = format!("sophisticatedcore.config.{name}");
+            if let options::Kind::Range(min, max, step, default) = kind {
+                let _ = r.register_setting(mod_api::SettingSpec::range(&name, &label, min, max, step, default));
+            }
+        }
         for (id, label, key, _) in ACTIONS.iter() {
             r.register_key_mapping(KeyRegistration::new(id, key).label(label));
         }
@@ -813,8 +820,76 @@ impl Hooks for Mod {
             .play_to_server(PayloadId(ACT.into()), Arc::new(ActionHandler(self.shared.clone())));
     }
 
+    /// `EntityBackpackAdditionHandler.addBackpack`: a new monster of a listed kind may wear a backpack, with armour
+    /// and more health.
+    fn finalize_spawn(&self, host: &dyn Host, event: &mut FinalizeSpawnEvent<'_>) -> Flow {
+        if matches!(event.reason, SpawnReason::Conversion | SpawnReason::Event)
+            || mobs::loot_table(host, event.kind).is_none()
+        {
+            return Flow::Continue;
+        }
+        let opts = options::Options::read(host);
+        let Some(wearer) = mobs::roll(
+            event.kind,
+            event.pos,
+            event.dimension,
+            event.difficulty.effective,
+            opts.mob_chance,
+            opts.mob_armour,
+        ) else {
+            return Flow::Continue;
+        };
+        let (mob, edits) = (event.mob, event.edits);
+        let Some(pack) = mobs::backpack(host, wearer.tier) else { return Flow::Continue };
+        let _ = edits.set_equipment(mob, EquipmentSlot::Chest, Some(pack));
+        for (slot, id) in [EquipmentSlot::Head, EquipmentSlot::Legs, EquipmentSlot::Feet].into_iter().zip(&wearer.armour) {
+            if let Some(stack) = id.as_deref().and_then(|id| mobs::armour_stack(host, id)) {
+                let _ = edits.set_equipment(mob, slot, Some(stack));
+            }
+        }
+        if opts.mob_health
+            && let Ok(id) = Identifier::parse("minecraft:max_health")
+            && let Ok(base) = mob.attribute_base(host, &id)
+            && let Some(bonus) = mobs::health_bonus(base, wearer.min_difficulty).and_then(mobs::health_modifier)
+        {
+            let _ = edits.add_attribute_modifier(mob, &id, bonus);
+        }
+        let difficulty = if opts.mob_loot { wearer.difficulty } else { 0 };
+        let _ = edits.add_tag(mob, &format!("{}{}", mobs::TIER_TAG, wearer.tier));
+        let _ = edits.add_tag(mob, &format!("{}{difficulty}", mobs::DIFFICULTY_TAG));
+        Flow::Continue
+    }
+
+    /// `handleBackpackDrop`: a monster that spawned with a backpack drops it, filled with loot, to a player's kill by
+    /// the drop chance (plus looting); otherwise the backpack is lost.
+    fn living_drops(&self, host: &mut dyn ServerHost, event: &mut LivingDropsEvent<'_>) -> Flow {
+        let Some(entity) = host.entity(event.entity) else { return Flow::Continue };
+        let Some((tier, difficulty)) = mobs::tags_of(&*host, entity) else { return Flow::Continue };
+        event.drops.retain(|d| !mobs::is_backpack(&contents::item_id(&*host, &d.stack)));
+        let killer = host
+            .players()
+            .server_players()
+            .into_iter()
+            .find(|p| i64::from(p.entity().id()) == i64::from(event.source.causing));
+        let (Some(killer), Some(pos)) = (killer, entity.position(&*host)) else { return Flow::Continue };
+        let opts = options::Options::read(&*host);
+        let looting = LivingRef::new(killer.entity())
+            .with_hand_item(&*host, Hand::Main, |held| held.project().map_or(0, |s| mobs::looting_level(&s)))
+            .unwrap_or(0);
+        if mobs::drops(tier, looting, opts.drop_chance, opts.looting_chance, mobs::drop_roll(event.entity, pos))
+            && let Some(drop) = mobs::dropped_backpack(host, entity, event.kind, tier, difficulty, pos)
+        {
+            event.drops.push(drop);
+        }
+        Flow::Continue
+    }
+
     fn client_tick_post(&self, host: &mut dyn ClientHost, _: &mut mod_api::ClientTickPostEvent) {
         IN_CONTAINER_ITEMS.store(options::Options::read(&*host).in_container_items, Ordering::Relaxed);
+        static N: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
+        if N.fetch_add(1, Ordering::Relaxed).is_multiple_of(20) {
+            options::refresh(&*host);
+        }
     }
 
     /// SBPLootInjectModifier: the jar's chest tables join the vanilla chests'.
@@ -838,6 +913,9 @@ impl Hooks for Mod {
             return;
         }
         let n = self.shared.ticks.fetch_add(1, Ordering::Relaxed) + 1;
+        if n % 20 == 1 {
+            options::refresh(&*host);
+        }
         let opts = options::Options::read(&*host);
         IN_CONTAINER_ITEMS.store(opts.in_container_items, Ordering::Relaxed);
         let jobs = std::mem::take(&mut *lock(&self.shared.jobs));

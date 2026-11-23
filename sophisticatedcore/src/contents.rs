@@ -304,7 +304,7 @@ pub const DOUBLE: &str = "doubleChest";
 
 /// How many slots the storage in `stack` has: its tier's, twice that for the main half of a double chest.
 pub fn slots_of(stack: &ItemStack, kind: &StorageItem) -> usize {
-    if kind.family == Family::Chest && get_bool(&custom_data(stack), DOUBLE) == Some(true) { kind.slots * 2 } else { kind.slots }
+    if kind.family == Family::Chest && get_bool(&custom_data(stack), DOUBLE) == Some(true) { kind.slot_count() * 2 } else { kind.slot_count() }
 }
 
 /// A vanilla `minecraft:container` component (a vanilla shulker box crafted into a Sophisticated one), as slots.
@@ -332,7 +332,7 @@ impl Contents {
             None => (container_component(host, stack, size).unwrap_or_else(|| vec![None; size]), Vec::new()),
             inv => read_items_kept(host, inv, size),
         };
-        let (upgrades, kept_upgrades) = read_items_kept(host, data.at(UPGRADES), kind.upgrades);
+        let (upgrades, kept_upgrades) = read_items_kept(host, data.at(UPGRADES), kind.upgrade_count());
         Contents { slots, upgrades, kept, kept_upgrades }
     }
 
@@ -342,7 +342,7 @@ impl Contents {
         put(&mut data, INVENTORY, write_items_kept(host, &self.slots, &self.kept));
         put(&mut data, UPGRADES, write_items_kept(host, &self.upgrades, &self.kept_upgrades));
         put(&mut data, "inventorySlots", Tag::Int(self.slots.len() as i32));
-        put(&mut data, "upgradeSlots", Tag::Int(kind.upgrades as i32));
+        put(&mut data, "upgradeSlots", Tag::Int(kind.upgrade_count() as i32));
         if !data.has("contentsUuid") {
             put(&mut data, "contentsUuid", Tag::IntArray(new_uuid().to_vec()));
         }

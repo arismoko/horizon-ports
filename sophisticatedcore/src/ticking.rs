@@ -415,6 +415,10 @@ pub fn interact(host: &mut dyn ServerHost, uuid: u128, loc: &Loc, level: mod_api
         return false;
     }
     let side = dir_of(face);
+    let blocked = level.block(&*host, pos).and_then(|k| k.id(&*host).map(str::to_owned));
+    if blocked.is_some_and(|id| crate::options::listed(&crate::options::Lists::get(&*host).no_interaction, &id)) {
+        return false;
+    }
     let Some(handler) = level.capability(host, &mod_api::ITEMS, pos, side) else { return false };
     let mult = upgrades::multiplier(&*host, c.kind, &c.contents.upgrades);
     // ContentsFilterLogic with no filters: the storage's own contents decide (`filterByStorage` is the jar's

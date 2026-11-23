@@ -84,18 +84,16 @@ pub fn of(host: &dyn Host, stack: &ItemStack) -> Option<Upgrade> {
 /// barrels and shulker boxes (none in limited barrels), furnace and jukebox upgrades 1.
 pub fn group(id: &str, family: Family) -> Option<(&'static str, usize)> {
     let path = id.split_once(':').map_or(id, |(_, p)| p);
+    let t = crate::options::tune();
+    let limits = if family == Family::Backpack { t.backpack_groups } else { t.storage_groups };
     if path.starts_with("stack_upgrade") || path.starts_with("stack_downgrade") {
-        match family {
-            Family::Backpack => Some(("stack_upgrades", 3)),
-            Family::LimitedBarrel => None,
-            _ => Some(("stack_upgrades", 2)),
-        }
+        (family != Family::LimitedBarrel).then_some(("stack_upgrades", limits[0]))
     } else if ["smelting_upgrade", "auto_smelting_upgrade", "smoking_upgrade", "auto_smoking_upgrade", "blasting_upgrade", "auto_blasting_upgrade"]
         .contains(&path)
     {
-        Some(("furnace_upgrades", 1))
+        Some(("furnace_upgrades", limits[1]))
     } else if path == "jukebox_upgrade" || path == "advanced_jukebox_upgrade" {
-        Some(("jukebox_upgrade", 1))
+        Some(("jukebox_upgrade", limits[2]))
     } else {
         None
     }
@@ -103,7 +101,7 @@ pub fn group(id: &str, family: Family) -> Option<(&'static str, usize)> {
 
 /// A slot's multiplier in a storage of `kind`: its base (the limited barrels') times the stack upgrades'.
 pub fn multiplier(host: &dyn Host, kind: &StorageItem, upgrades: &[Option<ItemStack>]) -> f64 {
-    stack_multiplier(host, upgrades) * f64::from(kind.base)
+    stack_multiplier(host, upgrades) * f64::from(kind.base_multiplier())
 }
 
 /// What a storage's upgrades do to a slot's limit: StackUpgradeItem.getInventorySlotLimit's multiplier (the
@@ -118,17 +116,15 @@ pub fn stack_multiplier(host: &dyn Host, upgrades: &[Option<ItemStack>]) -> f64 
     m
 }
 
-/// `stackUpgrade.nonStackableItems` (Homestead's list): items stack upgrades don't change.
-const NON_STACKABLE: [&str; 2] = ["minecraft:bundle", "minecraft:shulker_box"];
-
-fn never_stacked(id: &str) -> bool {
-    NON_STACKABLE.contains(&id) || id.ends_with("_shulker_box")
+/// `stackUpgrade.nonStackableItems`: items stack upgrades don't change (the list file; shulker boxes always).
+fn never_stacked(host: &dyn Host, id: &str) -> bool {
+    id.ends_with("_shulker_box") || crate::options::listed(&crate::options::Lists::get(host).non_stackable, id)
 }
 
 /// InventoryHandler.getBaseStackLimit: how many of `stack` one slot holds.
 pub fn limit(host: &dyn Host, stack: &ItemStack, multiplier: f64) -> u32 {
     let max = host.max_stack_size(stack.item()).unwrap_or(64).max(1);
-    if never_stacked(&contents::item_id(host, stack)) {
+    if never_stacked(host, &contents::item_id(host, stack)) {
         return max;
     }
     let v = (f64::from(max) * multiplier).floor();

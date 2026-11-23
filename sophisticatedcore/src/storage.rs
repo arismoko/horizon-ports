@@ -290,9 +290,9 @@ fn split_double(host: &mut dyn ServerHost, level: LevelRef, pos: [i32; 3], kind:
     let own_main = get_bool(&custom_data(&own), contents::DOUBLE) == Some(true);
     let (main_stack, mut rest_stack) = if own_main { (own.clone(), other.clone()) } else { (other.clone(), own.clone()) };
     let c = Contents::read(&*host, &main_stack, kind);
-    let n = kind.slots.min(c.slots.len());
+    let n = kind.slot_count().min(c.slots.len());
     let keep = Contents { slots: c.slots[..n].to_vec(), upgrades: c.upgrades.clone(), kept: c.kept.clone(), kept_upgrades: c.kept_upgrades.clone() };
-    let leave = Contents { slots: c.slots[n..].to_vec(), upgrades: vec![None; kind.upgrades], ..Default::default() };
+    let leave = Contents { slots: c.slots[n..].to_vec(), upgrades: vec![None; kind.upgrade_count()], ..Default::default() };
     let unflag = |s: &mut ItemStack| {
         let mut d = custom_data(s);
         d.del(contents::DOUBLE);
@@ -583,7 +583,7 @@ fn upgrade_vanilla(host: &mut dyn ServerHost, level: LevelRef, pos: [i32; 3], bl
     }
     let n = contents::slots_of(&st, to);
     items.resize(n, None);
-    let c = Contents { slots: items, upgrades: vec![None; to.upgrades], ..Default::default() };
+    let c = Contents { slots: items, upgrades: vec![None; to.upgrade_count()], ..Default::default() };
     c.write(&*host, &mut st, to);
     let wood = if family == Family::Barrel { "spruce" } else { "oak" };
     set_prop(&mut props, "wood", wood);
@@ -694,7 +694,7 @@ pub fn use_tool(host: &mut dyn ServerHost, player: PlayerRef, slot: u32, held: &
 /// Which of a limited barrel's slots a point on its front is (LimitedBarrelBlock.getInteractionSlot): for two slots
 /// top and bottom, for three the top and the bottom's left and right, for four the quarters.
 pub fn limited_slot(kind: &StorageItem, facing: &str, pos: [i32; 3], point: [f64; 3]) -> usize {
-    if kind.slots <= 1 {
+    if kind.slot_count() <= 1 {
         return 0;
     }
     let rel = [point[0] - f64::from(pos[0]), point[1] - f64::from(pos[1]), point[2] - f64::from(pos[2])];
@@ -708,7 +708,7 @@ pub fn limited_slot(kind: &StorageItem, facing: &str, pos: [i32; 3], point: [f64
         _ => (rel[0], rel[2]),
     };
     let (top, right) = (y > 0.5, x > 0.5);
-    match kind.slots {
+    match kind.slot_count() {
         2 => usize::from(!top),
         3 => {
             if top {

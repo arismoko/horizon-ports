@@ -261,6 +261,11 @@ pub fn may_store(host: &dyn Host, kind: &StorageItem, stack: &ItemStack) -> bool
         return true;
     }
     let id = contents::item_id(host, stack);
+    let lists = crate::options::Lists::get(host);
+    let refused = if kind.family == Family::Backpack { &lists.backpack_disallowed } else { &lists.shulker_disallowed };
+    if crate::options::listed(refused, &id) {
+        return false;
+    }
     let other = storage_items::by_item(&id);
     !(id.ends_with("shulker_box") || other.is_some_and(|o| matches!(o.family, Family::Backpack | Family::ShulkerBox)))
 }
@@ -621,7 +626,7 @@ fn title(host: &dyn Host, st: &ItemStack, kind: &StorageItem) -> String {
         },
         _ => kind.name.to_string(),
     };
-    let double = contents::slots_of(st, kind) > kind.slots;
+    let double = contents::slots_of(st, kind) > kind.slot_count();
     let own = if double { format!("Large {own}") } else { own };
     match st.components().and_then(|c| contents::Nbt::at(c.as_nbt(), "minecraft:custom_name").cloned()) {
         Some(Tag::String(s)) => s.to_string_lossy(),
