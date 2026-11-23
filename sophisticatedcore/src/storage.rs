@@ -476,6 +476,7 @@ pub fn placed(
         );
     }
     set_custom_data(&mut st, d);
+    crate::network::changed(pos);
     if !write_be(host, level, pos, Some(st.clone())) {
         eprintln!("[sophisticatedcore] the placed storage's block entity took nothing at {pos:?}");
     }

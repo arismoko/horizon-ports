@@ -6,8 +6,9 @@
 //! the world when it is used: the controller searches outwards from its own faces through storages (they conduct, and
 //! join), and from the blocks the storage tool linked to it (which join wherever they are). Only the tool's links are
 //! kept: the controller holds the list of positions linked to it, and a linked block holds its controller's position.
-use std::collections::{HashSet, VecDeque};
-use std::sync::OnceLock;
+use std::collections::{HashMap, HashSet, VecDeque};
+use std::hash::Hash;
+use std::sync::{Arc, LazyLock, Mutex, OnceLock};
 
 use mod_api::{
     AttachmentCodec, AttachmentType, BlockEntityPart, BlockEntityPartState, BlockPart, Compound,
@@ -363,10 +364,74 @@ fn step(facing: &str) -> [i32; 3] {
     }
 }
 
+/// Networks found already, by controller: reused until a block changes in the controller's range or at a linked
+/// position, or the tool links or unlinks something. `K` names the level and the controller.
+struct NetCache<K> {
+    entries: HashMap<K, (Arc<Net>, Vec<[i32; 3]>, i64)>,
+}
+
+impl<K: Copy + Eq + Hash> NetCache<K> {
+    fn new() -> Self {
+        Self {
+            entries: HashMap::new(),
+        }
+    }
+
+    /// The network under `key` found at `now`, searching with `find` when none is kept or the kept one is older than
+    /// `ttl` ticks (`i64::MAX` for never).
+    fn get(
+        &mut self,
+        key: K,
+        now: i64,
+        ttl: i64,
+        find: impl FnOnce() -> (Net, Vec<[i32; 3]>),
+    ) -> Arc<Net> {
+        if let Some((net, _, at)) = self.entries.get(&key)
+            && now.saturating_sub(*at) < ttl
+        {
+            return net.clone();
+        }
+        let (net, linked) = find();
+        let net = Arc::new(net);
+        self.entries.insert(key, (net.clone(), linked, now));
+        net
+    }
+
+    /// A block changed at `pos`: forget every network it can be part of. `centre` gives an entry's controller.
+    fn changed(&mut self, pos: [i32; 3], centre: impl Fn(&K) -> [i32; 3]) {
+        self.entries
+            .retain(|k, (_, linked, _)| !(within(centre(k), pos) || linked.contains(&pos)));
+    }
+}
+
+type Key = (LevelRef, [i32; 3]);
+
+static SERVER: LazyLock<Mutex<NetCache<Key>>> = LazyLock::new(|| Mutex::new(NetCache::new()));
+static CLIENT: LazyLock<Mutex<NetCache<Key>>> = LazyLock::new(|| Mutex::new(NetCache::new()));
+/// How long the client keeps a network it searched (ticks): block entity data arrives without a block change.
+const CLIENT_TTL: i64 = 20;
+
+fn lock<T>(m: &Mutex<T>) -> std::sync::MutexGuard<'_, T> {
+    m.lock().unwrap_or_else(|e| e.into_inner())
+}
+
+/// A block changed at `pos` on the server.
+pub fn changed(pos: [i32; 3]) {
+    lock(&SERVER).changed(pos, |k| k.1);
+}
+
+/// A block changed at `pos` on the client.
+pub fn client_changed(pos: [i32; 3]) {
+    lock(&CLIENT).changed(pos, |k| k.1);
+}
+
 /// The network of the controller at `pos`.
-pub fn net_of(host: &dyn Host, level: LevelRef, pos: [i32; 3]) -> Net {
-    let linked = linked_to(host, level, pos);
-    search(pos, &linked, &|p| role(host, level, p))
+pub fn net_of(host: &dyn Host, level: LevelRef, pos: [i32; 3]) -> Arc<Net> {
+    let mut cache = lock(&SERVER);
+    cache.get((level, pos), 0, i64::MAX, || {
+        let linked = linked_to(host, level, pos);
+        (search(pos, &linked, &|p| role(host, level, p)), linked)
+    })
 }
 
 /// The controller an input, output or input/output block at `pos` works through.
@@ -397,6 +462,7 @@ pub fn link(
         node_controller(&*host, level, pos)
     };
     if let Some(old) = was.filter(|o| Some(*o) != to) {
+        changed(old);
         set_linked(host, level, old, pos, false);
     }
     if let Some(c) = to {
@@ -470,7 +536,7 @@ impl NetHandler {
                 Some(self.at)
             };
             controller
-                .map(|c| net_of(host, self.level, c).storages)
+                .map(|c| net_of(host, self.level, c).storages.clone())
                 .unwrap_or_default()
                 .into_iter()
                 .filter_map(|p| {
@@ -670,8 +736,13 @@ pub fn debug_view(
     let Some(level) = host.level(&dim.to_string()) else {
         return;
     };
-    let linked = linked_to(host, level, controller);
-    let net = search(controller, &linked, &|p| client_role(host, level, p));
+    let net = lock(&CLIENT).get((level, controller), draw.game_time(), CLIENT_TTL, || {
+        let linked = linked_to(host, level, controller);
+        (
+            search(controller, &linked, &|p| client_role(host, level, p)),
+            linked,
+        )
+    });
     for (order, p) in net.storages.iter().enumerate() {
         let Some(kind) = storage::kind_of_block(&storage::block_id(host, level, *p)) else {
             continue;
@@ -848,6 +919,49 @@ mod tests {
         let found = find_controller([3, 0, 0], &w, &|p| p == C);
         assert_eq!(found, Some(C));
         assert_eq!(find_controller([3, 5, 0], &w, &|p| p == C), None);
+    }
+
+    #[test]
+    fn a_kept_network_is_reused_and_dropped_when_a_block_in_range_changes() {
+        let mut cache = NetCache::new();
+        let mut searches = 0;
+        let mut get = |cache: &mut NetCache<[i32; 3]>, with: bool| {
+            cache.get(C, 0, i64::MAX, || {
+                searches += 1;
+                let blocks: Vec<_> = if with { vec![([1, 0, 0], S)] } else { vec![] };
+                (search(C, &[], &world(&blocks)), vec![])
+            })
+        };
+        assert_eq!(get(&mut cache, true).storages.len(), 1);
+        // Broken, but nothing told yet: the kept network answers.
+        assert_eq!(get(&mut cache, false).storages.len(), 1);
+        cache.changed([30, 0, 0], |_| C);
+        assert_eq!(get(&mut cache, false).storages.len(), 1);
+        cache.changed([1, 0, 0], |_| C);
+        assert_eq!(get(&mut cache, false).storages.len(), 0);
+        assert_eq!(searches, 2);
+    }
+
+    #[test]
+    fn a_change_at_a_linked_position_drops_the_network_wherever_it_is() {
+        let mut cache: NetCache<[i32; 3]> = NetCache::new();
+        let far = [90, 0, 0];
+        cache.get(C, 0, i64::MAX, || (Net::default(), vec![far]));
+        cache.changed(far, |_| C);
+        assert!(cache.entries.is_empty());
+    }
+
+    #[test]
+    fn the_client_keeps_a_network_only_for_its_ttl() {
+        let mut cache: NetCache<[i32; 3]> = NetCache::new();
+        let mut n = 0;
+        for now in [0, 5, 25] {
+            cache.get(C, now, 20, || {
+                n += 1;
+                (Net::default(), vec![])
+            });
+        }
+        assert_eq!(n, 2);
     }
 
     #[test]

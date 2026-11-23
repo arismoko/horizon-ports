@@ -213,7 +213,7 @@ fn toggle_all(
     }
     let net = network::net_of(&*host, level, pos);
     let mut targets = Vec::new();
-    for p in net.storages {
+    for &p in &net.storages {
         let Some(kind) = kind_of_block(&storage::block_id(&*host, level, p)) else {
             continue;
         };

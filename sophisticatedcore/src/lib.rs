@@ -1433,6 +1433,22 @@ struct Mod {
 
 #[mod_api::sunrise_mod]
 impl Hooks for Mod {
+    fn block_changed(
+        &self,
+        _level: &dyn mod_api::LevelHost,
+        event: &mut mod_api::BlockChangedEvent,
+    ) {
+        network::changed([event.pos.x, event.pos.y, event.pos.z]);
+    }
+
+    fn client_block_changed(
+        &self,
+        _host: &dyn ClientHost,
+        event: &mut mod_api::ClientBlockChangedEvent<'_>,
+    ) {
+        network::client_changed([event.pos.x, event.pos.y, event.pos.z]);
+    }
+
     fn register(&self, r: &mut dyn Registrar, cx: &RegistrationContext) {
         let has = |ns: &str| cx.mods().iter().any(|p| p.namespaces().any(|n| n == ns));
         let backpacks = has("sophisticatedbackpacks");

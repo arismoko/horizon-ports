@@ -195,7 +195,7 @@ pub fn use_on(
     if block == crate::network::CONTROLLER {
         let net = crate::network::net_of(&*host, level, pos);
         let mut seen = Vec::new();
-        for p in net.storages {
+        for &p in &net.storages {
             let main = storage::main_pos(&*host, level, p);
             if !seen.contains(&main) {
                 seen.push(main);
