@@ -17,7 +17,7 @@ use std::sync::{Arc, LazyLock, Mutex};
 use mod_api::{Host, Identifier, ItemKey, ItemStack, LevelRef, RecipeInput};
 
 use crate::contents::{self, Contents, Nbt, custom_data, get_int, put, set_custom_data};
-use crate::storage_items::StorageItem;
+use crate::storage_items::{Family, StorageItem};
 use crate::upgrades::{self, Kind};
 
 /// `firstInventorySlot` of the upgrade's own tag, and how many slots the range has.
@@ -773,15 +773,27 @@ impl Contents {
         if crate::infinity::level(host, &self.upgrades).is_some() {
             return 0;
         }
+        // A locked storage takes only what it already holds, a limited barrel only onto the stacks it has
+        // (`ContentsFilteredItemHandler`, `emptyInventorySlotsAcceptItems`).
+        if self.locked
+            && !self
+                .slots
+                .iter()
+                .flatten()
+                .any(|s| contents::same(s, stack))
+        {
+            return 0;
+        }
+        let fill_empty = !(self.locked && kind.family == Family::LimitedBarrel);
         let banks = Banks::of(host, kind, self);
         let lim = upgrades::limit(host, stack, banks.mult);
         if banks.is_empty() {
-            return contents::insert(&mut self.slots, stack, amount, lim);
+            return contents::insert_with(&mut self.slots, stack, amount, lim, fill_empty);
         }
         let first = banks.insert(self, stack, amount);
         first
             + self.plain(&banks, |slots| {
-                contents::insert(slots, stack, amount - first, lim)
+                contents::insert_with(slots, stack, amount - first, lim, fill_empty)
             })
     }
 

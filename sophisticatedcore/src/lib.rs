@@ -47,6 +47,7 @@ mod storage_items;
 mod swapper;
 mod table;
 mod ticking;
+mod tool;
 mod upgrades;
 mod worn;
 mod xp_bucket;
@@ -1071,6 +1072,52 @@ impl ItemPart for PlacedItemPart {
     }
 }
 
+/// StorageToolItem: a click acts on the storage by the tool's mode; the air changes the mode.
+struct ToolItem;
+
+#[mod_api::sunrise_part]
+impl ItemPart for ToolItem {
+    fn use_on(&self, host: HostSide<'_>, event: &mut UseOnEvent<'_>) -> Option<InteractionResult> {
+        let HostSide::Server(host) = host else {
+            return None;
+        };
+        let dim = host.player(event.player)?.dimension(&*host)?.to_string();
+        let level = host.level(&dim)?;
+        let block = storage::block_id(&*host, level, event.pos);
+        match tool::use_on(host, level, event.pos, &block, event.stack) {
+            tool::Used::Passed => None,
+            tool::Used::Done(link) => {
+                if tool::mode(event.stack) == tool::Mode::Link && block == tool::CONTROLLER {
+                    let slot = hand_slot(&*host, event.player, event.hand)?;
+                    let mut t = event.stack.clone();
+                    tool::set_controller_link(&mut t, link);
+                    let player = host.player(event.player)?;
+                    places::set_slot(host, player, slot, Some(t));
+                    places::message(host, event.player, &tool::mode(event.stack).message(link));
+                }
+                Some(InteractionResult::Success)
+            }
+        }
+    }
+
+    fn use_item(
+        &self,
+        host: HostSide<'_>,
+        event: &mut mod_api::UseItemEvent<'_>,
+    ) -> Option<InteractionResult> {
+        let HostSide::Server(host) = host else {
+            return None;
+        };
+        let slot = hand_slot(&*host, event.player, event.hand)?;
+        let mut t = event.stack.clone();
+        let line = tool::use_in_air(&mut t, places::sneaking(&*host, event.player));
+        let player = host.player(event.player)?;
+        places::set_slot(host, player, slot, Some(t));
+        places::message(host, event.player, &line);
+        Some(InteractionResult::Success)
+    }
+}
+
 /// DecorationTableBlock: using it opens the table's menu.
 struct TableBlock(Arc<Shared>);
 
@@ -1367,6 +1414,8 @@ impl Hooks for Mod {
             storage_blocks.push(s.id);
         }
         if storage_loaded {
+            let tool = r.item_key(tool::TOOL);
+            r.item_part(tool, ToolItem);
             let key = r.block_key("sophisticatedstorage:decoration_table");
             r.block_part(key, TableBlock(self.shared.clone()));
             r.block_container(

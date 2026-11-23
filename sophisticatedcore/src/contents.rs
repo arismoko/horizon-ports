@@ -346,6 +346,8 @@ pub struct Contents {
     /// Saved entries past the slot count (`read_items_kept`), written back unchanged.
     pub kept: Vec<Compound>,
     pub kept_upgrades: Vec<Compound>,
+    /// The storage is locked (`locked`): see `tool::locked`.
+    pub locked: bool,
 }
 
 /// `doubleChest` (ChestBlockItem.isDoubleChest's key): a chest whose stack holds a double chest's contents.
@@ -401,6 +403,7 @@ impl Contents {
             upgrades,
             kept,
             kept_upgrades,
+            locked: get_bool(&data, "locked") == Some(true),
         }
     }
 
@@ -485,6 +488,7 @@ impl Contents {
             upgrades: only(&self.upgrades),
             kept: self.kept.clone(),
             kept_upgrades: self.kept_upgrades.clone(),
+            locked: false,
         };
         (!c.is_empty()).then_some(c)
     }
@@ -525,6 +529,17 @@ pub fn same(a: &ItemStack, b: &ItemStack) -> bool {
 /// Puts up to `amount` of `stack` into `slots`, onto the same item first and then into empty slots, no slot past
 /// its limit; how many went in.
 pub fn insert(slots: &mut [Option<ItemStack>], stack: &ItemStack, amount: u32, limit: u32) -> u32 {
+    insert_with(slots, stack, amount, limit, true)
+}
+
+/// `insert`, with `fill_empty` false only onto stacks already there.
+pub fn insert_with(
+    slots: &mut [Option<ItemStack>],
+    stack: &ItemStack,
+    amount: u32,
+    limit: u32,
+    fill_empty: bool,
+) -> u32 {
     let mut left = amount;
     for s in slots.iter_mut().flatten() {
         if left == 0 {
@@ -537,7 +552,7 @@ pub fn insert(slots: &mut [Option<ItemStack>], stack: &ItemStack, amount: u32, l
         }
     }
     for s in slots.iter_mut() {
-        if left == 0 {
+        if left == 0 || !fill_empty {
             break;
         }
         if s.is_none() {

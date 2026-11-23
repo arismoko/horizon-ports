@@ -412,6 +412,7 @@ fn split_double(
         upgrades: c.upgrades.clone(),
         kept: c.kept.clone(),
         kept_upgrades: c.kept_upgrades.clone(),
+        locked: false,
     };
     let leave = Contents {
         slots: c.slots[n..].to_vec(),
