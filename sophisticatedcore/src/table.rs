@@ -165,9 +165,10 @@ pub fn parts_needed(set: (i32, i32), have: (i32, i32)) -> [i32; 3] {
     need
 }
 
-/// What paying `need` takes: the parts left in each dye afterwards and the dye items used. None when the dyes in
-/// the slots (`have`, with the parts already left over) fall short.
-pub fn spend(need: [i32; 3], left: [i32; 3], have: [u32; 3]) -> Option<([i32; 3], [u32; 3])> {
+/// What paying `need` takes (`DecorationHelper.consumePartsNeeded`): the leftover parts first, then dye items, as
+/// many as the slots hold. Returns the parts left in each dye afterwards and the dye items used. A dye that falls
+/// short leaves nothing over.
+pub fn spend(need: [i32; 3], left: [i32; 3], have: [u32; 3]) -> ([i32; 3], [u32; 3]) {
     let mut parts = left;
     let mut used = [0u32; 3];
     for c in 0..3 {
@@ -176,14 +177,17 @@ pub fn spend(need: [i32; 3], left: [i32; 3], have: [u32; 3]) -> Option<([i32; 3]
             continue;
         }
         let short = need[c] - left[c];
-        let items = ((short + DYE_PARTS - 1) / DYE_PARTS) as u32;
-        if items > have[c] {
-            return None;
-        }
+        let items = (((short + DYE_PARTS - 1) / DYE_PARTS) as u32).min(have[c]);
         used[c] = items;
-        parts[c] = items as i32 * DYE_PARTS - short;
+        parts[c] = (items as i32 * DYE_PARTS - short).max(0);
     }
-    Some((parts, used))
+    (parts, used)
+}
+
+/// `DecorationTableMenu`'s result slot `mayPickup` (`getMissingDyes` is empty): a dye is missing when its slot is
+/// empty and the colours need it; with all three slots filled nothing is missing, however few dyes they hold.
+pub fn may_take(need: [i32; 3], filled: [bool; 3]) -> bool {
+    filled.iter().all(|f| *f) || (0..3).all(|c| need[c] == 0 || filled[c])
 }
 
 /// The dye channel (0 red, 1 green, 2 blue) an item is a dye of.
@@ -294,7 +298,8 @@ impl Table {
 
     /// Whether the dyes in the slots and the parts left over cover the cost.
     pub fn enough(&self, host: &dyn Host) -> bool {
-        spend(self.need(host), self.state.parts, self.dye_counts()).is_some()
+        let have = self.dye_counts();
+        may_take(self.need(host), std::array::from_fn(|c| have[c] > 0))
     }
 
     /// The decorated stack, if the chosen colours change it (`colorsTransparentOrSameAs`).
@@ -378,8 +383,8 @@ fn cells(host: &mut dyn ServerHost, t: &Table) -> Vec<Option<ItemStack>> {
         Some(_) => button(
             &*host,
             "minecraft:barrier",
-            "Not enough dye",
-            &["Put the missing dye in its slot"],
+            "Missing dye",
+            &["Put a dye in each slot the colour needs"],
         ),
         None => button(
             &*host,
@@ -551,9 +556,10 @@ pub fn click(
         }
         CELL_RESULT => {
             let result = t.result(&*host)?;
-            let Some((parts, used)) = spend(t.need(&*host), t.state.parts, t.dye_counts()) else {
-                return Some("Not enough dye");
-            };
+            if !t.enough(&*host) {
+                return Some("Missing dye");
+            }
+            let (parts, used) = spend(t.need(&*host), t.state.parts, t.dye_counts());
             let dyes: Vec<(usize, Option<ItemStack>)> = (0..3)
                 .map(|c| {
                     let left = t.slots[1 + c]
@@ -643,29 +649,33 @@ mod tests {
         // Needing 18 with 5 left over: 13 more is one dye item (24), leaving 11.
         assert_eq!(
             spend([18, 0, 0], [5, 0, 0], [1, 0, 0]),
-            Some(([11, 0, 0], [1, 0, 0]))
+            ([11, 0, 0], [1, 0, 0])
         );
-        // Covered by the leftover alone: no dye used.
         assert_eq!(
             spend([18, 0, 0], [20, 0, 0], [0, 0, 0]),
-            Some(([2, 0, 0], [0; 3]))
+            ([2, 0, 0], [0; 3])
         );
-        // Exactly the leftover: nothing left.
-        assert_eq!(
-            spend([6, 0, 0], [6, 0, 0], [0, 0, 0]),
-            Some(([0; 3], [0; 3]))
-        );
+        assert_eq!(spend([6, 0, 0], [6, 0, 0], [0, 0, 0]), ([0; 3], [0; 3]));
     }
 
     #[test]
-    fn spending_needs_enough_dye() {
-        assert_eq!(spend([0, 25, 0], [0; 3], [0, 1, 0]), None);
+    fn a_short_dye_is_spent_whole_and_leaves_nothing() {
+        // 25 parts of green from one dye item: it is used up, 24 parts paid, nothing left over.
+        assert_eq!(spend([0, 25, 0], [0; 3], [0, 1, 0]), ([0; 3], [0, 1, 0]));
         assert_eq!(
             spend([0, 25, 0], [0; 3], [0, 2, 0]),
-            Some(([0, 23, 0], [0, 2, 0]))
+            ([0, 23, 0], [0, 2, 0])
         );
-        // Nothing needed, nothing in the slots: fine.
-        assert_eq!(spend([0; 3], [0; 3], [0; 3]), Some(([0; 3], [0; 3])));
+        assert_eq!(spend([0; 3], [0; 3], [0; 3]), ([0; 3], [0; 3]));
+    }
+
+    #[test]
+    fn the_result_waits_only_for_an_empty_needed_slot() {
+        assert!(may_take([6, 0, 0], [true, false, false]));
+        assert!(!may_take([6, 6, 0], [true, false, false]));
+        assert!(may_take([6, 6, 6], [true, true, true]));
+        assert!(may_take([0; 3], [false; 3]));
+        assert!(!may_take([0, 0, 1], [true, true, false]));
     }
 
     #[test]
