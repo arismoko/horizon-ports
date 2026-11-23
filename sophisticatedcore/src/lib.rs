@@ -40,6 +40,7 @@ mod liquid_caps;
 mod menu;
 mod mobs;
 mod options;
+mod paintbrush;
 mod places;
 mod render;
 mod station;
@@ -1119,6 +1120,25 @@ impl ItemPart for ToolItem {
     }
 }
 
+/// PaintbrushItem: a click on a storage paints it with the brush's colours.
+struct PaintbrushItem;
+
+#[mod_api::sunrise_part]
+impl ItemPart for PaintbrushItem {
+    fn use_on(&self, host: HostSide<'_>, event: &mut UseOnEvent<'_>) -> Option<InteractionResult> {
+        let HostSide::Server(host) = host else {
+            return None;
+        };
+        let player = host.player(event.player)?;
+        let dim = player.dimension(&*host)?.to_string();
+        let level = host.level(&dim)?;
+        let block = storage::block_id(&*host, level, event.pos);
+        let slot = hand_slot(&*host, event.player, event.hand)?;
+        paintbrush::use_on(host, player, slot, event.stack, level, event.pos, &block)
+            .then_some(InteractionResult::Success)
+    }
+}
+
 /// DecorationTableBlock: using it opens the table's menu.
 struct TableBlock(Arc<Shared>);
 
@@ -1438,6 +1458,8 @@ impl Hooks for Mod {
         if storage_loaded {
             let tool = r.item_key(tool::TOOL);
             r.item_part(tool, ToolItem);
+            let brush = r.item_key(paintbrush::ID);
+            r.item_part(brush, PaintbrushItem);
             let key = r.block_key("sophisticatedstorage:decoration_table");
             r.block_part(key, TableBlock(self.shared.clone()));
             r.block_container(
