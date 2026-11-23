@@ -1,1 +1,1 @@
-{"parent":"sophisticatedstorage:block/template/chest_right","textures":{"particle":"minecraft:block/acacia_planks","wood":"sophisticatedstorage:block/entity/chest/right_acacia","tier":"sophisticatedstorage:block/entity/chest/right_copper_tier"}}
+{"parent":"minecraft:block/block","textures":{"particle":"minecraft:block/acacia_planks"}}

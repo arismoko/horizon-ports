@@ -77,6 +77,8 @@ pub struct Session {
     pub slots: usize,
     pub view: View,
     pub rows: u8,
+    /// A double chest's other half, which shows the lid open too.
+    pub also: Option<[i32; 3]>,
 }
 
 impl Session {
@@ -1410,6 +1412,7 @@ pub fn open(
         slots,
         view: View::Main { page: 0 },
         rows,
+        also: None,
     };
     let items = render(host, &s, &c);
     let title = title(&*host, &st, kind);
@@ -1548,6 +1551,7 @@ mod tests {
             slots: 27,
             view: View::Main { page: 0 },
             rows: 4,
+            also: None,
         };
         assert_eq!(
             (s.page_size(), s.pages(), s.control(), s.own_slots()),

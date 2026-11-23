@@ -1,1 +1,1 @@
-{"parent":"sophisticatedstorage:block/template/chest_right","textures":{"particle":"minecraft:block/bamboo_planks","wood":"sophisticatedstorage:block/entity/chest/right_bamboo","tier":"sophisticatedstorage:block/entity/chest/right_wood_tier"}}
+{"parent":"minecraft:block/block","textures":{"particle":"minecraft:block/bamboo_planks"}}

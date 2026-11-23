@@ -8,83 +8,83 @@
     "when": "oak",
     "model": {
      "type": "minecraft:model",
-     "model": "sophisticatedstorage:block/chest/oak"
+     "model": "sophisticatedstorage:item/storage_model/chest/oak"
     }
    },
    {
     "when": "spruce",
     "model": {
      "type": "minecraft:model",
-     "model": "sophisticatedstorage:block/chest/spruce"
+     "model": "sophisticatedstorage:item/storage_model/chest/spruce"
     }
    },
    {
     "when": "birch",
     "model": {
      "type": "minecraft:model",
-     "model": "sophisticatedstorage:block/chest/birch"
+     "model": "sophisticatedstorage:item/storage_model/chest/birch"
     }
    },
    {
     "when": "acacia",
     "model": {
      "type": "minecraft:model",
-     "model": "sophisticatedstorage:block/chest/acacia"
+     "model": "sophisticatedstorage:item/storage_model/chest/acacia"
     }
    },
    {
     "when": "jungle",
     "model": {
      "type": "minecraft:model",
-     "model": "sophisticatedstorage:block/chest/jungle"
+     "model": "sophisticatedstorage:item/storage_model/chest/jungle"
     }
    },
    {
     "when": "dark_oak",
     "model": {
      "type": "minecraft:model",
-     "model": "sophisticatedstorage:block/chest/dark_oak"
+     "model": "sophisticatedstorage:item/storage_model/chest/dark_oak"
     }
    },
    {
     "when": "crimson",
     "model": {
      "type": "minecraft:model",
-     "model": "sophisticatedstorage:block/chest/crimson"
+     "model": "sophisticatedstorage:item/storage_model/chest/crimson"
     }
    },
    {
     "when": "mangrove",
     "model": {
      "type": "minecraft:model",
-     "model": "sophisticatedstorage:block/chest/mangrove"
+     "model": "sophisticatedstorage:item/storage_model/chest/mangrove"
     }
    },
    {
     "when": "warped",
     "model": {
      "type": "minecraft:model",
-     "model": "sophisticatedstorage:block/chest/warped"
+     "model": "sophisticatedstorage:item/storage_model/chest/warped"
     }
    },
    {
     "when": "cherry",
     "model": {
      "type": "minecraft:model",
-     "model": "sophisticatedstorage:block/chest/cherry"
+     "model": "sophisticatedstorage:item/storage_model/chest/cherry"
     }
    },
    {
     "when": "bamboo",
     "model": {
      "type": "minecraft:model",
-     "model": "sophisticatedstorage:block/chest/bamboo"
+     "model": "sophisticatedstorage:item/storage_model/chest/bamboo"
     }
    }
   ],
   "fallback": {
    "type": "minecraft:model",
-   "model": "sophisticatedstorage:block/chest/oak"
+   "model": "sophisticatedstorage:item/storage_model/chest/oak"
   }
  }
 }

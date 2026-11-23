@@ -225,9 +225,14 @@ impl Shared {
             MenuReplace::CloseFirst
         };
         if let Some(prev) = lock(&self.sessions).remove(&uuid) {
-            self.closed_block(host, &prev.loc);
+            self.closed_block(host, &prev);
         }
-        if let Some(s) = menu::open(host, uuid, loc, replace) {
+        if let Some(mut s) = menu::open(host, uuid, loc, replace) {
+            if let Loc::Block { dim, pos } = &s.loc
+                && let Some(level) = host.level(dim)
+            {
+                s.also = storage::partner(&*host, level, *pos);
+            }
             let placed = match &s.loc {
                 Loc::Block { dim, pos } => host.level(dim).map(|l| (l, *pos)),
                 _ => None,
@@ -270,16 +275,36 @@ impl Shared {
                     }
                 }
             }
+            Self::sync_open(host, &s);
             lock(&self.sessions).insert(uuid, s);
         }
     }
 
+    /// Whether a player has the storage block at `pos` (or a double chest's other half) open.
+    fn is_open(&self, pos: [i32; 3]) -> bool {
+        lock(&self.sessions).values().any(|s| {
+            matches!(&s.loc, Loc::Block { pos: p, .. } if *p == pos) || s.also == Some(pos)
+        })
+    }
+
+    /// Sends clients the open state of the block `session` has (and a double chest's other half).
+    fn sync_open(host: &mut dyn ServerHost, session: &Session) {
+        if let Loc::Block { pos, .. } = &session.loc {
+            host.block_entity_sync(*pos);
+            if let Some(also) = session.also {
+                host.block_entity_sync(also);
+            }
+        }
+    }
+
     /// A menu on a placed storage closed: a barrel shuts when nobody else has it open.
-    fn closed_block(&self, host: &mut dyn ServerHost, loc: &Loc) {
+    fn closed_block(&self, host: &mut dyn ServerHost, closed: &Session) {
+        let loc = &closed.loc;
         let Loc::Block { dim, pos } = loc else { return };
         if lock(&self.sessions).values().any(|s| &s.loc == loc) {
             return;
         }
+        Self::sync_open(host, closed);
         let Some(level) = host.level(dim) else { return };
         let Some(kind) = storage::kind_of_block(&storage::block_id(&*host, level, *pos)) else {
             return;
@@ -470,7 +495,7 @@ impl Shared {
         let prev = lock(&self.sessions).remove(&uuid);
         host.close_menu(uuid);
         if let Some(prev) = prev {
-            self.closed_block(host, &prev.loc);
+            self.closed_block(host, &prev);
         }
     }
 
@@ -487,7 +512,7 @@ impl Shared {
                 MenuReplace::CloseFirst
             };
         if let Some(prev) = lock(&self.sessions).remove(&uuid) {
-            self.closed_block(host, &prev.loc);
+            self.closed_block(host, &prev);
         }
         let title = mod_api::Text::literal("Decoration Table");
         if let Ok(Some(window)) = host.open_menu(uuid, table::ROWS, title, items, replace) {
@@ -1353,7 +1378,8 @@ impl BlockEntityPart for StorageEntity {
         &self,
         event: &mut mod_api::BlockEntityUpdateTagEvent<'_>,
     ) -> Option<mod_api::Compound> {
-        render::update_tag(event.entity)
+        let open = self.0.is_open(event.pos);
+        render::update_tag(event.entity, open)
     }
 
     fn block_entity_submit(
@@ -1363,6 +1389,7 @@ impl BlockEntityPart for StorageEntity {
     ) {
         render::submit(
             host,
+            event.pos,
             event.state,
             event.block,
             event.entity,
@@ -2253,7 +2280,7 @@ impl Hooks for Mod {
             }
         }
         if let Some(prev) = prev {
-            self.shared.closed_block(host, &prev.loc);
+            self.shared.closed_block(host, &prev);
         }
     }
 

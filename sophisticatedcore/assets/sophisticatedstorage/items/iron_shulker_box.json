@@ -1,6 +1,6 @@
 {
  "model": {
   "type": "minecraft:model",
-  "model": "sophisticatedstorage:block/iron_shulker_box"
+  "model": "sophisticatedstorage:item/storage_model/iron_shulker_box"
  }
 }

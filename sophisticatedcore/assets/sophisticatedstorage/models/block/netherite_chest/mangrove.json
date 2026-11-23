@@ -1,1 +1,1 @@
-{"parent":"sophisticatedstorage:block/template/chest_single","textures":{"particle":"minecraft:block/mangrove_planks","wood":"sophisticatedstorage:block/entity/chest/mangrove","tier":"sophisticatedstorage:block/entity/chest/netherite_tier"}}
+{"parent":"minecraft:block/block","textures":{"particle":"minecraft:block/mangrove_planks"}}

@@ -8,83 +8,83 @@
     "when": "oak",
     "model": {
      "type": "minecraft:model",
-     "model": "sophisticatedstorage:block/netherite_chest/oak"
+     "model": "sophisticatedstorage:item/storage_model/netherite_chest/oak"
     }
    },
    {
     "when": "spruce",
     "model": {
      "type": "minecraft:model",
-     "model": "sophisticatedstorage:block/netherite_chest/spruce"
+     "model": "sophisticatedstorage:item/storage_model/netherite_chest/spruce"
     }
    },
    {
     "when": "birch",
     "model": {
      "type": "minecraft:model",
-     "model": "sophisticatedstorage:block/netherite_chest/birch"
+     "model": "sophisticatedstorage:item/storage_model/netherite_chest/birch"
     }
    },
    {
     "when": "acacia",
     "model": {
      "type": "minecraft:model",
-     "model": "sophisticatedstorage:block/netherite_chest/acacia"
+     "model": "sophisticatedstorage:item/storage_model/netherite_chest/acacia"
     }
    },
    {
     "when": "jungle",
     "model": {
      "type": "minecraft:model",
-     "model": "sophisticatedstorage:block/netherite_chest/jungle"
+     "model": "sophisticatedstorage:item/storage_model/netherite_chest/jungle"
     }
    },
    {
     "when": "dark_oak",
     "model": {
      "type": "minecraft:model",
-     "model": "sophisticatedstorage:block/netherite_chest/dark_oak"
+     "model": "sophisticatedstorage:item/storage_model/netherite_chest/dark_oak"
     }
    },
    {
     "when": "crimson",
     "model": {
      "type": "minecraft:model",
-     "model": "sophisticatedstorage:block/netherite_chest/crimson"
+     "model": "sophisticatedstorage:item/storage_model/netherite_chest/crimson"
     }
    },
    {
     "when": "mangrove",
     "model": {
      "type": "minecraft:model",
-     "model": "sophisticatedstorage:block/netherite_chest/mangrove"
+     "model": "sophisticatedstorage:item/storage_model/netherite_chest/mangrove"
     }
    },
    {
     "when": "warped",
     "model": {
      "type": "minecraft:model",
-     "model": "sophisticatedstorage:block/netherite_chest/warped"
+     "model": "sophisticatedstorage:item/storage_model/netherite_chest/warped"
     }
    },
    {
     "when": "cherry",
     "model": {
      "type": "minecraft:model",
-     "model": "sophisticatedstorage:block/netherite_chest/cherry"
+     "model": "sophisticatedstorage:item/storage_model/netherite_chest/cherry"
     }
    },
    {
     "when": "bamboo",
     "model": {
      "type": "minecraft:model",
-     "model": "sophisticatedstorage:block/netherite_chest/bamboo"
+     "model": "sophisticatedstorage:item/storage_model/netherite_chest/bamboo"
     }
    }
   ],
   "fallback": {
    "type": "minecraft:model",
-   "model": "sophisticatedstorage:block/netherite_chest/oak"
+   "model": "sophisticatedstorage:item/storage_model/netherite_chest/oak"
   }
  }
 }

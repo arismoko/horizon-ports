@@ -1,1 +1,1 @@
-{"parent":"sophisticatedstorage:block/template/chest_left","textures":{"particle":"minecraft:block/birch_planks","wood":"sophisticatedstorage:block/entity/chest/left_birch","tier":"sophisticatedstorage:block/entity/chest/left_diamond_tier"}}
+{"parent":"minecraft:block/block","textures":{"particle":"minecraft:block/birch_planks"}}

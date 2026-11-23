@@ -8,83 +8,83 @@
     "when": "oak",
     "model": {
      "type": "minecraft:model",
-     "model": "sophisticatedstorage:block/gold_chest/oak"
+     "model": "sophisticatedstorage:item/storage_model/gold_chest/oak"
     }
    },
    {
     "when": "spruce",
     "model": {
      "type": "minecraft:model",
-     "model": "sophisticatedstorage:block/gold_chest/spruce"
+     "model": "sophisticatedstorage:item/storage_model/gold_chest/spruce"
     }
    },
    {
     "when": "birch",
     "model": {
      "type": "minecraft:model",
-     "model": "sophisticatedstorage:block/gold_chest/birch"
+     "model": "sophisticatedstorage:item/storage_model/gold_chest/birch"
     }
    },
    {
     "when": "acacia",
     "model": {
      "type": "minecraft:model",
-     "model": "sophisticatedstorage:block/gold_chest/acacia"
+     "model": "sophisticatedstorage:item/storage_model/gold_chest/acacia"
     }
    },
    {
     "when": "jungle",
     "model": {
      "type": "minecraft:model",
-     "model": "sophisticatedstorage:block/gold_chest/jungle"
+     "model": "sophisticatedstorage:item/storage_model/gold_chest/jungle"
     }
    },
    {
     "when": "dark_oak",
     "model": {
      "type": "minecraft:model",
-     "model": "sophisticatedstorage:block/gold_chest/dark_oak"
+     "model": "sophisticatedstorage:item/storage_model/gold_chest/dark_oak"
     }
    },
    {
     "when": "crimson",
     "model": {
      "type": "minecraft:model",
-     "model": "sophisticatedstorage:block/gold_chest/crimson"
+     "model": "sophisticatedstorage:item/storage_model/gold_chest/crimson"
     }
    },
    {
     "when": "mangrove",
     "model": {
      "type": "minecraft:model",
-     "model": "sophisticatedstorage:block/gold_chest/mangrove"
+     "model": "sophisticatedstorage:item/storage_model/gold_chest/mangrove"
     }
    },
    {
     "when": "warped",
     "model": {
      "type": "minecraft:model",
-     "model": "sophisticatedstorage:block/gold_chest/warped"
+     "model": "sophisticatedstorage:item/storage_model/gold_chest/warped"
     }
    },
    {
     "when": "cherry",
     "model": {
      "type": "minecraft:model",
-     "model": "sophisticatedstorage:block/gold_chest/cherry"
+     "model": "sophisticatedstorage:item/storage_model/gold_chest/cherry"
     }
    },
    {
     "when": "bamboo",
     "model": {
      "type": "minecraft:model",
-     "model": "sophisticatedstorage:block/gold_chest/bamboo"
+     "model": "sophisticatedstorage:item/storage_model/gold_chest/bamboo"
     }
    }
   ],
   "fallback": {
    "type": "minecraft:model",
-   "model": "sophisticatedstorage:block/gold_chest/oak"
+   "model": "sophisticatedstorage:item/storage_model/gold_chest/oak"
   }
  }
 }

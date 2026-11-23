@@ -1,9 +1,10 @@
 //! The chests' and shulker boxes' own drawing (ChestRenderer, ShulkerBoxRenderer, LockRenderer): their paint, their
 //! lock and their tier.
 //!
-//! The models are static, so the wood layer and the tier layer are always in them. The paint is drawn over them as
-//! tinted boxes with the models' own geometry and texture rectangles; a hidden tier is covered by the base layer
-//! drawn again a hair larger, under the paint.
+//! A chest's or shulker box's block model is empty (only its particle texture); everything is drawn here with the
+//! models' own geometry and texture rectangles: the wood, the paint over it, then the tier, which is simply left out
+//! when hidden. The lid swings with the open state the server syncs, as `ChestRenderer` and `ShulkerBoxRenderer`
+//! move it. A packed storage keeps its static model.
 use mod_api::{BlockEntityDrawContext, CubeFace};
 
 use crate::render::{model_turn, north_based};
@@ -168,16 +169,20 @@ pub struct Look<'a> {
     /// The player holds the storage tool in a mode that shows the lock, or the tier.
     pub tool_shows_lock: bool,
     pub tool_shows_tier: bool,
-    /// The sprite of the wood, or of the plain shulker box, under the tier.
+    /// The sprite of the wood, or of the plain shulker box, under the paint.
     pub base: &'a str,
     /// The two tint sprites.
     pub tint_main: &'a str,
     pub tint_accent: &'a str,
+    /// The tier's own sprite.
+    pub tier: &'a str,
+    /// How far the lid is open, 0 to 1 (a chest's eased: `1 - (1 - t)^3`).
+    pub lid: f32,
 }
 
 impl Look<'_> {
-    fn covers_tier(&self) -> bool {
-        !self.show_tier && !self.tool_shows_tier
+    fn tier_visible(&self) -> bool {
+        self.show_tier || self.tool_shows_tier
     }
 
     fn lock_visible(&self) -> bool {
@@ -185,34 +190,43 @@ impl Look<'_> {
     }
 }
 
-/// The layers over the model's own, bottom to top: (sprite, tint, growth in texels). The base again covers a hidden
-/// tier; each paint layer grows more than the one under it so none fights another over a face.
+/// The layers, bottom to top: (sprite, tint, growth in texels). Each grows more than the one under it so none
+/// fights another over a face; the tier is last, as the original draws it, and absent when hidden.
 fn layers<'a>(look: &Look<'a>) -> Vec<(&'a str, u32, f32)> {
-    let mut v = Vec::new();
-    if look.covers_tier() {
-        v.push((look.base, 0xFF_FFFF, 0.01));
-    }
+    let mut v = vec![(look.base, 0xFF_FFFF, 0.0)];
     if let Some(c) = look.main {
         v.push((look.tint_main, c as u32 & 0xFF_FFFF, 0.02));
     }
     if let Some(c) = look.accent {
         v.push((look.tint_accent, c as u32 & 0xFF_FFFF, 0.04));
     }
+    if look.tier_visible() {
+        v.push((look.tier, 0xFF_FFFF, 0.06));
+    }
     v
 }
 
-fn draw_parts(draw: &mut dyn BlockEntityDrawContext, parts: &[Part], look: &Look<'_>) {
-    for (sprite, tint, grow) in layers(look) {
-        for p in parts {
-            let faces = p.uv.map(|uv| Some(CubeFace::new(sprite).with_uv(uv)));
-            let from = p.from.map(|v| v - grow);
-            let to = p.to.map(|v| v + grow);
-            draw.cube(from, to, faces, tint);
-        }
+/// Draws `part` in every layer, the part's own box grown by the layer's growth.
+fn draw_part(draw: &mut dyn BlockEntityDrawContext, part: &Part, layers: &[(&str, u32, f32)]) {
+    for &(sprite, tint, grow) in layers {
+        let faces = part.uv.map(|uv| Some(CubeFace::new(sprite).with_uv(uv)));
+        draw.cube(
+            part.from.map(|v| v - grow),
+            part.to.map(|v| v + grow),
+            faces,
+            tint,
+        );
     }
 }
 
-/// A chest: its paint and tier cover in the frame of its blockstate, then its lock if it is the main half.
+/// A chest lid's turn about its hinge (the back edge at the lid's foot): degrees about x, front up.
+fn lid_degrees(lid: f32) -> f32 {
+    -lid * 90.0
+}
+
+const CHEST_HINGE: [f32; 3] = [0.5, 9.0 / 16.0, 1.0 / 16.0];
+
+/// A chest: body, lid and latch in every layer, the lid and latch swung open, then the lock if it is the main half.
 pub fn draw_chest(
     draw: &mut dyn BlockEntityDrawContext,
     facing: &str,
@@ -220,9 +234,15 @@ pub fn draw_chest(
     look: &Look<'_>,
     main_half: bool,
 ) {
+    let layers = layers(look);
+    let [body, lid, latch] = chest_parts(join);
     draw.push();
     draw.rotate_about([0.0, 1.0, 0.0], -chest_turn(facing), [0.5, 0.5, 0.5]);
-    draw_parts(draw, &chest_parts(join), look);
+    draw_part(draw, &body, &layers);
+    draw.push();
+    draw.rotate_about([1.0, 0.0, 0.0], lid_degrees(look.lid), CHEST_HINGE);
+    draw_part(draw, &lid, &layers);
+    draw_part(draw, &latch, &layers);
     if main_half && look.lock_visible() {
         let x = join.lock_x() / 16.0;
         let h = 0.5 / 16.0;
@@ -240,21 +260,38 @@ pub fn draw_chest(
         );
     }
     draw.pop();
+    draw.pop();
 }
 
-/// A shulker box: its paint and tier cover turned as its blockstate turns it, then its lock on the face it opens to.
+/// The lid's lift and spin at `lid` 0 to 1: half a block along the opening, three quarters of a turn.
+fn shulker_lid(lid: f32) -> (f32, f32) {
+    (0.5 * lid, 270.0 * lid)
+}
+
+/// A shulker box: body and lid in every layer, the lid lifted and spun, then its lock on the face it opens to.
 pub fn draw_shulker(draw: &mut dyn BlockEntityDrawContext, facing: &str, look: &Look<'_>) {
+    let layers = layers(look);
+    let [lid, body] = shulker_parts();
+    let (lift, spin) = shulker_lid(look.lid);
     let (x, y) = model_turn(facing);
     draw.push();
     draw.rotate_about([0.0, 1.0, 0.0], -y, [0.5, 0.5, 0.5]);
     draw.rotate_about([1.0, 0.0, 0.0], -x, [0.5, 0.5, 0.5]);
-    draw_parts(draw, &shulker_parts(), look);
+    draw_part(draw, &body, &layers);
+    draw.push();
+    draw.translate([0.0, lift, 0.0]);
+    draw.rotate_about([0.0, 1.0, 0.0], -spin, [0.5, 0.5, 0.5]);
+    draw_part(draw, &lid, &layers);
+    draw.pop();
     draw.pop();
     if look.lock_visible() {
         draw.push();
         if let Some((axis, deg)) = north_based(facing) {
             draw.rotate_about(axis, deg, [0.5, 0.5, 0.5]);
         }
+        // In this frame the opening direction is north (-z) and the lid's spin is about z.
+        draw.translate([0.0, 0.0, -lift]);
+        draw.rotate_about([0.0, 0.0, 1.0], spin, [0.5, 0.5, 0.5]);
         let (x0, x1) = (0.5 - 0.5 / 16.0, 0.5 + 0.5 / 16.0);
         let (y0, y1, z) = (15.0 / 16.0, 1.0, -0.001);
         draw.quad(
@@ -267,6 +304,24 @@ pub fn draw_shulker(draw: &mut dyn BlockEntityDrawContext, facing: &str, look: &
     }
 }
 
+/// How far a lid has moved after `ticks`, toward open or shut, at a tenth per tick (`ChestLidController`,
+/// `ShulkerBoxBlockEntity.updateAnimation`).
+pub fn lid_step(progress: f32, open: bool, ticks: f32) -> f32 {
+    let to = if open { 1.0 } else { 0.0 };
+    let by = 0.1 * ticks.max(0.0);
+    if progress < to {
+        (progress + by).min(to)
+    } else {
+        (progress - by).max(to)
+    }
+}
+
+/// The chest lid's ease (`ChestRenderer`: `1 - (1 - t)^3`).
+pub fn chest_ease(t: f32) -> f32 {
+    let u = 1.0 - t;
+    1.0 - u * u * u
+}
+
 const LOCK: &str = "sophisticatedstorage:block/lock";
 
 /// The sprites of a chest's wood and its two paint layers.
@@ -277,6 +332,23 @@ pub fn chest_sprites(join: Join, wood: &str) -> (String, String, String) {
         format!("sophisticatedstorage:block/entity/chest/{p}tintable_main"),
         format!("sophisticatedstorage:block/entity/chest/{p}tintable_accent"),
     )
+}
+
+/// The sprite of a chest's tier layer: `block` is the storage's block id (`iron_chest`, `chest` for wood).
+pub fn chest_tier_sprite(join: Join, block: &str) -> String {
+    let name = block.rsplit(':').next().unwrap_or(block);
+    let tier = name.strip_suffix("_chest").unwrap_or("wood");
+    format!(
+        "sophisticatedstorage:block/entity/chest/{}{tier}_tier",
+        join.prefix()
+    )
+}
+
+/// The sprite of a shulker box's tier layer (`shulker_box` is the plain one).
+pub fn shulker_tier_sprite(block: &str) -> String {
+    let name = block.rsplit(':').next().unwrap_or(block);
+    let tier = name.strip_suffix("_shulker_box").unwrap_or("base");
+    format!("sophisticatedstorage:block/entity/shulker_box/{tier}_tier")
 }
 
 pub const SHULKER_BASE: &str = "sophisticatedstorage:block/entity/shulker_box/no_tint";
@@ -347,20 +419,59 @@ mod tests {
             base: "base",
             tint_main: "main",
             tint_accent: "accent",
+            tier: "tier",
+            lid: 0.0,
         }
     }
 
     #[test]
-    fn paint_layers_grow_and_a_hidden_tier_is_covered_beneath_them() {
-        let l = layers(&look(false, false));
+    fn layers_grow_upward_and_a_hidden_tier_is_not_drawn() {
+        fn names(l: Vec<(&str, u32, f32)>) -> Vec<&str> {
+            l.into_iter().map(|x| x.0).collect()
+        }
+        let shown = layers(&look(true, false));
+        assert_eq!(names(shown.clone()), ["base", "main", "accent", "tier"]);
+        assert!(shown.windows(2).all(|w| w[0].2 < w[1].2));
         assert_eq!(
-            l.iter().map(|x| x.0).collect::<Vec<_>>(),
+            names(layers(&look(false, false))),
             ["base", "main", "accent"]
         );
-        assert!(l.windows(2).all(|w| w[0].2 < w[1].2));
-        // Shown, or shown by the tool in hand: nothing covers it.
-        assert_eq!(layers(&look(true, false)).len(), 2);
-        assert_eq!(layers(&look(false, true)).len(), 2);
+        // Hidden, but shown by the tool in hand.
+        assert_eq!(layers(&look(false, true)).len(), 4);
+    }
+
+    #[test]
+    fn a_lid_moves_a_tenth_a_tick_and_stops_at_the_ends() {
+        assert_eq!(lid_step(0.0, true, 3.0), 0.3);
+        assert_eq!(lid_step(0.95, true, 3.0), 1.0);
+        assert_eq!(lid_step(1.0, false, 4.0), 0.6);
+        assert_eq!(lid_step(0.05, false, 1.0), 0.0);
+        assert_eq!(lid_step(0.5, true, -2.0), 0.5);
+        assert_eq!(chest_ease(0.0), 0.0);
+        assert_eq!(chest_ease(1.0), 1.0);
+        assert!(chest_ease(0.5) > 0.5);
+        assert_eq!(lid_degrees(1.0), -90.0);
+        assert_eq!(shulker_lid(1.0), (0.5, 270.0));
+    }
+
+    #[test]
+    fn tier_sprites_follow_the_block() {
+        assert_eq!(
+            chest_tier_sprite(Join::Single, "sophisticatedstorage:chest"),
+            "sophisticatedstorage:block/entity/chest/wood_tier"
+        );
+        assert_eq!(
+            chest_tier_sprite(Join::Left, "sophisticatedstorage:iron_chest"),
+            "sophisticatedstorage:block/entity/chest/left_iron_tier"
+        );
+        assert_eq!(
+            shulker_tier_sprite("sophisticatedstorage:shulker_box"),
+            "sophisticatedstorage:block/entity/shulker_box/base_tier"
+        );
+        assert_eq!(
+            shulker_tier_sprite("sophisticatedstorage:gold_shulker_box"),
+            "sophisticatedstorage:block/entity/shulker_box/gold_tier"
+        );
     }
 
     #[test]

@@ -20,6 +20,8 @@ use crate::upgrades;
 
 const MAIN: &str = "mainColor";
 const ACCENT: &str = "accentColor";
+/// Whether anyone has the storage open (its lid is up).
+const OPEN: &str = "open";
 const SLOTS: &str = "slots";
 /// The controller a storage is linked to, as a packed position (`i64::MIN` for none).
 pub const LINKED_TO: &str = "linkedTo";
@@ -37,10 +39,14 @@ const LIMITED_MAX_SLOTS: usize = 4;
 
 /// What the server tells clients of the storage in `entity`'s slot 0 (`getUpdateTag`): the colours, the display
 /// flags, the upgrades, and the slots of a stack that holds few enough to be a limited barrel's.
-pub fn update_tag(entity: &ModBlockEntity) -> Option<Compound> {
-    let stack = entity.items.first()?.as_ref()?;
-    let data = custom_data(stack);
+pub fn update_tag(entity: &ModBlockEntity, open: bool) -> Option<Compound> {
     let mut tag = Compound::default();
+    put(&mut tag, OPEN, Tag::Byte(i8::from(open)));
+    // A double chest's other half holds no stack: it only tells whether its lid is up.
+    let Some(stack) = entity.items.first().and_then(Option::as_ref) else {
+        return open.then_some(tag);
+    };
+    let data = custom_data(stack);
     // Every field is always sent: the client's copy only replaces the fields it is told, so one that went away
     // must say so.
     for k in [MAIN, ACCENT] {
@@ -405,6 +411,7 @@ fn front(draw: &mut dyn BlockEntityDrawContext, facing: &str) {
 /// `submit`: draws the storage at `pos` from what `update_tag` sent.
 pub fn submit(
     host: &dyn ClientHost,
+    pos: [i32; 3],
     state: BlockState,
     block: &str,
     entity: &ModBlockEntity,
@@ -425,8 +432,24 @@ pub fn submit(
     let barrel = matches!(kind.family, Family::Barrel | Family::LimitedBarrel);
     draw.level_light();
     if matches!(kind.family, Family::Chest | Family::ShulkerBox) {
-        if get_bool(nbt, storage::PACKED) != Some(true) {
-            chest_or_shulker(host, state, kind.family, &facing, nbt, (main, accent), draw);
+        let packed = state
+            .property(&host.block_states(), "packed")
+            .ok()
+            .flatten()
+            == Some("true")
+            || get_bool(nbt, storage::PACKED) == Some(true);
+        if !packed {
+            let at = (pos, block);
+            chest_or_shulker(
+                host,
+                at,
+                state,
+                kind.family,
+                &facing,
+                nbt,
+                (main, accent),
+                draw,
+            );
         }
         return;
     }
@@ -543,8 +566,32 @@ fn held_tool(host: &dyn ClientHost) -> Option<crate::tool::Mode> {
     (crate::contents::item_id(host, &held) == crate::tool::TOOL).then(|| crate::tool::mode(&held))
 }
 
+/// Where each lid is: (how far open, when that was set, in ticks), by position.
+type Lids = std::collections::HashMap<[i32; 3], (f32, f64)>;
+
+thread_local! {
+    static LIDS: std::cell::RefCell<Lids> = std::cell::RefCell::new(Lids::new());
+}
+
+/// How far the lid at `pos` is open now: it moves a tenth a tick toward `open` from where it was last drawn.
+fn lid_progress(pos: [i32; 3], open: bool, now: f64) -> f32 {
+    LIDS.with(|m| {
+        let mut m = m.borrow_mut();
+        let (was, at) = m.get(&pos).copied().unwrap_or((0.0, now));
+        let p = crate::chest_render::lid_step(was, open, (now - at) as f32);
+        if p == 0.0 && !open {
+            m.remove(&pos);
+        } else {
+            m.insert(pos, (p, now));
+        }
+        p
+    })
+}
+
+#[allow(clippy::too_many_arguments)]
 fn chest_or_shulker(
     host: &dyn ClientHost,
+    (pos, block): ([i32; 3], &str),
     state: BlockState,
     family: Family,
     facing: &str,
@@ -574,7 +621,20 @@ fn chest_or_shulker(
             cr::SHULKER_ACCENT.into(),
         )
     };
+    let now = draw.game_time() as f64 + f64::from(draw.partial());
+    let lid = lid_progress(pos, flag(OPEN, false), now);
+    let tier = if family == Family::Chest {
+        cr::chest_tier_sprite(join, block)
+    } else {
+        cr::shulker_tier_sprite(block)
+    };
     let look = cr::Look {
+        tier: &tier,
+        lid: if family == Family::Chest {
+            cr::chest_ease(lid)
+        } else {
+            lid
+        },
         main: paint.0,
         accent: paint.1,
         locked: flag("locked", false),
