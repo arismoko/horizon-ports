@@ -67,7 +67,13 @@ def rotate(props):
     return dict(sorted(out.items()))
 
 
+# Blocks renamed since the structure files were saved, as the game's data fixer renames them
+# when it loads an old structure: 1.21.9 made the chain `iron_chain`.
+RENAMES = {'minecraft:chain': 'minecraft:iron_chain'}
+
+
 def state(name, props):
+    name = RENAMES.get(name, name)
     inner = ', '.join(f'("{k}", "{v}")' for k, v in sorted(props.items()))
     return f'("{name}", &[{inner}])'
 

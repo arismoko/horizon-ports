@@ -1153,7 +1153,7 @@ pub(crate) const TEMPLATES: &[Template] = &[
                 ],
             ),
             (
-                "minecraft:chain",
+                "minecraft:iron_chain",
                 &[("axis", "y"), ("waterlogged", "false")],
             ),
             (
@@ -1292,7 +1292,7 @@ pub(crate) const TEMPLATES: &[Template] = &[
                 ],
             ),
             (
-                "minecraft:chain",
+                "minecraft:iron_chain",
                 &[("axis", "y"), ("waterlogged", "false")],
             ),
             (
