@@ -30,6 +30,7 @@ mod crafting;
 mod fluid_view;
 mod fluids;
 mod jukebox;
+mod liquid_caps;
 mod menu;
 mod mobs;
 mod options;
@@ -1118,7 +1119,7 @@ impl Hooks for Mod {
         let has = |ns: &str| cx.mods().iter().any(|p| p.namespaces().any(|n| n == ns));
         let backpacks = has("sophisticatedbackpacks");
         let storage_loaded = has("sophisticatedstorage");
-        // Experience, as a tank-only fluid (the XP pump's): no block or bucket form.
+        // Experience, as the original's `xp_still`: a fluid with no block, flowing form or bucket.
         r.declare_fluid("xp_still");
         let keys = crafting::keys(r, backpacks, storage_loaded);
         r.register_crafting_recipe_serializer(
@@ -1134,8 +1135,39 @@ impl Hooks for Mod {
         {
             let item = r.item_key(s.id);
             r.item_part(item, StorageItemPart(self.shared.clone()));
+            let kind: &'static storage_items::StorageItem = s;
+            r.item_capability(&mod_api::ITEM_ENERGY, s.id, move |_, place| {
+                Some(Box::new(liquid_caps::Backed::item(kind, place.clone()))
+                    as Box<dyn mod_api::EnergyHandler>)
+            });
+            r.item_capability(&mod_api::ITEM_FLUIDS, s.id, move |_, place| {
+                options::tune().liquids.item_fluids.then(|| {
+                    Box::new(liquid_caps::Backed::item(kind, place.clone()))
+                        as Box<dyn ResourceHandler<mod_api::FluidResource>>
+                })
+            });
             if let Some(b) = s.block {
                 let key = r.block_key(b);
+                r.block_capability(
+                    &mod_api::FLUIDS,
+                    &key,
+                    move |_, at: BlockSide, _, _, offer| {
+                        offer.offer(|| {
+                            Box::new(liquid_caps::Backed::block(kind, at.level, at.pos))
+                                as Box<dyn ResourceHandler<mod_api::FluidResource>>
+                        });
+                    },
+                );
+                r.block_capability(
+                    &mod_api::ENERGY,
+                    &key,
+                    move |_, at: BlockSide, _, _, offer| {
+                        offer.offer(|| {
+                            Box::new(liquid_caps::Backed::block(kind, at.level, at.pos))
+                                as Box<dyn mod_api::EnergyHandler>
+                        });
+                    },
+                );
                 r.block_part(key, StorageBlockPart(self.shared.clone()));
                 r.block_container(
                     &key,

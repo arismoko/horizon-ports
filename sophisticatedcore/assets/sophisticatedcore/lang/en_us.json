@@ -388,5 +388,6 @@
   "sophisticatedcore.config.tank_upgrade_stack_multiplier_ratio": "Tank upgrade: share of the stack multiplier it uses",
   "sophisticatedcore.config.battery_upgrade_stack_multiplier_ratio": "Battery upgrade: share of the stack multiplier it uses",
   "sophisticatedcore.config.pump_upgrade_stack_multiplier_ratio": "Pump upgrade: share of the stack multiplier it uses",
-  "sophisticatedcore.config.xp_pump_upgrade_mending_on": "XP pump upgrade: mends items"
+  "sophisticatedcore.config.xp_pump_upgrade_mending_on": "XP pump upgrade: mends items",
+  "sophisticatedcore.config.item_fluid_handler_enabled": "Backpacks hold fluid in item form"
 }

@@ -153,6 +153,8 @@ pub struct Liquids {
     pub pump_io: u32,
     pub pump_ratio: f64,
     pub xp_mending: bool,
+    /// `itemFluidHandlerEnabled`: a backpack as a fluid container in item form.
+    pub item_fluids: bool,
     pub xp_per_mending: u32,
 }
 
@@ -170,6 +172,7 @@ impl Default for Liquids {
             pump_io: 20,
             pump_ratio: 1.0,
             xp_mending: true,
+            item_fluids: true,
             xp_per_mending: 5,
         }
     }
@@ -460,6 +463,7 @@ pub fn tier_specs() -> Vec<(String, Kind)> {
         ));
     }
     out.push(("xp_pump_upgrade_mending_on".into(), Kind::Toggle(true)));
+    out.push(("item_fluid_handler_enabled".into(), Kind::Toggle(true)));
     out
 }
 
@@ -632,6 +636,7 @@ fn read_tune(get: &dyn Fn(&str) -> Option<String>) -> Tune {
         pump_io: int(get("pump_upgrade_max_input_output"), 20, 1, 1000) as u32,
         pump_ratio: n("pump_upgrade_stack_multiplier_ratio", d.pump_ratio, 5.0),
         xp_mending: flag(get("xp_pump_upgrade_mending_on").as_deref(), true),
+        item_fluids: flag(get("item_fluid_handler_enabled").as_deref(), true),
         xp_per_mending: int(get("xp_pump_upgrade_max_xp_points_per_mending"), 5, 1, 20) as u32,
     };
     for (g, name) in GROUPS.iter().enumerate() {
