@@ -11,7 +11,9 @@ A port of [Sophisticated Backpacks](https://github.com/Salandora/SophisticatedBa
 - A paged storage screen with sorting, upgrade slots, upgrade settings and a crafting grid.
 - Upgrades that work while carried or placed: pickup, magnet, void, feeding, compacting, refill, restock and deposit, hopper, and stack upgrades that raise each slot's limit.
 - Tier upgrades crafted in place keep the contents; dye backpacks and storage in the crafting grid.
-- Backpacks in vanilla chest loot, as in the original.
+- Backpacks in vanilla chest loot, as in the original (a setting turns it off).
+- Keys in Controls: Open Backpack (B), Sort (middle mouse button, in a storage screen), Inventory Interaction (C, restock and deposit on the block you look at), and switches for the upgrades in slots 1 to 5 (Z and X for the first two): a switched-off upgrade does nothing.
+- Settings (Options > Mods): backpack slowness for carrying too many, only the worn backpack's upgrades, chest loot, backpacks in container items, chests and barrels dropping packed, the drop count that forces packing, one wood variant in the creative tab, and the magnet ranges.
 
 ## Differences from the original
 

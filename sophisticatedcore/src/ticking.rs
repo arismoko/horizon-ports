@@ -26,7 +26,7 @@ pub struct Carried {
 
 impl Carried {
     pub fn ups(&self, host: &dyn mod_api::Host) -> Vec<(ItemStack, Upgrade)> {
-        self.contents.upgrades.iter().flatten().filter_map(|u| upgrades::of(host, u).map(|k| (u.clone(), k))).collect()
+        self.contents.upgrades.iter().flatten().filter(|u| upgrades::flag(u, "enabled", true)).filter_map(|u| upgrades::of(host, u).map(|k| (u.clone(), k))).collect()
     }
 
     pub fn has(&self, host: &dyn mod_api::Host, kind: Kind) -> bool {
@@ -300,6 +300,9 @@ fn refill(host: &mut dyn ServerHost, uuid: u128, c: &mut Carried) -> bool {
 /// One server tick for a player's carried storages. `n` counts ticks.
 pub fn tick(host: &mut dyn ServerHost, uuid: u128, n: u64) -> Vec<[i32; 4]> {
     let mut list = carried(host, uuid);
+    if crate::options::Options::read(&*host).only_worn {
+        list.retain(|c| matches!(c.loc, Loc::Worn(_)));
+    }
     if list.is_empty() {
         return Vec::new();
     }
@@ -307,13 +310,14 @@ pub fn tick(host: &mut dyn ServerHost, uuid: u128, n: u64) -> Vec<[i32; 4]> {
         c.contents_changed = false;
     }
     // Pickup reach, every tick; the magnet's range every 2 ticks.
+    let opts = crate::options::Options::read(&*host);
     take_items(host, uuid, &mut list, 1.0, false);
     if n.is_multiple_of(2) {
         let range = list
             .iter()
             .flat_map(|c| c.ups(&*host))
             .filter(|(_, k)| k.kind == Kind::Magnet)
-            .map(|(_, k)| if k.advanced { 5.0 } else { 3.0 })
+            .map(|(_, k)| opts.magnet(k.advanced))
             .fold(0.0f64, f64::max);
         if range > 0.0 {
             take_items(host, uuid, &mut list, range, true);

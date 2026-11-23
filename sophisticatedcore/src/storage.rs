@@ -27,8 +27,6 @@ use crate::upgrades::{self, Kind};
 
 pub const PACKED: &str = "packed";
 pub const WOOD: &str = "woodType";
-/// TOO_MANY_ITEM_ENTITY_DROPS (Homestead's `tooManyItemEntityDrops = 200`).
-const TOO_MANY_DROPS: usize = 200;
 
 /// The Sophisticated Storage block `id` is (not a backpack).
 pub fn kind_of_block(id: &str) -> Option<&'static StorageItem> {
@@ -405,6 +403,18 @@ pub fn broken(host: &mut dyn ServerHost, player: PlayerRef, level: LevelRef, pos
     let c = Contents::read(&*host, &st, kind);
     // Stand-ins of unknown items can't be dropped as items: the storage keeps them, even broken in creative.
     let unknown = c.unknown_only();
+    // `dropPacked`: a chest or barrel always comes away packed, with its contents (a double chest is split first).
+    if crate::options::Options::read(&*host).drop_packed
+        && kind.family != Family::ShulkerBox
+        && !is_packed(&st)
+        && !c.is_empty()
+    {
+        let mut d = custom_data(&st);
+        put(&mut d, PACKED, Tag::Byte(1));
+        set_custom_data(&mut st, d);
+        write_be(host, level, pos, Some(st));
+        return;
+    }
     if kind.family == Family::ShulkerBox || is_packed(&st) {
         if creative && c.is_empty() {
             write_be(host, level, pos, None);
@@ -414,7 +424,7 @@ pub fn broken(host: &mut dyn ServerHost, player: PlayerRef, level: LevelRef, pos
         return;
     }
     let drops = droppable(&*host, c.slots.iter().chain(c.upgrades.iter()).flatten().filter(|s| !contents::is_unknown(s)).cloned());
-    if drops.len() > TOO_MANY_DROPS {
+    if drops.len() > crate::options::Options::read(&*host).too_many_drops {
         // StorageBlockBase.playerWillDestroy: too many item entities, so it drops packed.
         let mut d = custom_data(&st);
         put(&mut d, PACKED, Tag::Byte(1));

@@ -27,6 +27,7 @@
 mod contents;
 mod crafting;
 mod menu;
+mod options;
 mod places;
 mod storage;
 mod storage_items;
@@ -44,7 +45,7 @@ use mod_api::{
     HostSide, Hooks, IPayloadContext, IPayloadHandler, ITEMS, InputKeyEvent, InteractionResult, ItemPart,
     ItemPickedUpPostEvent, ItemResource, ItemStack, KeyAction, KeyRegistration, LeftClickBlockEvent,
     LevelSide, LoopContext, LootTableLoadEvent, MenuClickedEvent, MenuPart, MenuClosedEvent, MenuReplace, ModContainer,
-    OnBlockPlacedByEvent, PayloadBytes, PayloadHandleError, PayloadId, Registrar, RegistrationContext,
+    MouseButtonPostEvent, OnBlockPlacedByEvent, PayloadBytes, PayloadHandleError, PayloadId, Registrar, RegistrationContext,
     ResourceHandler, RightClickBlockEvent, RightClickItemEvent, ServerHost, ServerTickEvent, ServerTickPhase,
     SoundSource, StateForPlacementEvent, TooltipEvent, UseItemOnEvent, UseOnEvent, UseWithoutItemEvent,
 };
@@ -61,6 +62,37 @@ pub const STORAGE_DYE: &str = "sophisticatedcore:storage_dye";
 
 const OPEN: &str = "sophisticatedcore:open";
 const KEY: &str = "open_backpack";
+const ACT: &str = "sophisticatedcore:action";
+
+/// The keys besides Open Backpack (`KeybindHandler`): id, label, the default key, the code sent to the server.
+/// The original binds Sort to the middle mouse button, Inventory Interaction to C, and the first two upgrade toggles to
+/// Z and X; the rest are unbound. (Tool Swap needs the tool swapper upgrade, which has no rules here.)
+const ACTIONS: [(&str, &str, &str, u8); 7] = [
+    ("sort", "keybind.sophisticatedbackpacks.sort", "key.mouse.middle", SORT),
+    ("inventory_interaction", "keybind.sophisticatedbackpacks.inventory_interaction", "key.keyboard.c", INTERACT),
+    ("toggle_upgrade_1", "keybind.sophisticatedbackpacks.toggle_upgrade_1", "key.keyboard.z", TOGGLE),
+    ("toggle_upgrade_2", "keybind.sophisticatedbackpacks.toggle_upgrade_2", "key.keyboard.x", TOGGLE + 1),
+    ("toggle_upgrade_3", "keybind.sophisticatedbackpacks.toggle_upgrade_3", "key.keyboard.unknown", TOGGLE + 2),
+    ("toggle_upgrade_4", "keybind.sophisticatedbackpacks.toggle_upgrade_4", "key.keyboard.unknown", TOGGLE + 3),
+    ("toggle_upgrade_5", "keybind.sophisticatedbackpacks.toggle_upgrade_5", "key.keyboard.unknown", TOGGLE + 4),
+];
+/// `BACKPACK_CHECK_COOLDOWN`.
+const BACKPACK_CHECK: u64 = 40;
+/// `canBePlacedInContainerItems` as last read.
+static IN_CONTAINER_ITEMS: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+const SORT: u8 = 1;
+const INTERACT: u8 = 2;
+const TOGGLE: u8 = 10;
+
+/// `GLFW`'s mouse button `button` as vanilla names it.
+fn mouse_name(button: i32) -> String {
+    match button {
+        0 => "key.mouse.left".into(),
+        1 => "key.mouse.right".into(),
+        2 => "key.mouse.middle".into(),
+        n => format!("key.mouse.{}", n + 1),
+    }
+}
 
 /// The vanilla chests the jar's loot modifiers add its `inject/chests/*` tables to.
 const LOOT: [&str; 8] = [
@@ -75,6 +107,8 @@ fn lock<T>(m: &Mutex<T>) -> std::sync::MutexGuard<'_, T> {
 enum Job {
     Open(u128, Loc),
     Key(u128),
+    /// A key's action (`ACTIONS`' code).
+    Action(u128, u8),
 }
 
 #[derive(Default)]
@@ -186,6 +220,92 @@ impl Shared {
         places::message(host, uuid, "No backpack worn or in your inventory");
     }
 
+    /// The backpack a key acts on: the open-backpack order (worn, held, then the inventory).
+    fn key_backpack(&self, host: &mut dyn ServerHost, uuid: u128) -> Option<Loc> {
+        let mut candidates = vec![Loc::Worn(places::BACK.into()), Loc::Inv(38), Loc::Inv(40)];
+        if let Some(sel) = host.player(uuid).and_then(|p| p.selected_slot(&*host)) {
+            candidates.insert(1, Loc::Inv(sel as u32));
+        }
+        candidates.extend((0..36).map(Loc::Inv));
+        candidates
+            .into_iter()
+            .find(|loc| places::storage_at(host, uuid, loc).is_some_and(|(_, k)| k.family == Family::Backpack))
+    }
+
+    /// A key's action: sort the open storage, run the inventory interaction upgrades on the block looked at, or
+    /// switch the upgrade in a slot on or off.
+    fn action(&self, host: &mut dyn ServerHost, uuid: u128, code: u8) {
+        match code {
+            SORT => {
+                let Some(mut s) = lock(&self.sessions).get(&uuid).cloned() else { return };
+                let Some(loc) = places::find(host, uuid, &s.loc, s.id) else { return };
+                s.loc = loc;
+                let Some((mut st, kind)) = places::storage_at(host, uuid, &s.loc) else { return };
+                let mut c = Contents::read(&*host, &st, kind);
+                menu::sort(&*host, kind, &mut c);
+                c.write(&*host, &mut st, kind);
+                places::write(host, uuid, &s.loc, Some(st));
+                if self.refresh(host, uuid, &mut s)
+                    && let Some(cur) = lock(&self.sessions).get_mut(&uuid)
+                    && cur.window == s.window
+                {
+                    *cur = s;
+                }
+            }
+            INTERACT => {
+                let Some(loc) = self.key_backpack(host, uuid) else { return };
+                let Some(player) = host.player(uuid) else { return };
+                let Some(level) = player.entity().level(&*host) else { return };
+                let Some(hit) = player.entity().pick(&*host, 5.0).filter(|h| !h.miss) else { return };
+                let face = match hit.face {
+                    mod_api::BlockFace::Down => [0, -1, 0],
+                    mod_api::BlockFace::Up => [0, 1, 0],
+                    mod_api::BlockFace::North => [0, 0, -1],
+                    mod_api::BlockFace::South => [0, 0, 1],
+                    mod_api::BlockFace::West => [-1, 0, 0],
+                    _ => [1, 0, 0],
+                };
+                ticking::interact(host, uuid, &loc, level, hit.block, face);
+            }
+            n if (TOGGLE..TOGGLE + 5).contains(&n) => {
+                let slot = usize::from(n - TOGGLE);
+                let Some(loc) = self.key_backpack(host, uuid) else { return };
+                let Some((mut st, kind)) = places::storage_at(host, uuid, &loc) else { return };
+                let mut c = Contents::read(&*host, &st, kind);
+                let Some(Some(up)) = c.upgrades.get_mut(slot) else {
+                    places::message(host, uuid, "No upgrade in that slot");
+                    return;
+                };
+                let on = !upgrades::flag(up, "enabled", true);
+                upgrades::set_flag(up, "enabled", on);
+                c.write(&*host, &mut st, kind);
+                places::write(host, uuid, &loc, Some(st));
+                places::message(host, uuid, if on { "Upgrade switched on" } else { "Upgrade switched off" });
+            }
+            _ => {}
+        }
+    }
+
+    /// `CommonEventHandler.onWorldTick`: a player carrying more backpacks than allowed is slowed by the excess.
+    fn too_many(&self, host: &mut dyn ServerHost, players: &[u128], opts: &options::Options) {
+        let Some(slowness) = host.effect_key("minecraft:slowness") else { return };
+        for &uuid in players {
+            let Some(player) = host.player(uuid) else { continue };
+            let mut count = places::inventory(host, player)
+                .iter()
+                .flatten()
+                .filter(|st| storage_items::by_item(&contents::item_id(&*host, st)).is_some_and(|k| k.family == Family::Backpack))
+                .count();
+            if places::storage_at(host, uuid, &Loc::Worn(places::BACK.into())).is_some_and(|(_, k)| k.family == Family::Backpack) {
+                count += 1;
+            }
+            if let Some(amplifier) = options::slowness_amplifier(count, opts.max_backpacks, opts.slowness_ratio) {
+                let effect = mod_api::ActiveEffect::new(slowness, (BACKPACK_CHECK * 2) as i32, amplifier, false, false, false);
+                mod_api::LivingRef::new(player.entity()).add_effect(host, &effect);
+            }
+        }
+    }
+
     /// Shows the session's view again (the client predicted a pickup the server didn't make).
     fn refresh(&self, host: &mut dyn ServerHost, uuid: u128, s: &mut Session) -> bool {
         let Some(loc) = places::find(host, uuid, &s.loc, s.id) else { return false };
@@ -282,6 +402,17 @@ impl IPayloadHandler for OpenHandler {
     fn handle(&self, _payload: PayloadBytes, context: &mut dyn IPayloadContext) -> Result<(), PayloadHandleError> {
         if let Ok(p) = context.player() {
             self.0.queue(Job::Key(p.uuid()));
+        }
+        Ok(())
+    }
+}
+
+struct ActionHandler(Arc<Shared>);
+
+impl IPayloadHandler for ActionHandler {
+    fn handle(&self, payload: PayloadBytes, context: &mut dyn IPayloadContext) -> Result<(), PayloadHandleError> {
+        if let (Ok(p), Some(code)) = (context.player(), payload.0.first()) {
+            self.0.queue(Job::Action(p.uuid(), *code));
         }
         Ok(())
     }
@@ -401,9 +532,11 @@ impl ItemPart for StorageItemPart {
         None
     }
 
+    /// `canBePlacedInContainerItems`, read from the settings a tick ago (the context has none).
     fn can_fit_inside_container_items(&self, _context: &dyn LoopContext, event: &mut CanFitInsideContainerItemsEvent<'_>) {
-        event.fits = false;
+        event.fits = IN_CONTAINER_ITEMS.load(Ordering::Relaxed);
     }
+
 
     fn tooltip(&self, host: &dyn ClientHost, event: &mut TooltipEvent<'_>) {
         let Some(kind) = storage_items::by_item(&contents::item_id(host, event.stack)) else { return };
@@ -657,18 +790,39 @@ impl Hooks for Mod {
         }
         // The original's default, B (unbound in vanilla 26.3).
         r.register_key_mapping(KeyRegistration::new(KEY, "key.keyboard.b").label("keybind.sophisticatedbackpacks.open_backpack"));
+        for (name, kind) in options::SPECS {
+            let label = format!("sophisticatedcore.config.{name}");
+            let spec = match kind {
+                options::Kind::Toggle(default) => mod_api::SettingSpec::toggle(*name, &label, *default),
+                options::Kind::Range(min, max, step, default) => {
+                    mod_api::SettingSpec::range(*name, &label, *min, *max, *step, *default)
+                }
+            };
+            let _ = r.register_setting(spec);
+        }
+        for (id, label, key, _) in ACTIONS.iter() {
+            r.register_key_mapping(KeyRegistration::new(id, key).label(label));
+        }
         for rows in 1..=6 {
             r.menu_part(&format!("minecraft:generic_9x{rows}"), StorageMenu(self.shared.clone()));
         }
         r.payload_handlers()
             .registrar("1")
             .optional()
-            .play_to_server(PayloadId(OPEN.into()), Arc::new(OpenHandler(self.shared.clone())));
+            .play_to_server(PayloadId(OPEN.into()), Arc::new(OpenHandler(self.shared.clone())))
+            .play_to_server(PayloadId(ACT.into()), Arc::new(ActionHandler(self.shared.clone())));
+    }
+
+    fn client_tick_post(&self, host: &mut dyn ClientHost, _: &mut mod_api::ClientTickPostEvent) {
+        IN_CONTAINER_ITEMS.store(options::Options::read(&*host).in_container_items, Ordering::Relaxed);
     }
 
     /// SBPLootInjectModifier: the jar's chest tables join the vanilla chests'.
     fn loot_table_load(&self, _context: &dyn DataLoadContext, event: &mut LootTableLoadEvent<'_>) {
         let Some(chest) = event.id.strip_prefix("minecraft:chests/") else { return };
+        if _context.setting(options::MOD, options::key::CHEST_LOOT) == Some("false") {
+            return;
+        }
         if !LOOT.contains(&chest) {
             return;
         }
@@ -684,14 +838,20 @@ impl Hooks for Mod {
             return;
         }
         let n = self.shared.ticks.fetch_add(1, Ordering::Relaxed) + 1;
+        let opts = options::Options::read(&*host);
+        IN_CONTAINER_ITEMS.store(opts.in_container_items, Ordering::Relaxed);
         let jobs = std::mem::take(&mut *lock(&self.shared.jobs));
         for job in jobs {
             match job {
                 Job::Open(uuid, loc) => self.shared.open(host, uuid, loc),
                 Job::Key(uuid) => self.shared.open_key(host, uuid),
+                Job::Action(uuid, code) => self.shared.action(host, uuid, code),
             }
         }
         let players: Vec<u128> = host.players().server_players().iter().map(|p| p.uuid()).collect();
+        if opts.slowness && n.is_multiple_of(BACKPACK_CHECK) {
+            self.shared.too_many(host, &players, &opts);
+        }
         for uuid in players {
             let ids = ticking::tick(host, uuid, n);
             self.shared.refresh_ids(host, &ids);
@@ -776,7 +936,8 @@ impl Hooks for Mod {
         };
         for kind in storage_items::STORAGE.iter().filter(|k| storage_items::wooden(k)) {
             let Some(st) = storage::new_stack(h, kind.id) else { continue };
-            for w in storage_items::WOODS {
+            let woods = if options::Options::read(h).single_wood { &storage_items::WOODS[..1] } else { &storage_items::WOODS[..] };
+            for w in woods.iter().copied() {
                 let mut s = st.clone();
                 storage::set_wood(&mut s, kind, w);
                 let placed = event.edit.insert(h, mod_api::CreativeTabPlacement::Last, s, mod_api::CreativeTabVisibility::Both);
@@ -822,21 +983,42 @@ impl Hooks for Mod {
         self.shared.refresh_ids(host, &ids);
     }
 
-    /// The Open Backpack key, while playing or in the player's own inventory.
+    /// The Open Backpack key, while playing or in the player's own inventory, and the other keys while playing or
+    /// in a screen.
     fn input_key(&self, host: &mut dyn ClientHost, event: &mut InputKeyEvent<'_>) {
-        if !matches!(event.action, KeyAction::Press) {
-            return;
+        if matches!(event.action, KeyAction::Press) {
+            press(host, event.key);
         }
-        let Ok(mapping) = host.mod_key_mapping("sophisticatedcore", KEY) else { return };
-        if mapping.binding(&*host).map(|(key, _)| key) != Ok(event.key) {
-            return;
+    }
+
+    fn mouse_button_post(&self, host: &mut dyn ClientHost, event: &mut MouseButtonPostEvent) {
+        if event.pressed {
+            press(host, &mouse_name(event.button));
         }
+    }
+}
+
+/// What a pressed key (or mouse button), by vanilla's name, does: it matches a mapping of this mod's.
+fn press(host: &mut dyn ClientHost, name: &str) {
+    let bound = |host: &dyn ClientHost, id: &str| {
+        host.mod_key_mapping("sophisticatedcore", id)
+            .ok()
+            .and_then(|m| m.binding(host).ok().map(|(key, _)| key == name))
+            == Some(true)
+    };
+    if bound(&*host, KEY) {
         let inventory = host.observed_screen_id().is_some_and(|s| s.id == "inventory") && host.screen_title().is_none();
-        if !(host.playing() || inventory) {
-            return;
-        }
-        if let Err(e) = host.send_payload_to_server(&PayloadId(OPEN.into()), PayloadBytes(Vec::new())) {
+        if (host.playing() || inventory)
+            && let Err(e) = host.send_payload_to_server(&PayloadId(OPEN.into()), PayloadBytes(Vec::new()))
+        {
             eprintln!("[sophisticatedcore] open: {e:?}");
+        }
+        return;
+    }
+    for (id, _, _, code) in ACTIONS {
+        if bound(&*host, id) {
+            let _ = host.send_payload_to_server(&PayloadId(ACT.into()), PayloadBytes(vec![code]));
+            return;
         }
     }
 }
