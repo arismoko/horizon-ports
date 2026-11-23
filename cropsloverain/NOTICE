@@ -1,9 +1,8 @@
-Crops Love Rain for Horizon 26.3 (version 0.4.0)
+Crops Love Rain for Sunrise (version 0.5.0)
 
-A port of Crops Love Rain 1.4.0 by ThePoultryMan.
-Original source: https://github.com/ThePoultryMan/Crops-Love_Rain
+A port of Crops Love Rain 3.2.2 by ThePoultryMan.
+Original source: https://codeberg.org/ThePoultryMan/Crops-Love-Rain
 Original licence: MIT
 
-Ported to Horizon by lavoide: the rules are re-implemented in Rust on Horizon's mod API (no Java
-code is included). This port is distributed under the same licence as the original (MIT); the licence text is in LICENSE. Built
-against Horizon's exact-build SDK dd67b76ff23e28c6d8e21859df600d31572f81a0.
+The original's English text and icon are used unchanged. The earlier Horizon port
+was by lavoide; this Sunrise port is by arismoko.

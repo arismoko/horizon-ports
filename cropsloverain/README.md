@@ -1,7 +1,19 @@
-# Crops Love Rain for Horizon
+# Crops Love Rain for Sunrise
 
 Crops grow faster in the rain.
 
-A port of [Crops Love Rain](https://github.com/ThePoultryMan/Crops-Love_Rain) 1.4.0 by ThePoultryMan to [Horizon](https://github.com/horizon-rust/horizon) 26.3, under the original's licence (MIT, in `LICENSE`; see `NOTICE`).
+A port of [Crops Love Rain](https://codeberg.org/ThePoultryMan/Crops-Love-Rain) 3.2.2 by ThePoultryMan to [Sunrise](https://playsunrise.net) (Minecraft Java 26.3), under the original's licence (MIT, in `LICENSE`; see `NOTICE`). One native mod on Sunrise's mod API.
 
-This folder is the package source: one native mod on Horizon's mod API only (no game module, no mixins). Release [`cropsloverain-v0.4.0`](https://github.com/lavoide/horizon-ports/releases/tag/cropsloverain-v0.4.0) holds `cropsloverain.hmod`, built from this folder with Horizon's exact-build SDK `dd67b76ff23e28c6d8e21859df600d31572f81a0` (Horizon Mixins `e59da9094f0c2fdda6c627fe9eff22dec6a906f0`). Earlier versions, if any, are in this folder's history.
+## What it does
+
+- While it rains on a crop (`Level.isRainingAt`) and it is lit, each random tick gives it a 1 in `rain_growth_speed` chance (default 10) of one extra growth step. It covers the `#minecraft:crops` blocks (wheat, carrots, potatoes, beetroots, torchflowers) and other mods' crops in that tag, sugar cane (a new cane on top while the column is under three tall), cocoa, sweet berries, all saplings (a stage first, then the tree), melon and pumpkin stems (an extra step, then the fruit) and bamboo (while it rains in the level).
+- A bamboo sapling grows its first stalk on every random tick, as in the original.
+- `config/cropsloverain-common.toml` holds the settings: the master switch and chance, optional individual chances for bamboo, cocoa, crops, saplings, sugar cane, sweet berries, melons and pumpkins (0 turns one off), a separate stem speed, and a debug mode with "halt regular growth" that stops the game's own growth so the rain's effect shows alone.
+- English text as the original ships it.
+
+## Differences from the original
+
+- The extra growth is applied at the end of the server tick, not inside the random tick.
+- A stem's extra step is not conditioned on vanilla's own roll, and a sapling's tree stage is bone-meal's, which succeeds with bone meal's chance.
+- The original's own list of crops is the `#minecraft:crops` tag here, so crops of other mods that are in the tag also grow faster.
+- The original syncs its config to players; here it is a server-side file. There is no in-game config screen.
