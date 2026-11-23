@@ -45,6 +45,7 @@ mod station;
 mod storage;
 mod storage_items;
 mod swapper;
+mod table;
 mod ticking;
 mod upgrades;
 mod worn;
@@ -171,12 +172,16 @@ enum Job {
     Key(u128),
     /// A key's action (`ACTIONS`' code).
     Action(u128, u8),
+    /// A decoration table was used: the player, its level and position.
+    Table(u128, String, [i32; 3]),
 }
 
 #[derive(Default)]
 struct Shared {
     jobs: Mutex<Vec<Job>>,
     sessions: Mutex<HashMap<u128, Session>>,
+    /// The decoration tables players have open.
+    tables: table::Sessions,
     /// The tick a player last placed or interacted with a backpack (the client's use packet follows the sneak-use).
     used: Mutex<HashMap<u128, u64>>,
     ticks: AtomicU64,
@@ -463,8 +468,64 @@ impl Shared {
         }
     }
 
+    /// DecorationTableBlock.use: opens the table's menu.
+    fn open_table(&self, host: &mut dyn ServerHost, uuid: u128, dim: &str, pos: [i32; 3]) {
+        let Some((_, be)) = table::entity(&*host, dim, pos) else {
+            return;
+        };
+        let items = table::render(host, be);
+        let replace =
+            if lock(&self.sessions).contains_key(&uuid) || lock(&self.tables).contains_key(&uuid) {
+                MenuReplace::InPlace
+            } else {
+                MenuReplace::CloseFirst
+            };
+        if let Some(prev) = lock(&self.sessions).remove(&uuid) {
+            self.closed_block(host, &prev.loc);
+        }
+        let title = mod_api::Text::literal("Decoration Table");
+        if let Ok(Some(window)) = host.open_menu(uuid, table::ROWS, title, items, replace) {
+            lock(&self.tables).insert(
+                uuid,
+                table::Session {
+                    window,
+                    dim: dim.to_string(),
+                    pos,
+                },
+            );
+        }
+    }
+
+    /// A click in a decoration table's menu; false when the window isn't one.
+    fn table_click(&self, host: &mut dyn ServerHost, ev: &MenuClickedEvent) -> bool {
+        let uuid = ev.uuid;
+        let Some(s) = lock(&self.tables)
+            .get(&uuid)
+            .filter(|s| s.window == ev.window)
+            .cloned()
+        else {
+            return false;
+        };
+        let Some((_, be)) = table::entity(&*host, &s.dim, s.pos) else {
+            lock(&self.tables).remove(&uuid);
+            host.close_menu(uuid);
+            return true;
+        };
+        if matches!(ev.mode, 0 | 1)
+            && let Some(msg) = table::click(host, uuid, &s, ev.slot, ev.button == 1)
+        {
+            places::message(host, uuid, msg);
+        }
+        let items = table::render(host, be);
+        let _ = host.menu_set_items(uuid, s.window, items);
+        true
+    }
+
     /// A click in one of the storage menus; false when the window isn't one.
     fn click(&self, host: &mut dyn ServerHost, ev: &MenuClickedEvent) -> bool {
+        if self.table_click(host, ev) {
+            return true;
+        }
         let uuid = ev.uuid;
         let Some(mut s) = lock(&self.sessions)
             .get(&uuid)
@@ -1010,6 +1071,42 @@ impl ItemPart for PlacedItemPart {
     }
 }
 
+/// DecorationTableBlock: using it opens the table's menu.
+struct TableBlock(Arc<Shared>);
+
+#[mod_api::sunrise_part]
+impl BlockPart for TableBlock {
+    fn use_item_on(
+        &self,
+        host: &mut dyn ServerHost,
+        event: &mut UseItemOnEvent<'_>,
+    ) -> Option<InteractionResult> {
+        if places::sneaking(&*host, event.click.player) {
+            return None;
+        }
+        self.use_without_item_at(event.click)
+    }
+
+    fn use_without_item(
+        &self,
+        _host: &mut dyn ServerHost,
+        event: &mut UseWithoutItemEvent<'_>,
+    ) -> Option<InteractionResult> {
+        self.use_without_item_at(event.click)
+    }
+}
+
+impl TableBlock {
+    fn use_without_item_at(&self, click: &mod_api::BlockClick<'_>) -> Option<InteractionResult> {
+        if !matches!(click.hand, Hand::Main) {
+            return Some(InteractionResult::Success);
+        }
+        let dim = click.dimension.key().id().to_string();
+        self.0.queue(Job::Table(click.player, dim, click.pos));
+        Some(InteractionResult::Success)
+    }
+}
+
 /// StorageBlockBase: placement facing, opening, the limited barrels' front.
 struct StorageBlock(Arc<Shared>);
 
@@ -1268,6 +1365,25 @@ impl Hooks for Mod {
                 });
             });
             storage_blocks.push(s.id);
+        }
+        if storage_loaded {
+            let key = r.block_key("sophisticatedstorage:decoration_table");
+            r.block_part(key, TableBlock(self.shared.clone()));
+            r.block_container(
+                &key,
+                ModContainer {
+                    slots: table::SLOTS,
+                    ..Default::default()
+                },
+            );
+            let _ = r.register_attachment_type("sophisticatedstorage:decoration_table", false);
+            let kind = r
+                .block_entity_type("decoration_table")
+                .blocks(&["sophisticatedstorage:decoration_table"])
+                .build();
+            if let Err(e) = r.block_entity_part_with_state(&kind, table::TableEntity) {
+                eprintln!("[sophisticatedcore] decoration table block entity part refused: {e:?}");
+            }
         }
         if !storage_blocks.is_empty() {
             let kind = r
@@ -1603,6 +1719,7 @@ impl Hooks for Mod {
                 Job::Open(uuid, loc) => self.shared.open(host, uuid, loc),
                 Job::Key(uuid) => self.shared.open_key(host, uuid),
                 Job::Action(uuid, code) => self.shared.action(host, uuid, code),
+                Job::Table(uuid, dim, pos) => self.shared.open_table(host, uuid, &dim, pos),
             }
         }
         let players: Vec<u128> = host
@@ -1845,6 +1962,15 @@ impl Hooks for Mod {
                 None
             }
         };
+        {
+            let mut tables = lock(&self.shared.tables);
+            if tables
+                .get(&event.uuid)
+                .is_some_and(|s| s.window == event.window)
+            {
+                tables.remove(&event.uuid);
+            }
+        }
         if let Some(prev) = prev {
             self.shared.closed_block(host, &prev.loc);
         }
