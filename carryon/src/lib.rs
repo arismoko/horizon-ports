@@ -19,42 +19,40 @@
 //!   is drawn over the hotbar in first person (the API draws a living entity only in a screen or the HUD) and
 //!   as its spawn egg on players seen in third person.
 //!
-//! The values are the original's default config (`carryon-common.json`). Not ported: picking up players (a player can't be
+//! The options are `config.rs`: switches and numbers are mod settings, the lists are text files in
+//! `config/carryon/`. The carry key is a Controls binding (left shift unless rebound) the client reports to the server;
+//! `/carryon debug|clear|place` are the original's commands. Not ported: picking up players (a player can't be
 //! a vehicle on this engine), the raised arms (the arm pose hooks aren't asked for an empty hand), custom
-//! pickup scripts and conditions (off in Homestead), the model overrides.
-use std::collections::HashMap;
+//! pickup scripts and conditions, the model overrides.
+
+mod config;
+
+use std::collections::{HashMap, HashSet};
 use std::ops::ControlFlow;
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, OnceLock};
 
 use mod_api::{
-    ActiveEffect, AttachmentCodec, AttachmentType, AttackEntityEvent, BlockUpdateFlags,
-    BreakBlockEvent, ClientHost, Compound, EntityInteractEvent, EntityRef, Flow, GameMode,
-    GuiEntity, GuiEntityLook, GuiEntityView, GuiRenderPostEvent, Hand, Holder, Hooks, Host,
-    HostBlockStates, HostSide, IPayloadContext, IPayloadHandler, InteractionResult,
-    ItemDisplayContext, ItemKey, ItemStack, LeftClickBlockEvent, LivingDeathEvent, LivingRef,
-    MobCategory, MouseScrollingEvent, PayloadBytes, PayloadHandleError, PayloadId, PlayerRef,
-    PlayerSwitchHotbarSlotPreEvent, Registrar, RegistrationContext, RemovalReason, RenderHandEvent,
-    RenderPlayerPostEvent, RightClickBlockEvent, ServerHost, ServerTickEvent, ServerTickPhase,
-    SoundSource, Tag,
+    ActiveEffect, AttachmentCodec, AttachmentType, AttackEntityEvent, BlockPos, BlockUpdateFlags,
+    BreakBlockEvent, ClientHost, ClientTickPostEvent, Command, CommandArgumentValue, CommandSource,
+    Compound, Direction, EntityInteractEvent, EntityRef, Flow, GameMode, GuiEntity, GuiEntityLook,
+    GuiEntityView, GuiRenderPostEvent, Hand, HitHost, Holder, Hooks, Host, HostBlockStates,
+    HostSide, IPayloadContext, IPayloadHandler, InteractionResult, ItemDisplayContext, ItemKey,
+    ItemStack, KeyRegistration, LeftClickBlockEvent, LivingDeathEvent, LivingIncomingDamageEvent,
+    LivingRef, MobCategory, MouseScrollingEvent, PayloadBytes, PayloadHandleError, PayloadId,
+    PlacementContext, PlayerRef, PlayerSwitchHotbarSlotPreEvent, RegisterCommandsEvent, Registrar,
+    RegistrationContext, RemovalReason, RenderHandEvent, RenderPlayerPostEvent,
+    RightClickBlockEvent, ServerHost, ServerTickEvent, ServerTickPhase, SettingSpec, SoundSource,
+    Tag, Text,
 };
 
+use config::{Lists, Settings, permitted};
+
 const CHANNEL: &str = "carryon:carried";
+const KEY_CHANNEL: &str = "carryon:key";
 
 // The original's default config (`CarryConfig`, `carryon-common.json`).
-const MAX_DISTANCE: f64 = 2.5;
-const MAX_ENTITY_WIDTH: f64 = 1.5;
-const MAX_ENTITY_HEIGHT: f64 = 2.5;
-const BLOCK_SLOWNESS: f64 = 1.0;
-const ENTITY_SLOWNESS: f64 = 1.0;
-const MAX_ENTITY_STACK: usize = 10;
-const SLOWNESS_IN_CREATIVE: bool = true;
-const PICKUP_HOSTILE: bool = false;
-const PICKUP_UNBREAKABLE: bool = false;
-const STACKABLE_ENTITIES: bool = true;
-const SIZE_MATTERS_STACKING: bool = true;
-// The original's default lists (`CarryConfig`): an id with `*` wildcards, or `#` and a tag.
-const FORBIDDEN_TILES: &[&str] = &[
+pub(crate) const FORBIDDEN_TILES: &[&str] = &[
     "#forge:immovable",
     "#forge:relocation_not_supported",
     "#neoforge:immovable",
@@ -202,7 +200,7 @@ const FORBIDDEN_TILES: &[&str] = &[
     "replication:*",
     "coloreditemframes:*",
 ];
-const FORBIDDEN_ENTITIES: &[&str] = &[
+pub(crate) const FORBIDDEN_ENTITIES: &[&str] = &[
     "#c:capturing_not_supported",
     "#c:teleporting_not_supported",
     "minecraft:end_crystal",
@@ -256,7 +254,7 @@ const FORBIDDEN_ENTITIES: &[&str] = &[
     "offroad:*",
     "coloreditemframes:*",
 ];
-const FORBIDDEN_STACKING: &[&str] = &["minecraft:horse", "minecraft:ender_dragon"];
+pub(crate) const FORBIDDEN_STACKING: &[&str] = &["minecraft:horse", "minecraft:ender_dragon"];
 
 /// What a player carries, as the jar's `CarryOnData` (saved with the player): empty when nothing.
 /// `type` "block" with `block` (the state string) and `tile` (the block entity's data), or "entity" with `kind`,
@@ -293,37 +291,6 @@ fn get_int(c: &Compound, k: &str) -> Option<i32> {
         Some(Tag::Int(v)) => Some(*v),
         _ => None,
     }
-}
-
-/// StringHelper.matchesWildcards: `*` stands for any run of characters.
-fn wildcard(name: &str, pattern: &str) -> bool {
-    let parts: Vec<&str> = pattern.split('*').collect();
-    if parts.len() == 1 {
-        return name == pattern;
-    }
-    let (first, last) = (parts[0], parts[parts.len() - 1]);
-    if !name.starts_with(first)
-        || !name[first.len()..].ends_with(last)
-        || name.len() < first.len() + last.len()
-    {
-        return false;
-    }
-    let mut rest = &name[first.len()..name.len() - last.len()];
-    for mid in &parts[1..parts.len() - 1] {
-        match rest.find(mid) {
-            Some(i) => rest = &rest[i + mid.len()..],
-            None => return false,
-        }
-    }
-    true
-}
-
-/// Whether `name` matches an entry of `list`: an id pattern, or a `#tag` that `in_tag` answers.
-fn listed(name: &str, list: &[&str], in_tag: &dyn Fn(&str) -> bool) -> bool {
-    list.iter().any(|p| match p.strip_prefix('#') {
-        Some(tag) => in_tag(tag),
-        None => wildcard(name, p),
-    })
 }
 
 /// `ns:block[k=v,...]` as its id and properties, in order.
@@ -483,6 +450,43 @@ fn placement_state(host: &dyn ServerHost, carried: &str, p: &Placement) -> Strin
     state_text(&id, &props)
 }
 
+/// A value of a `Direction` property (`facing`, `hopper`'s facing...), not a side's boolean.
+fn is_direction(value: &str) -> bool {
+    matches!(value, "north" | "south" | "east" | "west" | "up" | "down")
+}
+
+/// `PlacementHandler.getPlacementState`: the carried state, with the properties a placement
+/// decides taken from the state vanilla would place: every direction and axis, the listed
+/// exceptions, and waterlogging. A placement of another block leaves the carried state alone.
+fn merge_placement(carried: &str, placed: &str, exception: &dyn Fn(&str, &str) -> bool) -> String {
+    let (id, mut props) = parse_state(carried);
+    let (placed_id, placed_props) = parse_state(placed);
+    if id != placed_id {
+        return carried.to_owned();
+    }
+    for (name, value) in &placed_props {
+        let direction = is_direction(value);
+        let axis = name.ends_with("axis") && matches!(value.as_str(), "x" | "y" | "z");
+        if (direction || axis || name == "waterlogged" || exception(&id, name))
+            && prop(&props, name).is_some()
+        {
+            set_prop(&mut props, name, value);
+        }
+    }
+    state_text(&id, &props)
+}
+
+fn direction_of(face: [i32; 3]) -> Direction {
+    match face {
+        [0, -1, 0] => Direction::Down,
+        [0, 1, 0] => Direction::Up,
+        [0, 0, -1] => Direction::North,
+        [0, 0, 1] => Direction::South,
+        [-1, 0, 0] => Direction::West,
+        _ => Direction::East,
+    }
+}
+
 fn add(a: [i32; 3], b: [i32; 3]) -> [i32; 3] {
     [a[0] + b[0], a[1] + b[1], a[2] + b[2]]
 }
@@ -563,6 +567,27 @@ fn spawn_eggs(host: &dyn Host) -> &'static HashMap<String, ItemKey> {
     })
 }
 
+/// The client's carry key, held or let go (`[1]` or `[0]`).
+struct KeyHandler;
+
+impl IPayloadHandler for KeyHandler {
+    fn handle(
+        &self,
+        payload: PayloadBytes,
+        context: &mut dyn IPayloadContext,
+    ) -> Result<(), PayloadHandleError> {
+        if let Ok(player) = context.player() {
+            let mut held = key_held();
+            if payload.0.first() == Some(&1) {
+                held.insert(player.uuid());
+            } else {
+                held.remove(&player.uuid());
+            }
+        }
+        Ok(())
+    }
+}
+
 struct CarriedHandler;
 
 impl IPayloadHandler for CarriedHandler {
@@ -606,6 +631,10 @@ impl IPayloadHandler for CarriedHandler {
 #[derive(Default)]
 struct Mod {
     ticks: AtomicU64,
+    /// Players (entity ids) hurt since the last tick, for `dropCarriedWhenHit`.
+    hit: Mutex<Vec<u32>>,
+    /// The client's carry key as last sent.
+    key_down: AtomicBool,
     jobs: Mutex<Vec<Job>>,
     /// Whether the last list sent named anyone (an empty list is sent once after the last one is set down).
     sent_any: Mutex<bool>,
@@ -638,10 +667,10 @@ fn hands_empty(host: &dyn Host, player: PlayerRef) -> bool {
     })
 }
 
-/// PickupHandler.canCarryGeneral, but for the key (sneaking) and distance.
+/// PickupHandler.canCarryGeneral: the carry key is held (it is left shift unless the player rebinds it), hands are empty.
 fn may_pick(host: &mut dyn ServerHost, player: PlayerRef) -> bool {
     let reader: &dyn ServerHost = &*host;
-    if player.entity().is_shift_key_down(reader) != Some(true) || !hands_empty(reader, player) {
+    if !key_held().contains(&player.uuid()) || !hands_empty(reader, player) {
         return false;
     }
     if matches!(
@@ -655,6 +684,43 @@ fn may_pick(host: &mut dyn ServerHost, player: PlayerRef) -> bool {
 
 fn creative(host: &dyn Host, player: PlayerRef) -> bool {
     player.is_creative(host) == Some(true)
+}
+
+/// `SizeHelper.getPlayerScaleFactor` for `player`.
+fn scale_of(host: &dyn Host, player: PlayerRef, cfg: &Settings) -> f64 {
+    let scale = LivingRef::new(player.entity())
+        .attribute_value(host, "minecraft:scale")
+        .unwrap_or(1.0);
+    config::scale_factor(cfg.relative_player_scale, scale)
+}
+
+/// `PickupHandler.isInDistance`: within `maxDistance`, stretched by the player's reach against its
+/// base when `scaleDistance` is on.
+fn in_reach(host: &dyn Host, player: PlayerRef, to: [f64; 3], reach: &str, cfg: &Settings) -> bool {
+    let Some(feet) = player.entity().position(host) else {
+        return false;
+    };
+    let living = LivingRef::new(player.entity());
+    let stretch = if cfg.scale_distance {
+        match (
+            living.attribute_value(host, reach),
+            living.attribute_base(host, reach),
+        ) {
+            (Some(now), Some(base)) if base != 0.0 => now / base,
+            _ => 1.0,
+        }
+    } else {
+        1.0
+    };
+    let limit = cfg.max_distance * stretch;
+    let d = dist(feet, to);
+    d * d < limit * limit
+}
+
+/// Whether a player holds the carry key (`carryon:key`, sent by the client).
+fn key_held() -> std::sync::MutexGuard<'static, HashSet<u128>> {
+    static HELD: OnceLock<Mutex<HashSet<u128>>> = OnceLock::new();
+    lock(HELD.get_or_init(Mutex::default))
 }
 
 fn air(host: &dyn Host) -> Option<mod_api::BlockState> {
@@ -698,11 +764,15 @@ impl Mod {
             return false;
         };
         let reader: &dyn ServerHost = &*host;
+        let cfg = Settings::read(reader);
         let center = pos.map(|c| f64::from(c) + 0.5);
-        let Some(feet) = player.entity().position(reader) else {
-            return false;
-        };
-        if dist(feet, center) > MAX_DISTANCE {
+        if !in_reach(
+            reader,
+            player,
+            center,
+            "minecraft:block_interaction_range",
+            &cfg,
+        ) {
             return false;
         }
         let Some(state) = level.block_state(reader, pos) else {
@@ -713,7 +783,23 @@ impl Mod {
         };
         let block_key = level.block(reader, pos);
         let in_tag = |tag: &str| block_key.and_then(|k| reader.block_in_tag(k, tag)) == Some(true);
-        if block == "minecraft:air" || listed(block, FORBIDDEN_TILES, &in_tag) {
+        let lists = Lists::get(reader);
+        if block == "minecraft:air"
+            || !permitted(
+                block,
+                cfg.whitelist_blocks,
+                &lists.allowed_blocks,
+                &lists.forbidden_tiles,
+                &in_tag,
+            )
+        {
+            return false;
+        }
+        // DoorBlock.HALF: the halves of tall blocks stay (a trapdoor's `half` is another property).
+        if matches!(
+            level.block_property(reader, pos, "half").as_deref(),
+            Some("upper" | "lower")
+        ) {
             return false;
         }
         if reader
@@ -721,12 +807,12 @@ impl Mod {
             .destroy_speed(state)
             .is_some_and(|s| s < 0.0)
             && !creative(reader, player)
-            && !PICKUP_UNBREAKABLE
+            && !cfg.pickup_unbreakable
         {
             return false;
         }
         let Some(be) = reader.block_entity(level, pos) else {
-            return false;
+            return cfg.pickup_all_blocks;
         };
         // A locked container stays.
         if be.lock(reader).is_some_and(|l| !l.is_empty()) {
@@ -801,34 +887,54 @@ impl Mod {
 
     /// PickupHandler.tryPickupEntity, the checks the click can make.
     fn entity_pickable(host: &mut dyn ServerHost, player: PlayerRef, e: EntityRef) -> bool {
+        let nbt = e.nbt(host);
         let reader: &dyn ServerHost = &*host;
+        let cfg = Settings::read(reader);
+        let lists = Lists::get(reader);
         let kind = entity_kind(reader, e);
-        if kind.is_empty()
-            || kind == "minecraft:player"
-            || listed(&kind, FORBIDDEN_ENTITIES, &|tag| {
-                reader.entity_type_in_tag(&kind, tag)
-            })
-        {
+        if kind.is_empty() || kind == "minecraft:player" {
             return false;
         }
-        let (Some(feet), Some(at)) = (player.entity().position(reader), e.position(reader)) else {
+        let baby = nbt
+            .as_ref()
+            .and_then(|n| get_int(n, "Age"))
+            .is_some_and(|age| age < 0);
+        let allowed = permitted(
+            &kind,
+            cfg.whitelist_entities,
+            &lists.allowed_entities,
+            &lists.forbidden_entities,
+            &|tag| reader.entity_type_in_tag(&kind, tag),
+        );
+        // A baby can be carried though the grown mob is not allowed.
+        if !allowed && !(cfg.allow_babies && baby) {
+            return false;
+        }
+        let Some(at) = e.position(reader) else {
             return false;
         };
-        if dist(feet, at) > MAX_DISTANCE {
+        if !in_reach(
+            reader,
+            player,
+            at,
+            "minecraft:entity_interaction_range",
+            &cfg,
+        ) {
             return false;
         }
         if !creative(reader, player) {
-            if !PICKUP_HOSTILE && e.classification(reader) == Some(MobCategory::Monster) {
+            if !cfg.pickup_hostile && e.classification(reader) == Some(MobCategory::Monster) {
                 return false;
             }
+            let scale = scale_of(reader, player, &cfg);
             if let Some([w, h]) = e.dimensions(reader)
-                && (w > MAX_ENTITY_WIDTH || h > MAX_ENTITY_HEIGHT)
+                && (cfg.max_entity_width < w * scale || cfg.max_entity_height < h * scale)
             {
                 return false;
             }
         }
         // Someone else's pet stays.
-        let owner = e.nbt(host).and_then(|n| uuid_of(n.get(&"Owner".into())));
+        let owner = nbt.and_then(|n| uuid_of(n.get(&"Owner".into())));
         owner.is_none_or(|o| o == player.uuid())
     }
 
@@ -928,16 +1034,42 @@ impl Mod {
                     == Some("minecraft:water")
                     && level.block_property(reader, pos, "level").as_deref() == Some("0");
                 let carried = get_str(&carry, "block").unwrap_or_default();
-                let text = placement_state(
-                    reader,
-                    &carried,
-                    &Placement {
-                        face,
-                        yaw,
-                        pitch,
-                        in_water,
-                    },
+                let lists = Lists::get(reader);
+                let (carried_id, _) = parse_state(&carried);
+                let block_key = reader.block_key(&carried_id);
+                let sneaking = player.entity().is_shift_key_down(reader) == Some(true);
+                let mut context = PlacementContext::new(
+                    BlockPos::new(pos[0], pos[1], pos[2]),
+                    direction_of(face),
+                    None,
                 );
+                context.yaw = yaw;
+                context.pitch = pitch;
+                context.sneaking = sneaking;
+                let vanilla = block_key
+                    .and_then(|key| {
+                        level
+                            .state_for_placement(host, key, &context)
+                            .ok()
+                            .flatten()
+                    })
+                    .and_then(|state| host.block_state_string(state));
+                let reader: &dyn ServerHost = &*host;
+                let text = match vanilla {
+                    Some(placed) => merge_placement(&carried, &placed, &|block, property| {
+                        lists.recomputes(block, property)
+                    }),
+                    None => placement_state(
+                        reader,
+                        &carried,
+                        &Placement {
+                            face,
+                            yaw,
+                            pitch,
+                            in_water,
+                        },
+                    ),
+                };
                 let Some(state) = reader
                     .block_state_id(&text)
                     .or_else(|| reader.block_state_id(&carried))
@@ -998,7 +1130,8 @@ impl Mod {
 
     /// PlacementHandler.tryStackEntity: the carried mob rides the top of the clicked mob's stack.
     fn stack(&self, host: &mut dyn ServerHost, uuid: u128, target: u32) {
-        if !STACKABLE_ENTITIES {
+        let cfg = Settings::read(&*host);
+        if !cfg.stackable_entities {
             return;
         }
         let carry = carry_of(host, uuid);
@@ -1023,8 +1156,16 @@ impl Mod {
                 ent.play_sound(host, "minecraft:block.note_block.bass", 0.5, 0.5);
             }
         };
-        if count + 1 >= MAX_ENTITY_STACK
-            || listed(&entity_kind(reader, top), FORBIDDEN_STACKING, &|_| false)
+        let lists = Lists::get(reader);
+        let top_kind = entity_kind(reader, top);
+        if count + 1 >= cfg.max_stack
+            || !permitted(
+                &top_kind,
+                cfg.whitelist_stacking,
+                &lists.allowed_stacking,
+                &lists.forbidden_stacking,
+                &|tag| reader.entity_type_in_tag(&top_kind, tag),
+            )
         {
             return fail(host);
         }
@@ -1042,7 +1183,7 @@ impl Mod {
             _ => 0.36,
         };
         let top_size = top.dimensions(reader).map_or(0.0, |[w, h]| w * h);
-        if SIZE_MATTERS_STACKING && size > top_size {
+        if cfg.size_matters_stacking && size > top_size {
             return fail(host);
         }
         let Some(at) = top.position(reader) else {
@@ -1151,8 +1292,9 @@ impl Mod {
             }
             let kind = get_str(&carry, "type").unwrap_or_default();
             let reader: &dyn ServerHost = &*host;
-            // Slowness: a mob by its size (up to IV), a block by the size of its data (a level per 500
-            // characters of its NBT text, here its network size, up to IV); 1 tick, renewed each tick.
+            // Slowness: a mob by its area, a block by the size of its data (a level per 500 characters
+            // of its NBT text, here its network size), up to IV; 1 tick, renewed each tick.
+            let cfg = Settings::read(reader);
             let level = if kind == "entity" {
                 let size = match carry.get(&"size".into()) {
                     Some(Tag::List(v)) => v
@@ -1167,15 +1309,16 @@ impl Mod {
                         .product::<f64>(),
                     _ => 1.0,
                 };
-                ((size as i32).min(4) as f64 * ENTITY_SLOWNESS) as i32
+                let scale = scale_of(reader, player, &cfg);
+                config::slowness_level(false, 0, size * scale * scale, &cfg)
             } else {
                 let len = Tag::Compound(carry.clone())
                     .to_network_bytes()
                     .map_or(0, |b| b.len());
-                (((len / 500) as i32).min(4) as f64 * BLOCK_SLOWNESS) as i32
+                config::slowness_level(true, len, 0.0, &cfg)
             };
             if let Some(id) = slowness
-                && (SLOWNESS_IN_CREATIVE || !creative(reader, player))
+                && (cfg.slowness_in_creative || !creative(reader, player))
             {
                 let effect = ActiveEffect::new(id, 3, level, false, false, false);
                 LivingRef::new(player.entity()).add_effect(host, &effect);
@@ -1245,6 +1388,35 @@ impl Mod {
     }
 }
 
+/// The player a command came from.
+fn source_player(source: &CommandSource) -> Option<PlayerRef> {
+    match source {
+        CommandSource::Player { player, .. } => Some(*player),
+        _ => None,
+    }
+}
+
+/// `/carryon debug`'s lines for what is carried.
+fn describe(carry: &Compound) -> Vec<String> {
+    match get_str(carry, "type").as_deref() {
+        Some("block") => {
+            let mut lines = vec![format!(
+                "BlockState: {}",
+                get_str(carry, "block").unwrap_or_default()
+            )];
+            if let Some(Tag::Compound(tile)) = carry.get(&"tile".into()) {
+                lines.push(format!("Block entity data: {} entries", tile.len()));
+            }
+            lines
+        }
+        Some("entity") => vec![format!(
+            "Entity: {}",
+            get_str(carry, "kind").unwrap_or_default()
+        )],
+        _ => Vec::new(),
+    }
+}
+
 /// The client's own player's network id.
 fn local_id(host: &dyn ClientHost) -> Option<u32> {
     host.local_player().map(|p| p.entity().id())
@@ -1303,10 +1475,86 @@ fn draw_block(
 #[mod_api::sunrise_mod]
 impl Hooks for Mod {
     fn register(&self, r: &mut dyn Registrar, _cx: &RegistrationContext) {
-        r.payload_handlers()
-            .registrar("1")
-            .optional()
-            .play_to_client(PayloadId(CHANNEL.into()), Some(Arc::new(CarriedHandler)));
+        for (name, kind) in config::SPECS {
+            let label = format!("carryon.config.{name}");
+            let spec = match kind {
+                config::Kind::Toggle(default) => SettingSpec::toggle(*name, &label, *default),
+                config::Kind::Range(min, max, step, default) => {
+                    SettingSpec::range(*name, &label, *min, *max, *step, *default)
+                }
+            };
+            let _ = r.register_setting(spec);
+        }
+        r.register_key_mapping(
+            KeyRegistration::new("carry", "key.keyboard.left.shift").label("key.carry.desc"),
+        );
+        let mut payloads = r.payload_handlers();
+        let mut channel = payloads.registrar("1").optional();
+        channel.play_to_client(PayloadId(CHANNEL.into()), Some(Arc::new(CarriedHandler)));
+        channel.play_to_server(PayloadId(KEY_CHANNEL.into()), Arc::new(KeyHandler));
+    }
+
+    /// `CommandCarryOn`: `/carryon debug`, and `clear` and `place` for yourself or (operators)
+    /// for chosen players.
+    fn register_commands(&self, _: &mut dyn ServerHost, event: &mut RegisterCommandsEvent<'_>) {
+        event
+            .commands
+            .push(Command::new("carryon debug").executes(|host, source, _| {
+                let Some(uuid) = source_player(source).map(|p| p.uuid()) else {
+                    return Err(Box::new(Text::literal("Only a player carries.")));
+                };
+                let carry = carry_of(host, uuid);
+                let lines = describe(&carry);
+                for line in &lines {
+                    let _ = host.commands().feedback(Text::literal(line.clone()));
+                }
+                Ok(i32::from(!lines.is_empty()))
+            }));
+        for (usage, level, place) in [
+            ("carryon clear", 0, false),
+            ("carryon clear <target:players>", 2, false),
+            ("carryon place", 2, true),
+            ("carryon place <target:players>", 2, true),
+        ] {
+            event.commands.push(
+                Command::op(usage, level).executes(move |host, source, call| {
+                    let targets = match call.argument("target") {
+                        Some(CommandArgumentValue::Players(list)) => list.clone(),
+                        _ => source_player(source).into_iter().collect(),
+                    };
+                    let mut done = 0;
+                    for player in targets {
+                        let carry = carry_of(host, player.uuid());
+                        if carry.is_empty() {
+                            continue;
+                        }
+                        let reader: &dyn ServerHost = &*host;
+                        let spot = (player.entity().position(reader), player.dimension(reader));
+                        set_carry(host, player.uuid(), Compound::new());
+                        if let (true, (Some(at), Some(dim))) = (place, spot) {
+                            Mod::default().drop_carried(host, &dim.to_string(), at, &carry);
+                        }
+                        done += 1;
+                    }
+                    Ok(done)
+                }),
+            );
+        }
+    }
+
+    /// The carry key's state, for the server (`CarryOnKeybinds.onCarryKey`): sent when it changes.
+    fn client_tick_post(&self, host: &mut dyn ClientHost, _: &mut ClientTickPostEvent) {
+        let down = host
+            .mod_key_mapping(config::MOD_ID, "carry")
+            .ok()
+            .and_then(|key| key.is_down(&*host).ok())
+            .unwrap_or(false);
+        if self.key_down.swap(down, Ordering::Relaxed) != down {
+            let _ = host.send_payload_to_server(
+                &PayloadId(KEY_CHANNEL.into()),
+                PayloadBytes(vec![u8::from(down)]),
+            );
+        }
     }
 
     fn server_tick(&self, host: &mut dyn ServerHost, event: &mut ServerTickEvent<'_>) {
@@ -1314,6 +1562,29 @@ impl Hooks for Mod {
             return;
         }
         let tick = self.ticks.fetch_add(1, Ordering::Relaxed);
+        let hit = std::mem::take(&mut *lock(&self.hit));
+        if !hit.is_empty() && Settings::read(&*host).drop_when_hit {
+            for id in hit {
+                let Some(e) = host.entity(id) else { continue };
+                let Some(uuid) = e.uuid(host) else { continue };
+                let carry = carry_of(host, uuid);
+                let reader: &dyn ServerHost = &*host;
+                let (Some(at), Some(dim)) = (
+                    e.position(reader),
+                    host.player(uuid).and_then(|p| p.dimension(reader)),
+                ) else {
+                    continue;
+                };
+                if !carry.is_empty() {
+                    set_carry(host, uuid, Compound::new());
+                    self.queue(Job::Drop {
+                        dim: dim.to_string(),
+                        at,
+                        carry,
+                    });
+                }
+            }
+        }
         let jobs = std::mem::take(&mut *lock(&self.jobs));
         let changed = !jobs.is_empty();
         for job in jobs {
@@ -1414,23 +1685,43 @@ impl Hooks for Mod {
         _event: &mut LeftClickBlockEvent,
     ) -> Flow {
         match host.players().acting_player() {
-            Some(p) if carrying(host, p.uuid()) => Flow::Cancel,
+            Some(p) if !Settings::read(&*host).hit_while_carrying && carrying(host, p.uuid()) => {
+                Flow::Cancel
+            }
             _ => Flow::Continue,
         }
     }
 
     fn break_block(&self, host: &mut dyn ServerHost, _event: &mut BreakBlockEvent<'_>) -> Flow {
         match host.players().acting_player() {
-            Some(p) if carrying(host, p.uuid()) => Flow::Cancel,
+            Some(p) if !Settings::read(&*host).hit_while_carrying && carrying(host, p.uuid()) => {
+                Flow::Cancel
+            }
             _ => Flow::Continue,
         }
     }
 
     fn attack_entity(&self, host: &mut dyn ServerHost, _event: &mut AttackEntityEvent<'_>) -> Flow {
         match host.players().acting_player() {
-            Some(p) if carrying(host, p.uuid()) => Flow::Cancel,
+            Some(p) if !Settings::read(&*host).hit_while_carrying && carrying(host, p.uuid()) => {
+                Flow::Cancel
+            }
             _ => Flow::Continue,
         }
+    }
+
+    /// `PlayerMixinFabric.onHurt`: a hit player puts down what they carry (when the option is on).
+    fn living_incoming_damage(
+        &self,
+        _: &mut dyn HitHost,
+        event: &mut LivingIncomingDamageEvent<'_>,
+    ) -> Flow {
+        if event.kind == "minecraft:player"
+            && let Ok(id) = u32::try_from(event.entity)
+        {
+            lock(&self.hit).push(id);
+        }
+        Flow::Continue
     }
 
     /// InventoryMixin / onCarryTick: the hotbar slot can't change while carrying.
@@ -1517,7 +1808,12 @@ impl Hooks for Mod {
             draw.translate([-size / 2.0, -1.12, -1.7]);
             draw.scale([size, size, size]);
             draw.rotate_about([1.0, 0.0, 0.0], 8.0, [0.5, 0.5, 0.5]);
-            draw_block(host, draw, &id, &block_props(&props, "south"));
+            let props = if config::flag(host, config::key::FACE_PLAYER, true) {
+                block_props(&props, "south")
+            } else {
+                props
+            };
+            draw_block(host, draw, &id, &props);
             draw.pop();
         }
         event.cancelled = true;
@@ -1536,7 +1832,12 @@ impl Hooks for Mod {
                 let size = 0.7;
                 draw.translate([-size / 2.0, 0.75, 0.3]);
                 draw.scale([size, size, size]);
-                draw_block(host, draw, &id, &block_props(&props, "south"));
+                let props = if config::flag(host, config::key::FACE_PLAYER, true) {
+                    block_props(&props, "south")
+                } else {
+                    props
+                };
+                draw_block(host, draw, &id, &props);
             }
             Shown::Entity { kind, .. } => {
                 if let Some(stack) = spawn_eggs(host)
@@ -1588,15 +1889,27 @@ mod tests {
     use super::*;
 
     #[test]
-    fn wildcards() {
-        assert!(wildcard("minecraft:red_bed", "minecraft:*_bed"));
-        assert!(!wildcard("minecraft:bedrock", "minecraft:*_bed"));
-        assert!(wildcard("create:anything", "create:*"));
-        assert!(wildcard(
-            "vinery:oak_wine_rack_small",
-            "vinery:*_wine_rack_small"
-        ));
-        assert!(!wildcard("minecraft:chest", "minecraft:*_door"));
+    fn a_placement_decides_directions_axes_and_listed_properties() {
+        let none = |_: &str, _: &str| false;
+        let merged = merge_placement(
+            "minecraft:barrel[facing=north,open=true]",
+            "minecraft:barrel[facing=up,open=false]",
+            &none,
+        );
+        assert_eq!(merged, "minecraft:barrel[facing=up,open=true]");
+        let listed = |b: &str, p: &str| b == "minecraft:chest" && p == "type";
+        assert_eq!(
+            merge_placement(
+                "minecraft:chest[facing=east,type=left,waterlogged=false]",
+                "minecraft:chest[facing=south,type=single,waterlogged=true]",
+                &listed
+            ),
+            "minecraft:chest[facing=south,type=single,waterlogged=true]"
+        );
+        assert_eq!(
+            merge_placement("minecraft:chest[type=left]", "minecraft:stone", &listed),
+            "minecraft:chest[type=left]"
+        );
     }
 
     #[test]
