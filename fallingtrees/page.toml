@@ -1,0 +1,24 @@
+summary = "Chop the bottom log of a tree with an axe and the whole tree comes down, logs, leaves and all."
+description = """
+Chop the bottom log of a tree with an axe and the whole tree comes down, logs, leaves and all.
+
+A port of [Panda's Falling Trees](https://github.com/PandaMods-Dev/Pandas-Falling-Trees) by The Panda Oliver to [Sunrise](https://playsunrise.net) (Minecraft Java 26.3), written in Rust on Sunrise's mod API.
+
+What it does:
+
+- Breaking a log with an axe fells its tree: every log above it, the leaves that belong to it (not a neighbouring tree's), and the vines, cocoa and bee nests on it.
+- Each block drops what it would when mined with your axe (so Silk Touch and Fortune count), and the drops land at the stump.
+- The axe wears one point per log and you tire as if you had chopped each log, as in the original; Unbreaking applies.
+- Sneak to chop a single log. Persistent (player-placed) leaves are never part of a tree, and a tree of more than 256 logs is left alone.
+- Works in survival and creative, with any item named as an axe.
+
+Differences from the original:
+
+- The tree does not topple as an animated entity with its sounds: it comes down at once, at the end of the tick.
+- Bigger trees do not take longer to chop, and cactus, bamboo and chorus plants are left to vanilla.
+"""
+categories = ["game-mechanics", "utility"]
+
+[[screenshots]]
+path = "page/world.png"
+caption = "A tree coming down after its bottom log is chopped."

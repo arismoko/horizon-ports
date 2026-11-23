@@ -1,10 +1,13 @@
 [package]
 name = "mod-fallingtrees"
-version = "0.1.0"
+version = "0.5.0"
 edition = "2024"
+license = "GPL-3.0-only"
+description = "Falling Trees for Sunrise: chop a tree's log with an axe and the whole tree comes down"
+# Ported from: Panda's Falling Trees 0.13.2 (PandaMods-Dev/Pandas-Falling-Trees, GPL-3.0-only).
+# Cargo's name and version are not the mod's identity: sunrise-mod.toml is.
+publish = false
 
 [dependencies]
-# The pinned SDK's API crate, fetched into .horizon/sdk/ by any `cargo horizon-mod` command (the
-# launcher builds against its own copy of the same build). Any other registry dependency must be
-# pinned with `horizon-launcher native-lock .` before building.
-horizon-mod-api = { path = ".horizon/sdk/api/crates/horizon-mod-api" }
+# The pinned SDK's API crate, fetched into .sunrise/sdk/ by any `cargo sunrise-mod` command.
+sunrise-mod-api = { path = ".sunrise/sdk/api/crates/sunrise-mod-api" }
