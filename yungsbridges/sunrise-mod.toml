@@ -1,50 +1,14 @@
-# yungsbridges: YUNG's Bridges 4.0.3 (YungNickYoung, LGPLv3): bridges over rivers, placed after
-# generation (src/runtime.rs, the old bundle's). The templates and the bridge list are
-# src/bridge_data.rs, written by tools/yungsbridges_port.py from the carry. src/lib.rs only
-# listens to `level_tick_post`, so the game calls the level tick hook point the tick mixin uses.
+# YUNG's Bridges for Sunrise: native code in src/ with its data/ and assets/.
 id = "yungsbridges"
 name = "YUNG's Bridges"
-version = "0.4.1"
-description = "Bridges over rivers (YUNG's Bridges 4.0.3 by YungNickYoung, LGPLv3)"
-authors = []
-api = "0.2"
+version = "0.5.0"
+description = "Stone and wooden bridges that span rivers where the banks allow, some of them crumbling."
+authors = ["YUNGNICKYOUNG"]
+license = "LGPL-3.0-only"
+credits = "Ported to Minecraft 26.3 by lavoide, and to Sunrise by arismoko."
+homepage = "https://github.com/arismoko/horizon-ports"
 side = "both"
-capabilities = ["registries"]
 
 [native]
 game = "26.3"
-horizon = "dd67b76ff23e28c6d8e21859df600d31572f81a0"
-mixins = "e59da9094f0c2fdda6c627fe9eff22dec6a906f0"
-
-[[native.module]]
-id = "data"
-file = "crates/horizon-client/src/game.rs"
-name = "yungsbridges_data"
-source = "src/bridge_data.rs"
-
-[[native.module]]
-id = "runtime"
-file = "crates/horizon-client/src/game.rs"
-name = "yungsbridges"
-source = "src/runtime.rs"
-
-# A newly generated overworld chunk waits for its bridge.
-[[native.mixin]]
-id = "chunk"
-kind = "HEAD"
-target = "horizon_client::game::native_hooks::base::Game<'_>::native_chunk_load"
-helper = "src/mixins/chunk.rs"
-bindings = [
-  { name = "dimension", ty = "&str", value = "dimension" },
-  { name = "chunk", ty = "[i32; 2]", value = "chunk" },
-  { name = "new", ty = "bool", value = "new" },
-]
-
-# After each level's tick: queued chunks whose surroundings are loaded (the old target
-# `native_tick` is gone).
-[[native.mixin]]
-id = "tick"
-kind = "HEAD"
-target = "horizon_client::game::native_hooks::base::Game<'_>::native_level_tick_post"
-helper = "src/mixins/tick.rs"
-bindings = [{ name = "game", ty = "&mut Game<'_>", value = "&mut *self" }]
+sunrise = "7cfdf81463ebb4a19705768273909f7f3f03601d"

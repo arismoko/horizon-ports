@@ -1,0 +1,22 @@
+summary = "Stone and wooden bridges that span rivers where the banks allow, some of them crumbling."
+description = """
+Stone and wooden bridges that span rivers where the banks allow, some of them crumbling.
+
+A port of [YUNG's Bridges](https://github.com/YUNG-GANG/YUNGs-Bridges) by YUNGNICKYOUNG to [Sunrise](https://playsunrise.net) (Minecraft Java 26.3). The original's bridge feature, crossing search and template processors are Rust here, as one feature type that world generation runs in river biomes.
+
+What it does:
+
+- Eleven bridge designs (stone and wooden, 15 to 31 blocks long, some broken), each north-south or east-west: 22 variants, as in the original.
+- Bridges only where a river crosses the chunk with solid banks at both ends and open water between, at the original's rarity.
+- Legs down to the river bed, mossy and cracked stone, missing slabs and stairs, and lanterns and torches that are sometimes gone, from the original's processors.
+- Rivers from other mods count through the `c:river` biome tag, as in the original.
+
+Differences from the original:
+
+- Wooden parts are always oak: the original picks dark oak, spruce, jungle or acacia by the biome at the bank, and a world-generation feature cannot read the biome yet.
+"""
+categories = ["worldgen"]
+
+[[screenshots]]
+path = "page/world.png"
+caption = "A stone bridge across a river."

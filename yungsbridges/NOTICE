@@ -1,11 +1,11 @@
-YUNG's Bridges for Horizon 26.3 (version 0.4.1)
+YUNG's Bridges for Sunrise (version 0.5.0)
 
-A port of YUNG's Bridges 4.0.3 by YUNGNICKYOUNG.
-Original source: https://github.com/yungnickyoung/YUNGs-Bridges
+A port of YUNG's Bridges by YUNGNICKYOUNG.
+Original source: https://github.com/YUNG-GANG/YUNGs-Bridges
 Original licence: LGPL-3.0-only
 
-Ported to Horizon by lavoide: the rules are re-implemented in Rust as a Horizon native mod (the mod API plus
-the [[native.mixin]] patches and game modules listed in horizon-mod.toml; no Java code is included). This port is distributed under the same licence as the original (LGPL-3.0-only); the licence text is in LICENSE. Built
-against Horizon's exact-build SDK dd67b76ff23e28c6d8e21859df600d31572f81a0.
-
-LICENSE is the GNU LGPL v3 text (the jar has no licence file); COPYING is the GNU GPL v3 text the LGPL builds on.
+Ported to Minecraft 26.3 by lavoide, and to Sunrise by arismoko: the bridge feature, its crossing
+search and its template processors are written in Rust on the Sunrise mod API; no Java code is
+included. The bridge templates (src/bridges.rs, decoded by tools/gen_bridges.py) and the data in
+data/yungsbridges are the original's. This port is distributed under the same licence; LICENSE is
+the GNU LGPL v3 text and COPYING the GNU GPL v3 text it builds on.
