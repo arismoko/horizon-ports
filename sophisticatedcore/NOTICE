@@ -13,3 +13,5 @@ their content (items, blocks, textures, models, recipes and other data) is carri
 under their own namespaces. This port is distributed under the same licence as the originals (GPL-3.0); the
 licence text is the original repositories' LICENSE (the jars have none). Built against Horizon's exact-build
 SDK dd67b76ff23e28c6d8e21859df600d31572f81a0.
+
+Ported to Sunrise by arismoko (version 0.5.0), on the Sunrise mod API, under the same licence.

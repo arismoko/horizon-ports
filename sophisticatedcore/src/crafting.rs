@@ -6,11 +6,11 @@
 //! - `sophisticatedcore:storage_dye` (StorageDyeRecipeBase): a storage item and dyes anywhere in the grid; dyes in
 //!   its column or left of it colour the cloth, in its column or right of it the trim (ColorHelper.calculateColor).
 //!
-//! Recipe callbacks get no host, so the item ids recipes may name are given keys at registration (`ITEM_IDS`).
+//! The item ids recipes may name are given keys at registration (`ITEM_IDS`).
 use std::collections::HashMap;
 
 use mod_api::serde_json::Value;
-use mod_api::{CraftingGrid, CraftingRecipeCodec, CraftingRecipeKind, ItemKey, ItemStack, Registrar, Tag};
+use mod_api::{CraftingGrid, CraftingRecipeKind, ItemKey, ItemStack, LoopContext, Registrar, Tag};
 
 use crate::contents::{Nbt, custom_data, get_int, put, set_custom_data};
 
@@ -216,10 +216,6 @@ impl UpgradeNextTier {
 impl CraftingRecipeKind for UpgradeNextTier {
     type Value = Shaped;
 
-    fn codec(&self) -> Option<CraftingRecipeCodec<Shaped>> {
-        Some(CraftingRecipeCodec::wire())
-    }
-
     fn decode(&self, json: &str) -> Result<Shaped, String> {
         let d: Value = mod_api::serde_json::from_str(json).map_err(|e| e.to_string())?;
         let ids = |v: &Value| -> Result<Vec<String>, String> {
@@ -279,14 +275,14 @@ impl CraftingRecipeKind for UpgradeNextTier {
         Ok(mod_api::serde_json::json!({"pattern": v.pattern, "key": key, "result": {"id": v.result, "count": v.count}, "copy": v.copy}).to_string())
     }
 
-    fn matches(&self, v: &Shaped, grid: CraftingGrid) -> bool {
+    fn matches(&self, _: &dyn LoopContext, v: &Shaped, grid: CraftingGrid) -> bool {
         if !v.ingredients.is_empty() {
             return self.shapeless(v, &grid).is_some();
         }
         self.layout(v, &grid).is_some()
     }
 
-    fn assemble(&self, v: &Shaped, grid: CraftingGrid) -> Option<ItemStack> {
+    fn assemble(&self, _: &dyn LoopContext, v: &Shaped, grid: CraftingGrid) -> Option<ItemStack> {
         if !v.ingredients.is_empty() {
             let kept = self.shapeless(v, &grid)?;
             let mut out = ItemStack::new(*self.keys.get(&v.result)?, v.count.max(1))?;
@@ -407,10 +403,6 @@ pub fn set_colors(stack: &mut ItemStack, main: i32, accent: i32) {
 impl CraftingRecipeKind for StorageDye {
     type Value = Dye;
 
-    fn codec(&self) -> Option<CraftingRecipeCodec<Dye>> {
-        Some(CraftingRecipeCodec::wire())
-    }
-
     fn decode(&self, json: &str) -> Result<Dye, String> {
         let d: Value = mod_api::serde_json::from_str(json).map_err(|e| e.to_string())?;
         let storage: Vec<String> = d["storage"].as_array().ok_or("no storage")?.iter().filter_map(|x| x.as_str().map(String::from)).collect();
@@ -431,7 +423,7 @@ impl CraftingRecipeKind for StorageDye {
             "main_key": v.main_key, "accent_key": v.accent_key}).to_string())
     }
 
-    fn matches(&self, v: &Dye, grid: CraftingGrid) -> bool {
+    fn matches(&self, _: &dyn LoopContext, v: &Dye, grid: CraftingGrid) -> bool {
         let mut storage = 0;
         let mut dyes = 0;
         for s in grid.cells.iter().flatten() {
@@ -446,7 +438,7 @@ impl CraftingRecipeKind for StorageDye {
         storage == 1 && dyes > 0
     }
 
-    fn assemble(&self, v: &Dye, grid: CraftingGrid) -> Option<ItemStack> {
+    fn assemble(&self, _: &dyn LoopContext, v: &Dye, grid: CraftingGrid) -> Option<ItemStack> {
         let w = grid.width as usize;
         let mut storage = None;
         let mut column_dyes: Vec<(usize, u32)> = Vec::new();

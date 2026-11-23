@@ -383,7 +383,7 @@ impl Contents {
 
 /// The stack's item id.
 pub fn item_id(host: &dyn Host, stack: &ItemStack) -> String {
-    stack.item().id(host).to_string()
+    stack.item().id(host).unwrap_or_default().to_owned()
 }
 
 /// `stack` with `count` (a count of 0 is nothing).

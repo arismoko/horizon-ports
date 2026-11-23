@@ -1,0 +1,26 @@
+summary = "Tiered backpacks, chests, barrels and shulker boxes whose contents travel with them, with upgrades that work while you carry them."
+description = """
+Tiered backpacks, chests, barrels and shulker boxes whose contents travel with them, with upgrades that work while you carry them.
+
+A port of [Sophisticated Backpacks](https://github.com/Salandora/SophisticatedBackpacks), [Sophisticated Storage](https://github.com/Salandora/SophisticatedStorage) and [Sophisticated Core](https://github.com/Salandora/SophisticatedCore) by P3pp3rF1y, Ridanisaurus and Salandora to [Sunrise](https://playsunrise.net) (Minecraft Java 26.3), in one package, written in Rust on Sunrise's mod API.
+
+What it does:
+
+- Six backpack tiers (leather to netherite) that keep their contents and upgrades in the item: open one from your hand or with the Open Backpack key (B), or place it with sneak + use and pick it back up with an empty hand.
+- Sophisticated Storage's tiered chests, barrels (with limited one-to-four-slot barrels) and shulker boxes in every wood, which keep their contents when broken or packed; chests placed side by side join.
+- A paged storage screen with sorting, upgrade slots, upgrade settings and a crafting grid.
+- Upgrades that work while carried or placed: pickup, magnet, void, feeding, compacting, refill, restock and deposit, hopper, and stack upgrades that raise each slot's limit.
+- Tier upgrades crafted in place keep the contents; dye backpacks and storage in the crafting grid.
+- Backpacks in vanilla chest loot, as in the original.
+
+Differences from the original:
+
+- The original's own screen (tabs, sort buttons, memory and no-sort slots) is a chest menu here.
+- The furnace, jukebox, tank, battery, pump, XP pump, tool swapper, stonecutter, anvil, smithing, inception, everlasting and infinity upgrades sit in their slot and do nothing yet; the filter upgrade and the storage network blocks do not work yet.
+- Backpacks are not drawn on the player's back, and mobs don't spawn wearing them.
+"""
+categories = ["storage", "equipment"]
+
+[[screenshots]]
+path = "page/world.png"
+caption = "Backpacks and storage with their screen open."

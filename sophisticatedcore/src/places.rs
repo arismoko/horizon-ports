@@ -59,43 +59,34 @@ pub fn set_worn(host: &mut dyn Host, uuid: u128, slot: &str, stack: Option<ItemS
     WORN.set(host, Holder::Player(uuid), c).is_ok()
 }
 
-/// The player's inventory slots 0..=40 (main, armour, off hand).
-///
-/// `inventory_slots` answers None for the whole inventory when one slot holds an item the game can't hand to a mod
-/// (an item of a mod that isn't installed: live-world players carry them). Then each slot is read on its own through
-/// the player's open menu, and such a slot reads as empty: it is not. So nothing may be put into a slot this
-/// reads as empty unless `complete` says the read was whole (`give` and the pickup check it).
-pub fn inventory(host: &mut dyn ServerHost, player: PlayerRef) -> Vec<Option<ItemStack>> {
-    let mut inv = vec![None; 41];
-    match player.inventory_slots(&*host) {
-        Some(slots) => {
-            for (slot, stack) in slots {
-                if (slot as usize) < 41 {
-                    inv[slot as usize] = Some(stack);
+/// The player's inventory slots 0..=40 (main, armour, off hand), as owned stacks.
+fn readable(host: &dyn Host, player: PlayerRef) -> Option<(Vec<Option<ItemStack>>, bool)> {
+    player.with_inventory(host, |inventory| {
+        let mut inv = vec![None; 41];
+        let mut whole = true;
+        for (slot, view) in inventory.iter() {
+            if (slot as usize) < 41 {
+                match view.project() {
+                    Some(stack) => inv[slot as usize] = Some(stack),
+                    None => whole = false,
                 }
             }
         }
-        None => {
-            // Slot by slot through the player's open menu (the inventory menu when no other is open): its slots
-            // backed by the inventory. The player's `ENTITY_ITEMS` handler read nothing here in the test.
-            let h: &dyn Host = &*host;
-            if let Some(menu) = player.container_menu(h) {
-                for i in 0..menu.slot_count(h).unwrap_or(0) {
-                    if let Some(mod_api::MenuSlotBacking::Player(p)) = menu.slot_backing(h, i)
-                        && p < 41
-                    {
-                        inv[p] = menu.slot(h, i).flatten();
-                    }
-                }
-            }
-        }
-    }
-    inv
+        (inv, whole)
+    })
 }
 
-/// Whether `inventory` reads every slot as it is (no slot holds an item the game can't hand over).
+/// The player's inventory slots 0..=40 (main, armour, off hand).
+///
+/// A slot whose stack can't be handed to a mod as an owned value reads as empty: it is not. So nothing may be put
+/// into a slot this reads as empty unless `complete` says the read was whole (`give` and the pickup check it).
+pub fn inventory(host: &mut dyn ServerHost, player: PlayerRef) -> Vec<Option<ItemStack>> {
+    readable(&*host, player).map_or_else(|| vec![None; 41], |(inv, _)| inv)
+}
+
+/// Whether `inventory` reads every slot as it is.
 pub fn complete(host: &dyn Host, player: PlayerRef) -> bool {
-    player.inventory_slots(host).is_some()
+    readable(host, player).is_some_and(|(_, whole)| whole)
 }
 
 pub fn set_slot(host: &mut dyn ServerHost, player: PlayerRef, slot: u32, stack: Option<ItemStack>) -> bool {
@@ -177,7 +168,7 @@ pub fn give(host: &mut dyn ServerHost, player: PlayerRef, stack: &ItemStack) -> 
         // Some slot can't be read: the game's own Inventory.add knows what is where. What doesn't fit is thrown to
         // the player (only they may pick it up), so nothing is left over.
         return match player.give_stack(host, stack.clone()) {
-            Ok(()) => 0,
+            Ok(rest) => rest.map_or(0, |rest| rest.count()),
             Err(e) => {
                 eprintln!("[sophisticatedcore] give_stack: {e:?}");
                 stack.count()

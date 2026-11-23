@@ -1,7 +1,38 @@
-# Sophisticated Backpacks and Storage for Horizon
+# Sophisticated Backpacks and Storage for Sunrise
 
-Sophisticated Backpacks and Sophisticated Storage in one package: tiered backpacks, chests, barrels and shulker boxes with upgrades.
+Tiered backpacks, chests, barrels and shulker boxes whose contents travel with them, with upgrades that work while you carry them.
 
-A port of [Sophisticated Core](https://github.com/Salandora/SophisticatedCore) 1.2.7.15.166, [Sophisticated Backpacks](https://github.com/Salandora/SophisticatedBackpacks) 3.23.4.5.110 and [Sophisticated Storage](https://github.com/Salandora/SophisticatedStorage) 1.3.5.11.142 (Fabric 1.20.1) by P3pp3rF1y, Ridanisaurus, Salandora to [Horizon](https://github.com/horizon-rust/horizon) 26.3, under the original's licence (GPL-3.0-only, in `LICENSE`; see `NOTICE`).
+A port of [Sophisticated Backpacks](https://github.com/Salandora/SophisticatedBackpacks), [Sophisticated Storage](https://github.com/Salandora/SophisticatedStorage) and [Sophisticated Core](https://github.com/Salandora/SophisticatedCore) by P3pp3rF1y, Ridanisaurus and Salandora to [Sunrise](https://playsunrise.net) (Minecraft Java 26.3), in one package, written in Rust on Sunrise's mod API.
 
-This folder is the package source: one native mod on Horizon's mod API only (no game module, no mixins). Release [`sophisticatedcore-v0.4.0`](https://github.com/lavoide/horizon-ports/releases/tag/sophisticatedcore-v0.4.0) holds `sophisticatedcore.hmod`, built from this folder with Horizon's exact-build SDK `dd67b76ff23e28c6d8e21859df600d31572f81a0` (Horizon Mixins `e59da9094f0c2fdda6c627fe9eff22dec6a906f0`). Earlier versions, if any, are in this folder's history.
+## What it does
+
+- Six backpack tiers (leather to netherite) that keep their contents and upgrades in the item: open one from your hand or with the Open Backpack key (B), or place it with sneak + use and pick it back up with an empty hand.
+- Sophisticated Storage's tiered chests, barrels (with limited one-to-four-slot barrels) and shulker boxes in every wood, which keep their contents when broken or packed; chests placed side by side join.
+- A paged storage screen with sorting, upgrade slots, upgrade settings and a crafting grid.
+- Upgrades that work while carried or placed: pickup, magnet, void, feeding, compacting, refill, restock and deposit, hopper, and stack upgrades that raise each slot's limit.
+- Tier upgrades crafted in place keep the contents; dye backpacks and storage in the crafting grid.
+- Backpacks in vanilla chest loot, as in the original.
+
+## Differences from the original
+
+- The original's own screen (tabs, sort buttons, memory and no-sort slots) is a chest menu here.
+- The furnace, jukebox, tank, battery, pump, XP pump, tool swapper, stonecutter, anvil, smithing, inception, everlasting and infinity upgrades sit in their slot and do nothing yet; the filter upgrade and the storage network blocks do not work yet.
+- Backpacks are not drawn on the player's back, and mobs don't spawn wearing them.
+
+## Building
+
+With the Sunrise mod tool (`cargo sunrise-mod`, from the Sunrise SDK) and Rust:
+
+```sh
+cargo sunrise-mod build    # compiles against the pinned game, packs target/sunrise-mod/sophisticatedcore.smod
+cargo sunrise-mod run      # builds it and starts the game with it
+cargo test
+```
+
+`sunrise-mod.toml` pins the Sunrise Dev build `dev-2026-11-22-7cfdf81` (game commit `7cfdf81463`). Sunrise builds native mods from source on the player's computer, against the exact game build.
+
+## Licence and credits
+
+Sophisticated Backpacks, Sophisticated Storage and Sophisticated Core is by P3pp3rF1y, Ridanisaurus and Salandora (https://github.com/Salandora/SophisticatedBackpacks). This port is distributed under the originals' licence, the **GNU GPL v3.0**; `LICENSE` holds the text and `NOTICE` says where the port comes from. No Java code is included: the rules are written anew in Rust, and the textures, models and data are the original mods'.
+
+Ported to Minecraft 26.3 by lavoide ([lavoide/horizon-ports](https://github.com/lavoide/horizon-ports)), and to Sunrise by arismoko.

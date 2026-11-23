@@ -354,8 +354,8 @@ fn click_main(host: &mut dyn ServerHost, player: PlayerRef, s: &Session, c: &Con
         if !may_store(&*host, s.kind, &st) {
             return (Outcome::Nothing, Some("That can't go in here"));
         }
-        if shift && upgrades::of(&*host, &st).is_some() {
-            if let Some(j) = (0..c.upgrades.len()).find(|&j| c.upgrades[j].is_none()) {
+        if shift && upgrades::of(&*host, &st).is_some()
+            && let Some(j) = (0..c.upgrades.len()).find(|&j| c.upgrades[j].is_none()) {
                 let one = contents::with_count(&st, 1).unwrap_or(st.clone());
                 match may_add_upgrade(&*host, s.kind, &c, j, &one) {
                     Ok(()) => {
@@ -366,7 +366,6 @@ fn click_main(host: &mut dyn ServerHost, player: PlayerRef, s: &Session, c: &Con
                     Err(e) => return (Outcome::Nothing, Some(e)),
                 }
             }
-        }
         let want = if right { 1 } else { st.count() };
         let lim = upgrades::limit(&*host, &st, m);
         let went = contents::insert(&mut c.slots, &st, want, lim);

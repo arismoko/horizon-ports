@@ -21,6 +21,9 @@
 //! jukebox, tank, battery, pump, XP pump, tool swapper, stonecutter, anvil, smithing, inception, everlasting and
 //! infinity upgrades (they sit in their slot and do nothing), the filter upgrade (it filters automation, and a
 //! placed backpack offers none), the backpack's render on the player's back, mobs spawning with backpacks.
+// Menus and inventories here are addressed by slot number, which these loops keep explicit.
+#![allow(clippy::needless_range_loop, clippy::type_complexity)]
+
 mod contents;
 mod crafting;
 mod menu;
@@ -39,8 +42,8 @@ use mod_api::{
     BlockEntityOnLoadEvent, BlockEntityPart, BlockPart, BlockSide, BlockState, BlockUpdateFlags, BreakBlockEvent,
     BuildCreativeModeTabContentsEvent, CanFitInsideContainerItemsEvent, ClientHost, DataLoadContext, Flow, Hand, Host,
     HostSide, Hooks, IPayloadContext, IPayloadHandler, ITEMS, InputKeyEvent, InteractionResult, ItemPart,
-    ItemPickedUpPostEvent, ItemResource, ItemStack, KeyAction, KeyRegistration, LeftClickBlockEvent, LevelHost,
-    LoopContext, LootTableLoadEvent, MenuClickedEvent, MenuClosedEvent, MenuReplace, ModContainer,
+    ItemPickedUpPostEvent, ItemResource, ItemStack, KeyAction, KeyRegistration, LeftClickBlockEvent,
+    LevelSide, LoopContext, LootTableLoadEvent, MenuClickedEvent, MenuPart, MenuClosedEvent, MenuReplace, ModContainer,
     OnBlockPlacedByEvent, PayloadBytes, PayloadHandleError, PayloadId, Registrar, RegistrationContext,
     ResourceHandler, RightClickBlockEvent, RightClickItemEvent, ServerHost, ServerTickEvent, ServerTickPhase,
     SoundSource, StateForPlacementEvent, TooltipEvent, UseItemOnEvent, UseOnEvent, UseWithoutItemEvent,
@@ -129,7 +132,7 @@ impl Shared {
                         Family::ShulkerBox => "minecraft:block.shulker_box.open",
                         _ => "minecraft:block.barrel.open",
                     };
-                    level.play_sound(host, sound, at, SoundSource::Blocks, 0.5, 1.0);
+                    level.play_sound(host, sound, at, SoundSource::Blocks, 0.5, 1.0, None);
                     if family == Family::Barrel {
                         storage::change_props(host, level, pos, &[("open", "true")]);
                     }
@@ -158,7 +161,7 @@ impl Shared {
             Family::ShulkerBox => "minecraft:block.shulker_box.close",
             _ => "minecraft:block.barrel.close",
         };
-        level.play_sound(host, sound, at, SoundSource::Blocks, 0.5, 1.0);
+        level.play_sound(host, sound, at, SoundSource::Blocks, 0.5, 1.0, None);
         if kind.family == Family::Barrel {
             storage::change_props(host, level, *pos, &[("open", "false")]);
         }
@@ -206,17 +209,18 @@ impl Shared {
         }
     }
 
-    fn click(&self, host: &mut dyn ServerHost, ev: &MenuClickedEvent) {
+    /// A click in one of the storage menus; false when the window isn't one.
+    fn click(&self, host: &mut dyn ServerHost, ev: &MenuClickedEvent) -> bool {
         let uuid = ev.uuid;
-        let Some(mut s) = lock(&self.sessions).get(&uuid).filter(|s| s.window == ev.window).cloned() else { return };
+        let Some(mut s) = lock(&self.sessions).get(&uuid).filter(|s| s.window == ev.window).cloned() else { return false };
         let Some(loc) = places::find(host, uuid, &s.loc, s.id) else {
             self.close(host, uuid);
-            return;
+            return true;
         };
         s.loc = loc;
         let Some((st, kind)) = places::storage_at(host, uuid, &s.loc) else {
             self.close(host, uuid);
-            return;
+            return true;
         };
         let c = Contents::read(&*host, &st, kind);
         let (outcome, msg) = menu::click(host, uuid, &s, &c, ev);
@@ -232,7 +236,7 @@ impl Shared {
             }
             Outcome::Close => {
                 self.close(host, uuid);
-                return;
+                return true;
             }
             Outcome::Nothing => None,
         };
@@ -249,13 +253,14 @@ impl Shared {
         }
         if !self.refresh(host, uuid, &mut s) {
             self.close(host, uuid);
-            return;
+            return true;
         }
         if let Some(cur) = lock(&self.sessions).get_mut(&uuid)
             && cur.window == s.window
         {
             *cur = s;
         }
+        true
     }
 
     /// Re-renders the open menus showing storages that `ids` name (an upgrade changed them).
@@ -303,7 +308,7 @@ fn place(host: &mut dyn ServerHost, uuid: u128, hand: Hand, pos: [i32; 3], face:
         "minecraft:air", "minecraft:cave_air", "minecraft:void_air", "minecraft:short_grass", "minecraft:fern",
         "minecraft:snow", "minecraft:dead_bush", "minecraft:vine", "minecraft:water",
     ];
-    let id_at = |host: &dyn mod_api::Host, p: [i32; 3]| level.block(host, p).map(|k| k.id(host).to_string()).unwrap_or_default();
+    let id_at = |host: &dyn mod_api::Host, p: [i32; 3]| level.block(host, p).and_then(|k| k.id(host)).unwrap_or_default().to_owned();
     let target = if REPLACEABLE.contains(&id_at(&*host, pos).as_str()) {
         pos
     } else {
@@ -337,7 +342,7 @@ fn place(host: &mut dyn ServerHost, uuid: u128, hand: Hand, pos: [i32; 3], face:
         places::set_slot(host, player, slot, stack.clone().shrink(1));
     }
     let at = target.map(|v| f64::from(v) + 0.5);
-    level.play_sound(host, "minecraft:block.wool.place", at, SoundSource::Blocks, 1.0, 0.8);
+    level.play_sound(host, "minecraft:block.wool.place", at, SoundSource::Blocks, 1.0, 0.8, None);
     true
 }
 
@@ -361,7 +366,7 @@ fn pick_up(host: &mut dyn ServerHost, uuid: u128, dim: &str, pos: [i32; 3]) -> b
         _ => places::give_or_drop(host, player, &st),
     }
     let at = pos.map(|v| f64::from(v) + 0.5);
-    level.play_sound(host, "minecraft:item.armor.equip_leather", at, SoundSource::Blocks, 0.5, 1.0);
+    level.play_sound(host, "minecraft:item.armor.equip_leather", at, SoundSource::Blocks, 0.5, 1.0, None);
     true
 }
 
@@ -369,7 +374,7 @@ fn pick_up(host: &mut dyn ServerHost, uuid: u128, dim: &str, pos: [i32; 3]) -> b
 /// goes inside another storage (`canBePlacedInContainerItems = false`); its tooltip.
 struct StorageItemPart(Arc<Shared>);
 
-#[mod_api::horizon_part]
+#[mod_api::sunrise_part]
 impl ItemPart for StorageItemPart {
     fn use_on(&self, host: HostSide<'_>, event: &mut UseOnEvent<'_>) -> Option<InteractionResult> {
         let HostSide::Server(host) = host else { return None };
@@ -406,7 +411,7 @@ impl ItemPart for StorageItemPart {
         let used = c.slots.iter().flatten().count();
         event.lines.push((mod_api::Text::literal(format!("§7{used} of {} slots used", kind.slots)), 0xFFAAAAAA));
         for u in c.upgrades.iter().flatten() {
-            let name = host.hover_name(u);
+            let name = host.hover_name(u).map(|n| host.text_string(&n)).unwrap_or_default();
             event.lines.push((mod_api::Text::literal(format!("§9{name}")), 0xFF5555FF));
         }
         let unknown = c.unknown_count();
@@ -422,7 +427,7 @@ impl ItemPart for StorageItemPart {
 /// BackpackBlock.use: opens the placed backpack; a sneak-click with an empty hand takes it.
 struct StorageBlockPart(Arc<Shared>);
 
-#[mod_api::horizon_part]
+#[mod_api::sunrise_part]
 impl BlockPart for StorageBlockPart {
     fn use_item_on(&self, host: &mut dyn ServerHost, event: &mut UseItemOnEvent<'_>) -> Option<InteractionResult> {
         let click = event.click;
@@ -432,8 +437,8 @@ impl BlockPart for StorageBlockPart {
         // An empty hand goes on to use_without_item (the vanilla TRY_WITH_EMPTY_HAND), where sneaking takes it.
         let empty = host
             .player(click.player)
-            .and_then(|p| mod_api::LivingRef::new(p.entity()).hand_item(&*host, Hand::Main))
-            .is_none_or(|s| s.count() == 0);
+            .and_then(|p| mod_api::LivingRef::new(p.entity()).with_hand_item(&*host, Hand::Main, |s| s.count()))
+            .is_none_or(|n| n == 0);
         if empty {
             return None;
         }
@@ -460,17 +465,17 @@ impl BlockPart for StorageBlockPart {
 /// The placed backpack's block entity: the declared container (one slot, no screen) holds the backpack.
 struct StorageBlockEntity;
 
-#[mod_api::horizon_part]
+#[mod_api::sunrise_part]
 impl BlockPart for StorageBlockEntity {}
 
-#[mod_api::horizon_part]
+#[mod_api::sunrise_part]
 impl BlockEntityPart for StorageBlockEntity {}
 
 /// Sophisticated Storage's block items (StorageBlockItem): the placed block's block entity takes the stack; the
 /// tooltip.
 struct PlacedItemPart(Arc<Shared>);
 
-#[mod_api::horizon_part]
+#[mod_api::sunrise_part]
 impl ItemPart for PlacedItemPart {
     fn on_block_placed_by(&self, host: &mut dyn ServerHost, event: &mut OnBlockPlacedByEvent<'_>) {
         if let Some((level, pos)) = storage::placed(host, event.placer, event.pos, event.stack) {
@@ -493,7 +498,7 @@ impl ItemPart for PlacedItemPart {
             event.lines.push((mod_api::Text::literal(format!("§7{used} of {} slots used", c.slots.len())), 0xFFAAAAAA));
         }
         for u in c.upgrades.iter().flatten() {
-            let name = host.hover_name(u);
+            let name = host.hover_name(u).map(|n| host.text_string(&n)).unwrap_or_default();
             event.lines.push((mod_api::Text::literal(format!("§9{name}")), 0xFF5555FF));
         }
         let unknown = c.unknown_count();
@@ -506,9 +511,10 @@ impl ItemPart for PlacedItemPart {
 /// StorageBlockBase: placement facing, opening, the limited barrels' front.
 struct StorageBlock(Arc<Shared>);
 
-#[mod_api::horizon_part]
+#[mod_api::sunrise_part]
 impl BlockPart for StorageBlock {
-    fn state_for_placement(&self, level: &dyn LevelHost, event: &mut StateForPlacementEvent<'_>) -> Option<Option<BlockState>> {
+    fn state_for_placement(&self, level: LevelSide<'_>, event: &mut StateForPlacementEvent<'_>) -> Option<Option<BlockState>> {
+        let (LevelSide::Server(level) | LevelSide::Client(level)) = level;
         let block = level.state_block(event.state)?.to_string();
         let kind = storage::kind_of_block(&block)?;
         let ctx = event.context;
@@ -541,17 +547,27 @@ impl BlockPart for StorageBlock {
     }
 }
 
+/// The storages' menus are vanilla chest menus the mod fills (`open_menu`); their clicks are the mod's.
+struct StorageMenu(Arc<Shared>);
+
+#[mod_api::sunrise_part]
+impl MenuPart for StorageMenu {
+    fn menu_clicked(&self, host: &mut dyn ServerHost, event: &mut MenuClickedEvent<'_>) -> Flow {
+        if self.0.click(host, event) { Flow::Cancel } else { Flow::Continue }
+    }
+}
+
 /// A placed storage's block entity: one slot holding the storage's stack; noted when it loads, so its upgrades work.
 struct StorageEntity(Arc<Shared>);
 
-#[mod_api::horizon_part]
+#[mod_api::sunrise_part]
 impl BlockPart for StorageEntity {}
 
-#[mod_api::horizon_part]
+#[mod_api::sunrise_part]
 impl BlockEntityPart for StorageEntity {
-    fn block_entity_on_load(&self, host: HostSide<'_>, event: &mut BlockEntityOnLoadEvent) {
-        let HostSide::Server(host) = host else { return };
-        if let (Some(level), Some(pos)) = (event.entity.level(&*host), event.entity.position(&*host)) {
+    fn block_entity_on_load(&self, event: &mut BlockEntityOnLoadEvent<'_>) {
+        let mod_api::BlockEntitySideScope::Server(scope) = &mut event.subject else { return };
+        if let Some((level, pos)) = scope.with_view(|view| (view.level(), view.position())) {
             self.0.placed.note(level, pos);
         }
     }
@@ -594,7 +610,7 @@ struct Mod {
     shared: Arc<Shared>,
 }
 
-#[mod_api::horizon_mod]
+#[mod_api::sunrise_mod]
 impl Hooks for Mod {
     fn register(&self, r: &mut dyn Registrar, cx: &RegistrationContext) {
         let has = |ns: &str| cx.mods().iter().any(|p| p.namespaces().any(|n| n == ns));
@@ -627,8 +643,9 @@ impl Hooks for Mod {
             let key = r.block_key(s.id);
             r.block_part(key, StorageBlock(self.shared.clone()));
             r.block_container(&key, ModContainer { slots: 1, ..Default::default() });
-            r.block_capability_before_game(&ITEMS, &key, |host, at: BlockSide, _, _| {
-                storage::Handler::new(&*host, at.level, at.pos).map(|h| Box::new(h) as Box<dyn ResourceHandler<ItemResource>>)
+            let kind: &'static storage_items::StorageItem = s;
+            r.block_capability_before_game(&ITEMS, &key, move |_, at: BlockSide, _, _, offer| {
+                offer.offer(|| Box::new(storage::Handler::new(at.level, at.pos, kind)) as Box<dyn ResourceHandler<ItemResource>>);
             });
             storage_blocks.push(s.id);
         }
@@ -638,10 +655,11 @@ impl Hooks for Mod {
                 eprintln!("[sophisticatedcore] storage block entity part refused: {e:?}");
             }
         }
-        // The jar's default is B, which is Horizon's emote key (`emoteKey` in horizon-extras.txt): B opened the emote
-        // wheel and never this. J is free in vanilla 26.3, Horizon's extras and this pack's mods (K quests, G
-        // trinkets, Z zoom, caps lock socks), and Horizon binds nothing to it.
-        r.register_key_mapping(KeyRegistration::new(KEY, "key.keyboard.j").label("keybind.sophisticatedbackpacks.open_backpack"));
+        // The original's default, B (unbound in vanilla 26.3).
+        r.register_key_mapping(KeyRegistration::new(KEY, "key.keyboard.b").label("keybind.sophisticatedbackpacks.open_backpack"));
+        for rows in 1..=6 {
+            r.menu_part(&format!("minecraft:generic_9x{rows}"), StorageMenu(self.shared.clone()));
+        }
         r.payload_handlers()
             .registrar("1")
             .optional()
@@ -748,17 +766,23 @@ impl Hooks for Mod {
     /// The jar's creative tab lists every wood of a chest or barrel (WoodStorageBlockBase.addCreativeTabItems); the
     /// tab's json leaves them out, so they come here, after its shulker boxes, blocks and upgrades. (The dyed variants
     /// the jar lists too are left out: Horizon draws storage untinted.)
-    fn build_creative_mode_tab_contents(&self, host: &mut dyn ClientHost, event: &mut BuildCreativeModeTabContentsEvent<'_>) {
+    fn build_creative_mode_tab_contents(&self, host: HostSide<'_>, event: &mut BuildCreativeModeTabContentsEvent<'_>) {
         if event.tab != "sophisticatedstorage:main" {
             return;
         }
-        let h: &dyn Host = &*host;
+        let h: &dyn Host = match &host {
+            HostSide::Server(host) => &**host,
+            HostSide::Client(host) => &**host,
+        };
         for kind in storage_items::STORAGE.iter().filter(|k| storage_items::wooden(k)) {
             let Some(st) = storage::new_stack(h, kind.id) else { continue };
             for w in storage_items::WOODS {
                 let mut s = st.clone();
                 storage::set_wood(&mut s, kind, w);
-                event.items.push(s);
+                let placed = event.edit.insert(h, mod_api::CreativeTabPlacement::Last, s, mod_api::CreativeTabVisibility::Both);
+                if let Err(e) = placed {
+                    eprintln!("[sophisticatedcore] creative tab entry refused: {e:?}");
+                }
             }
         }
     }
@@ -778,10 +802,6 @@ impl Hooks for Mod {
         *event.cancellation_result = InteractionResult::Success;
         event.cancelled = true;
         Flow::Cancel
-    }
-
-    fn menu_clicked(&self, host: &mut dyn ServerHost, event: &mut MenuClickedEvent) {
-        self.shared.click(host, event);
     }
 
     fn menu_closed(&self, host: &mut dyn ServerHost, event: &mut MenuClosedEvent) {
@@ -807,8 +827,8 @@ impl Hooks for Mod {
         if !matches!(event.action, KeyAction::Press) {
             return;
         }
-        let Some((key, _)) = host.mod_key("sophisticatedcore", KEY) else { return };
-        if event.key != key {
+        let Ok(mapping) = host.mod_key_mapping("sophisticatedcore", KEY) else { return };
+        if mapping.binding(&*host).map(|(key, _)| key) != Ok(event.key) {
             return;
         }
         let inventory = host.observed_screen_id().is_some_and(|s| s.id == "inventory") && host.screen_title().is_none();

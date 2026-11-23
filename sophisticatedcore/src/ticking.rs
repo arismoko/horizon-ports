@@ -111,14 +111,14 @@ fn take_items(host: &mut dyn ServerHost, uuid: u128, list: &mut [Carried], r: f6
     let Some(player) = host.player(uuid) else { return false };
     let Some((dim, min, max)) = player_box(&*host, player, r, if magnet_only { r } else { 0.5 }) else { return false };
     let Some(level) = host.level(&dim) else { return false };
-    let Some(ents) = level.entities_in(&*host, min, max) else { return false };
+    let Some(ents) = crate::storage::entities_in(&*host, level, min, max) else { return false };
     let mut changed = false;
     for e in ents {
         let Some(item) = host.item_entity(e) else { continue };
         if item.pickup_delay(&*host).unwrap_or(0) > 0 {
             continue;
         }
-        let Some(orig) = item.stack(&*host) else { continue };
+        let Some(orig) = item.with_stack(&*host, |v| v.project()).flatten() else { continue };
         let mut left = orig.count();
         for c in list.iter_mut() {
             if left == 0 {
@@ -308,7 +308,7 @@ pub fn tick(host: &mut dyn ServerHost, uuid: u128, n: u64) -> Vec<[i32; 4]> {
     }
     // Pickup reach, every tick; the magnet's range every 2 ticks.
     take_items(host, uuid, &mut list, 1.0, false);
-    if n % 2 == 0 {
+    if n.is_multiple_of(2) {
         let range = list
             .iter()
             .flat_map(|c| c.ups(&*host))
@@ -323,7 +323,7 @@ pub fn tick(host: &mut dyn ServerHost, uuid: u128, n: u64) -> Vec<[i32; 4]> {
             }
         }
     }
-    if n % 20 == 0 {
+    if n.is_multiple_of(20) {
         for c in list.iter_mut() {
             if c.has(&*host, Kind::Feeding) && feed(host, uuid, c) {
                 c.contents_changed = true;
@@ -333,7 +333,7 @@ pub fn tick(host: &mut dyn ServerHost, uuid: u128, n: u64) -> Vec<[i32; 4]> {
             }
         }
     }
-    if n % 5 == 0 {
+    if n.is_multiple_of(5) {
         for c in list.iter_mut() {
             if c.has(&*host, Kind::Refill) && refill(host, uuid, c) {
                 c.contents_changed = true;
@@ -432,7 +432,7 @@ pub fn interact(host: &mut dyn ServerHost, uuid: u128, loc: &Loc, level: mod_api
             if fits == 0 {
                 continue;
             }
-            let got = host.transaction(|host, tx| Ok::<u32, ()>(handler.extract(host, tx, i, &res, fits))).unwrap_or(0);
+            let got = host.transaction(|host, tx| Ok::<u32, ()>(handler.extract_at(host, tx, i, &res, fits))).unwrap_or(0);
             if got > 0 {
                 contents::insert(&mut c.contents.slots, &stack, got, lim);
                 moved_in += 1;
@@ -447,7 +447,7 @@ pub fn interact(host: &mut dyn ServerHost, uuid: u128, loc: &Loc, level: mod_api
             }
             let res = mod_api::ItemResource::of(&stack);
             let n = stack.count();
-            let put = host.transaction(|host, tx| Ok::<u32, ()>(handler.insert_any(host, tx, &res, n))).unwrap_or(0);
+            let put = host.transaction(|host, tx| Ok::<u32, ()>(handler.insert(host, tx, &res, n).unwrap_or(0))).unwrap_or(0);
             if put > 0 {
                 c.contents.slots[i] = stack.clone().shrink(put);
                 moved_out += 1;

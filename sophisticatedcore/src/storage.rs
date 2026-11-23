@@ -16,7 +16,7 @@ use std::collections::HashSet;
 use std::sync::Mutex;
 
 use mod_api::{
-    BlockEntityRef, BlockUpdateFlags, Compound, Direction, Host, HostTransaction, Identifier, ItemResource,
+    Overanswered, BlockEntityRef, BlockUpdateFlags, Compound, Direction, Host, HostTransaction, Identifier, ItemResource,
     ItemStack, LevelRef, PlayerRef, ResourceHandler, ServerHost, SoundSource, Tag, Transaction,
 };
 
@@ -36,7 +36,19 @@ pub fn kind_of_block(id: &str) -> Option<&'static StorageItem> {
 }
 
 pub fn block_id(host: &dyn Host, level: LevelRef, pos: [i32; 3]) -> String {
-    level.block(host, pos).map(|k| k.id(host)).unwrap_or_default()
+    level.block(host, pos).and_then(|k| k.id(host)).unwrap_or_default().to_owned()
+}
+
+/// The entities whose boxes meet `min`..`max` (`Level.getEntities`), or None when the level can't be read.
+pub fn entities_in(host: &dyn Host, level: LevelRef, min: [f64; 3], max: [f64; 3]) -> Option<Vec<mod_api::EntityRef>> {
+    let mut found = Vec::new();
+    let _ = level
+        .visit_entities_in(host, min, max, &mut |e| {
+            found.push(e);
+            std::ops::ControlFlow::Continue(())
+        })
+        .ok()?;
+    Some(found)
 }
 
 pub fn add(a: [i32; 3], b: [i32; 3]) -> [i32; 3] {
@@ -316,9 +328,7 @@ pub fn placed(host: &mut dyn ServerHost, player: Option<PlayerRef>, pos: [i32; 3
     let player = player?;
     let dim = player.dimension(&*host)?.to_string();
     let level = host.level(&dim)?;
-    if kind_of_block(&block_id(&*host, level, pos)).is_none() {
-        return None;
-    }
+    kind_of_block(&block_id(&*host, level, pos))?;
     let mut st = contents::with_count(stack, 1)?;
     let mut d = custom_data(&st);
     let had_contents = d.has(contents::INVENTORY) || d.has(contents::UPGRADES);
@@ -389,7 +399,7 @@ pub fn broken(host: &mut dyn ServerHost, player: PlayerRef, level: LevelRef, pos
     let Some(kind) = kind_of_block(&block_id(&*host, level, pos)) else { return };
     let Some(mut st) = read_be(&*host, level, pos) else { return };
     let creative = player.is_creative(&*host) == Some(true);
-    if kind.family == Family::Chest && is_packed(&st) == false {
+    if kind.family == Family::Chest && !is_packed(&st) {
         st = split_double(host, level, pos, kind, st);
     }
     let c = Contents::read(&*host, &st, kind);
@@ -626,7 +636,7 @@ pub fn use_tool(host: &mut dyn ServerHost, player: PlayerRef, slot: u32, held: &
             places::set_slot(host, player, slot, left);
         }
         let at = pos.map(|v| f64::from(v) + 0.5);
-        level.play_sound(host, "minecraft:item.armor.equip_leather", at, SoundSource::Blocks, 1.0, 1.2);
+        level.play_sound(host, "minecraft:item.armor.equip_leather", at, SoundSource::Blocks, 1.0, 1.2, None);
         return true;
     }
     let Some((_, to)) = tier_upgrade(&held_id) else { return false };
@@ -662,7 +672,7 @@ pub fn use_tool(host: &mut dyn ServerHost, player: PlayerRef, slot: u32, held: &
                 places::set_slot(host, player, slot, held.clone().shrink(need));
             }
             let at = pos.map(|v| f64::from(v) + 0.5);
-            level.play_sound(host, "minecraft:block.smithing_table.use", at, SoundSource::Blocks, 1.0, 1.0);
+            level.play_sound(host, "minecraft:block.smithing_table.use", at, SoundSource::Blocks, 1.0, 1.0, None);
             true
         }
         None => false,
@@ -787,40 +797,44 @@ pub fn look_point(host: &dyn Host, player: PlayerRef, pos: [i32; 3], facing: &st
 
 /// A placed storage as an item handler (the jar's storage wrapper's inventory): its slots, each up to its limit;
 /// what goes in passes the void upgrade. Reads the block entity's stack once and writes it back on each change.
+/// The provider only sees the block, so the double chest's main half and the packed check are resolved on first use:
+/// a packed storage reads as no slots.
 pub struct Handler {
     level: LevelRef,
     pos: [i32; 3],
     kind: &'static StorageItem,
-    cache: Mutex<Option<(ItemStack, Contents)>>,
+    /// The main half's position, its stack and contents.
+    cache: Mutex<Option<([i32; 3], ItemStack, Contents)>>,
 }
 
 impl Handler {
-    pub fn new(host: &dyn Host, level: LevelRef, pos: [i32; 3]) -> Option<Handler> {
-        let main = main_pos(host, level, pos);
-        let kind = kind_of_block(&block_id(host, level, main))?;
-        let st = read_be(host, level, main)?;
-        if is_packed(&st) {
-            return None;
-        }
-        Some(Handler { level, pos: main, kind, cache: Mutex::new(None) })
+    pub fn new(level: LevelRef, pos: [i32; 3], kind: &'static StorageItem) -> Handler {
+        Handler { level, pos, kind, cache: Mutex::new(None) }
     }
 
     fn with<R>(&self, host: &dyn Host, f: impl FnOnce(&ItemStack, &Contents) -> R) -> Option<R> {
         let mut g = self.cache.lock().unwrap_or_else(|e| e.into_inner());
         if g.is_none() {
-            let st = read_be(host, self.level, self.pos)?;
+            let main = main_pos(host, self.level, self.pos);
+            let st = read_be(host, self.level, main)?;
+            if is_packed(&st) {
+                return None;
+            }
             let c = Contents::read(host, &st, self.kind);
-            *g = Some((st, c));
+            *g = Some((main, st, c));
         }
-        g.as_ref().map(|(s, c)| f(s, c))
+        g.as_ref().map(|(_, s, c)| f(s, c))
     }
 
     fn store(&self, host: &mut dyn ServerHost, tx: &Transaction, mut st: ItemStack, c: Contents) -> bool {
+        let Some(main) = self.cache.lock().unwrap_or_else(|e| e.into_inner()).as_ref().map(|(main, _, _)| *main) else {
+            return false;
+        };
         c.write(&*host, &mut st, self.kind);
-        let Some(be) = host.block_entity(self.level, self.pos) else { return false };
+        let Some(be) = host.block_entity(self.level, main) else { return false };
         let ok = be.set_item_slot(host, tx, 0, Some(st.clone())).is_ok_and(|b| b);
         if ok {
-            *self.cache.lock().unwrap_or_else(|e| e.into_inner()) = Some((st, c));
+            *self.cache.lock().unwrap_or_else(|e| e.into_inner()) = Some((main, st, c));
         }
         ok
     }
@@ -853,14 +867,22 @@ impl ResourceHandler<ItemResource> for Handler {
     fn amount(&self, host: &mut dyn ServerHost, index: usize) -> u32 {
         self.with(&*host, |_, c| movable(c, index).map_or(0, |s| s.count())).unwrap_or(0)
     }
-    fn capacity(&self, host: &mut dyn ServerHost, _index: usize, resource: &ItemResource) -> u32 {
+    /// With no resource, the slot's limit for an item that stacks to 64 (`getSlotLimit`).
+    fn capacity(&self, host: &mut dyn ServerHost, _index: usize, resource: Option<&ItemResource>) -> u32 {
         let h: &dyn Host = &*host;
-        self.with(h, |_, c| self.limit(h, c, resource.as_stack())).unwrap_or(0)
+        self.with(h, |_, c| match resource {
+            Some(resource) => self.limit(h, c, resource.as_stack()),
+            None => {
+                let v = (64.0 * upgrades::multiplier(h, self.kind, &c.upgrades)).floor();
+                if v >= f64::from(u32::MAX) { u32::MAX } else { (v as u32).max(1) }
+            }
+        })
+        .unwrap_or(0)
     }
     fn is_valid(&self, host: &mut dyn ServerHost, _index: usize, resource: &ItemResource) -> bool {
         crate::menu::may_store(&*host, self.kind, resource.as_stack())
     }
-    fn insert(&self, host: &mut dyn ServerHost, tx: &Transaction, index: usize, resource: &ItemResource, amount: u32) -> u32 {
+    fn insert_at(&self, host: &mut dyn ServerHost, tx: &Transaction, index: usize, resource: &ItemResource, amount: u32) -> u32 {
         let h: &dyn Host = &*host;
         let Some((st, mut c, lim, void)) = self.with(h, |s, c| {
             (s.clone(), c.clone(), self.limit(h, c, resource.as_stack()), self.void(h, c, resource.as_stack()))
@@ -888,7 +910,7 @@ impl ResourceHandler<ItemResource> for Handler {
         }
         if void == Some(false) { amount } else { put }
     }
-    fn extract(&self, host: &mut dyn ServerHost, tx: &Transaction, index: usize, resource: &ItemResource, amount: u32) -> u32 {
+    fn extract_at(&self, host: &mut dyn ServerHost, tx: &Transaction, index: usize, resource: &ItemResource, amount: u32) -> u32 {
         let Some((st, mut c)) = self.with(&*host, |s, c| (s.clone(), c.clone())) else { return 0 };
         let Some(slot) = c.slots.get_mut(index) else { return 0 };
         let Some(cur) = slot.clone() else { return 0 };
@@ -902,24 +924,25 @@ impl ResourceHandler<ItemResource> for Handler {
         }
         take
     }
-    fn insert_any(&self, host: &mut dyn ServerHost, tx: &Transaction, resource: &ItemResource, amount: u32) -> u32 {
+    /// Any slot: stacks onto what matches first, then empty slots (`insertItem` over the whole inventory).
+    fn insert(&self, host: &mut dyn ServerHost, tx: &Transaction, resource: &ItemResource, amount: u32) -> Result<u32, Overanswered> {
         let h: &dyn Host = &*host;
         let Some((st, mut c, lim, void)) = self.with(h, |s, c| {
             (s.clone(), c.clone(), self.limit(h, c, resource.as_stack()), self.void(h, c, resource.as_stack()))
         }) else {
-            return 0;
+            return Ok(0);
         };
         if !crate::menu::may_store(&*host, self.kind, resource.as_stack()) {
-            return 0;
+            return Ok(0);
         }
         if void == Some(true) {
-            return amount;
+            return Ok(amount);
         }
         let went = contents::insert(&mut c.slots, resource.as_stack(), amount, lim);
         if went > 0 && !self.store(host, tx, st, c) {
-            return 0;
+            return Ok(0);
         }
-        if void == Some(false) { amount } else { went }
+        Ok(if void == Some(false) { amount } else { went })
     }
 }
 
@@ -975,7 +998,7 @@ fn hopper(host: &mut dyn ServerHost, level: LevelRef, pos: [i32; 3], kind: &Stor
             if fits == 0 {
                 continue;
             }
-            let got = host.transaction(|host, tx| Ok::<u32, ()>(src.extract(host, tx, i, &res, fits))).unwrap_or(0);
+            let got = host.transaction(|host, tx| Ok::<u32, ()>(src.extract_at(host, tx, i, &res, fits))).unwrap_or(0);
             if got > 0 {
                 contents::insert(&mut c.slots, &stack, got, lim);
                 left -= got;
@@ -995,7 +1018,7 @@ fn hopper(host: &mut dyn ServerHost, level: LevelRef, pos: [i32; 3], kind: &Stor
             let Some(st) = c.slots[i].clone().filter(|s| !contents::is_unknown(s)) else { continue };
             let res = ItemResource::of(&st);
             let n = st.count().min(left);
-            let put = host.transaction(|host, tx| Ok::<u32, ()>(dst.insert_any(host, tx, &res, n))).unwrap_or(0);
+            let put = host.transaction(|host, tx| Ok::<u32, ()>(dst.insert(host, tx, &res, n).unwrap_or(0))).unwrap_or(0);
             if put > 0 {
                 c.slots[i] = st.clone().shrink(put);
                 left -= put;
@@ -1016,7 +1039,7 @@ fn magnet(host: &mut dyn ServerHost, level: LevelRef, pos: [i32; 3], kind: &Stor
     let center = pos.map(|v| f64::from(v) + 0.5);
     let min = [center[0] - r, center[1] - r, center[2] - r];
     let max = [center[0] + r, center[1] + r, center[2] + r];
-    let Some(ents) = level.entities_in(&*host, min, max) else { return false };
+    let Some(ents) = entities_in(&*host, level, min, max) else { return false };
     let m = upgrades::multiplier(&*host, kind, &c.upgrades);
     let mut changed = false;
     for e in ents {
@@ -1024,7 +1047,7 @@ fn magnet(host: &mut dyn ServerHost, level: LevelRef, pos: [i32; 3], kind: &Stor
         if item.pickup_delay(&*host).unwrap_or(0) > 0 {
             continue;
         }
-        let Some(st) = item.stack(&*host) else { continue };
+        let Some(st) = item.with_stack(&*host, |v| v.project()).flatten() else { continue };
         let wanted = ups.iter().any(|(u, k)| k.kind == Kind::Magnet && upgrades::matches(&*host, u, k, &st));
         if !wanted || !crate::menu::may_store(&*host, kind, &st) {
             continue;
@@ -1049,7 +1072,7 @@ fn magnet(host: &mut dyn ServerHost, level: LevelRef, pos: [i32; 3], kind: &Stor
 
 /// The placed storages' upgrades, tick `n`. Storages gone from the world are forgotten.
 pub fn tick(host: &mut dyn ServerHost, placed: &Placed, n: u64) {
-    if n % 2 != 0 {
+    if !n.is_multiple_of(2) {
         return;
     }
     let list: Vec<(LevelRef, [i32; 3])> = placed.at.lock().unwrap_or_else(|e| e.into_inner()).iter().copied().collect();
@@ -1075,14 +1098,14 @@ pub fn tick(host: &mut dyn ServerHost, placed: &Placed, n: u64) {
         let kinds: Vec<upgrades::Upgrade> = c.upgrades.iter().flatten().filter_map(|u| upgrades::of(&*host, u)).collect();
         let mut changed = false;
         for k in &kinds {
-            if k.kind == Kind::Hopper && n % if k.advanced { 2 } else { 8 } == 0 {
+            if k.kind == Kind::Hopper && n.is_multiple_of(if k.advanced { 2 } else { 8 }) {
                 changed |= hopper(host, level, pos, kind, &mut c, k.advanced);
             }
         }
-        if n % 10 == 0 && kinds.iter().any(|k| k.kind == Kind::Magnet) {
+        if n.is_multiple_of(10) && kinds.iter().any(|k| k.kind == Kind::Magnet) {
             changed |= magnet(host, level, pos, kind, &mut c);
         }
-        if n % 20 == 0 && kinds.iter().any(|k| k.kind == Kind::Compacting) {
+        if n.is_multiple_of(20) && kinds.iter().any(|k| k.kind == Kind::Compacting) {
             changed |= crate::ticking::compact_contents(&*host, level, kind, &mut c);
         }
         if changed {
