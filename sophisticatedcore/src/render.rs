@@ -245,18 +245,49 @@ fn sprite(part: &str, layer: &str) -> String {
     format!("sophisticatedstorage:block/barrel_{part}_tintable_{layer}")
 }
 
-/// The paint over a barrel, drawn in the block's own frame turned as its model is.
-fn paint(
-    draw: &mut dyn BlockEntityDrawContext,
-    facing: &str,
+/// The sprites (side, top, bottom) of a barrel's base layer: a limited barrel's top shows its slots, an open barrel's its
+/// lid ajar.
+pub fn barrel_base_sprites(wood: &str, open: bool, limited_slots: Option<usize>) -> [String; 3] {
+    let top = match (limited_slots, open) {
+        (Some(n), _) => format!("limited_{wood}_barrel_{n}_top"),
+        (None, true) => format!("{wood}_barrel_top_open"),
+        (None, false) => format!("{wood}_barrel_top"),
+    };
+    [
+        format!("sophisticatedstorage:block/{wood}_barrel_side"),
+        format!("sophisticatedstorage:block/{top}"),
+        format!("sophisticatedstorage:block/{wood}_barrel_bottom"),
+    ]
+}
+
+/// What is drawn over a barrel's model, in the model's own frame.
+struct BarrelLook {
+    /// The base layer again, covering a hidden tier: (side, top, bottom).
+    cover: Option<[String; 3]>,
     main: Option<i32>,
     accent: Option<i32>,
-) {
+    /// The lock mark on the top face's edge (`barrel_part/locked`).
+    lock: bool,
+}
+
+/// The paint, tier cover and lock over a barrel, drawn in the block's own frame turned as its model is.
+fn paint(draw: &mut dyn BlockEntityDrawContext, facing: &str, look: &BarrelLook) {
     let (x, y) = model_turn(facing);
     draw.push();
     draw.rotate_about([0.0, 1.0, 0.0], -y, [0.5, 0.5, 0.5]);
     draw.rotate_about([1.0, 0.0, 0.0], -x, [0.5, 0.5, 0.5]);
-    for (layer, color, grow) in [("main", main, 0.02), ("accent", accent, 0.04)] {
+    if let Some([side, top, bottom]) = &look.cover {
+        let faces = [
+            face(bottom),
+            face(top),
+            face(side),
+            face(side),
+            face(side),
+            face(side),
+        ];
+        draw.cube([-0.01; 3], [16.01; 3], faces, 0xFF_FFFF);
+    }
+    for (layer, color, grow) in [("main", look.main, 0.02), ("accent", look.accent, 0.04)] {
         let Some(c) = color else {
             continue;
         };
@@ -274,6 +305,15 @@ fn paint(
             [16.0 + grow, 16.0 + grow, 16.0 + grow],
             faces,
             c as u32 & 0xFF_FFFF,
+        );
+    }
+    if look.lock {
+        let (x0, x1, z0, z1, y) = (7.5 / 16.0, 8.5 / 16.0, 15.0 / 16.0, 1.0, 16.1 / 16.0);
+        draw.quad(
+            "sophisticatedstorage:block/lock",
+            [[x0, y, z0], [x0, y, z1], [x1, y, z1], [x1, y, z0]],
+            [0.0, 0.0, 16.0, 16.0],
+            0xFF_FFFF,
         );
     }
     draw.pop();
@@ -319,8 +359,38 @@ pub fn submit(
         }
         return;
     }
-    if barrel && (main.is_some() || accent.is_some()) {
-        paint(draw, &facing, main, accent);
+    if barrel {
+        let prop = |k: &str| {
+            state
+                .property(&host.block_states(), k)
+                .ok()
+                .flatten()
+                .map(str::to_string)
+        };
+        let flag = |k: &str, d: bool| get_bool(nbt, k).unwrap_or(d);
+        let held = held_tool(host);
+        let show_tier = flag("showTier", true) || held == Some(crate::tool::Mode::TierDisplay);
+        let wood = prop("wood");
+        let limited = (kind.family == Family::LimitedBarrel).then(|| kind.slot_count());
+        let cover = wood.filter(|_| !show_tier).map(|w| {
+            let open = prop("open").as_deref() == Some("true");
+            barrel_base_sprites(&w, open, limited)
+        });
+        let lock = flag("locked", false)
+            && (flag("showLock", true)
+                || matches!(
+                    held,
+                    Some(crate::tool::Mode::Lock | crate::tool::Mode::LockDisplay)
+                ));
+        let look = BarrelLook {
+            cover,
+            main,
+            accent,
+            lock,
+        };
+        if look.cover.is_some() || main.is_some() || accent.is_some() || look.lock {
+            paint(draw, &facing, &look);
+        }
     }
     if kind.family != Family::LimitedBarrel {
         return;
@@ -524,6 +594,27 @@ fn counts(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_barrels_base_sprites_follow_its_wood_lid_and_slots() {
+        let p = "sophisticatedstorage:block/";
+        assert_eq!(
+            barrel_base_sprites("oak", false, None),
+            [
+                format!("{p}oak_barrel_side"),
+                format!("{p}oak_barrel_top"),
+                format!("{p}oak_barrel_bottom")
+            ]
+        );
+        assert_eq!(
+            barrel_base_sprites("oak", true, None)[1],
+            format!("{p}oak_barrel_top_open")
+        );
+        assert_eq!(
+            barrel_base_sprites("spruce", true, Some(3))[1],
+            format!("{p}limited_spruce_barrel_3_top")
+        );
+    }
 
     #[test]
     fn counts_abbreviate_like_the_original() {
