@@ -14,6 +14,8 @@ pub struct Block {
     pub log: bool,
     /// In the generic tree's leaves filter (`#minecraft:leaves`).
     pub leaves: bool,
+    /// In the vertical tree's block filter.
+    pub vertical: bool,
     /// The leaves' `distance`, if the block has one.
     pub distance: Option<u32>,
     pub persistent: bool,
@@ -93,9 +95,10 @@ fn add(a: [i32; 3], b: [i32; 3]) -> [i32; 3] {
 pub fn kind_of(block: &Block) -> Option<Kind> {
     if block.log {
         Some(Kind::Generic)
+    } else if block.vertical {
+        Some(Kind::Vertical)
     } else {
         match block.name.as_str() {
-            "minecraft:cactus" | "minecraft:bamboo" => Some(Kind::Vertical),
             "minecraft:chorus_plant" => Some(Kind::Chorus),
             "minecraft:mushroom_stem" => Some(Kind::Mushroom),
             _ => None,
@@ -354,6 +357,7 @@ mod tests {
             name: name.into(),
             log: name.ends_with("_log") || name.ends_with("_wood"),
             leaves: name.ends_with("_leaves"),
+            vertical: name == "minecraft:cactus" || name == "minecraft:bamboo",
             distance,
             persistent,
         }

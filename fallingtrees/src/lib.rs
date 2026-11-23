@@ -9,6 +9,7 @@
 //!
 //! Sneaking is the player's `is_shift_key_down`; the held tool is the player's main hand.
 
+mod filters;
 pub mod trees;
 
 use std::collections::HashMap;
@@ -120,11 +121,6 @@ impl Options {
             max_speed_multiplication: number(host, key::MAX_SPEED_MULTIPLICATION, 16.0),
         }
     }
-}
-
-/// `#minecraft:axes` by name.
-pub fn is_axe(item: &str) -> bool {
-    item.ends_with("_axe") && !item.ends_with("_pickaxe")
 }
 
 // ---------------------------------------------------------------------------- the tree's data
@@ -550,7 +546,8 @@ fn chop(host: &dyn Host, player: EntityRef, pos: [i32; 3]) -> Option<(Kind, Tree
         return None;
     }
     if flag(host, key::REQUIRE_TOOL[kind_index(kind)], false)
-        && !held(host, player).is_some_and(|item| is_axe(&item))
+        && !held(host, player)
+            .is_some_and(|item| filters::Filters::get(host).tools.valid(&item, &|_| false))
     {
         return None;
     }
@@ -559,11 +556,14 @@ fn chop(host: &dyn Host, player: EntityRef, pos: [i32; 3]) -> Option<(Kind, Tree
 
 fn read_block(host: &dyn Host, level: LevelRef, pos: [i32; 3]) -> Block {
     let key = level.block(host, pos);
-    let in_tag = |tag| key.and_then(|k| host.block_in_tag(k, tag)) == Some(true);
+    let in_tag = |tag: &str| key.and_then(|k| host.block_in_tag(k, tag)) == Some(true);
+    let name = key.and_then(|k| k.id(host)).unwrap_or_default();
+    let filters = filters::Filters::get(host);
     Block {
-        name: key.and_then(|k| k.id(host)).unwrap_or_default().to_owned(),
-        log: in_tag("minecraft:logs"),
-        leaves: in_tag("minecraft:leaves"),
+        name: name.to_owned(),
+        log: filters.logs.valid(name, &in_tag),
+        leaves: filters.leaves.valid(name, &in_tag),
+        vertical: filters.vertical.valid(name, &in_tag),
         distance: level
             .block_property(host, pos, "distance")
             .and_then(|d| d.parse().ok()),
@@ -824,11 +824,6 @@ impl Hooks for Mod {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn axes_by_name() {
-        assert!(is_axe("minecraft:iron_axe") && !is_axe("minecraft:iron_pickaxe"));
-    }
 
     #[test]
     fn a_state_splits_into_block_and_properties() {
