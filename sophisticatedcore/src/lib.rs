@@ -64,9 +64,9 @@ use mod_api::{
     LeftClickBlockEvent, LevelSide, LivingDropsEvent, LivingRef, LoopContext, LootTableLoadEvent,
     MenuClickedEvent, MenuClosedEvent, MenuPart, MenuReplace, ModContainer, MouseButtonPostEvent,
     OnBlockPlacedByEvent, PayloadBytes, PayloadHandleError, PayloadId, Registrar,
-    RegistrationContext, ResourceHandler, RightClickBlockEvent, RightClickItemEvent, ServerHost,
-    ServerTickEvent, ServerTickPhase, SoundSource, SpawnReason, StateForPlacementEvent,
-    TooltipEvent, UseItemOnEvent, UseOnEvent, UseWithoutItemEvent,
+    RegistrationContext, ReloadContext, ResourceHandler, RightClickBlockEvent, RightClickItemEvent,
+    ServerHost, ServerTickEvent, ServerTickPhase, SoundSource, SpawnReason, StateForPlacementEvent,
+    TagsUpdatedEvent, TooltipEvent, UseItemOnEvent, UseOnEvent, UseWithoutItemEvent,
 };
 
 use contents::Contents;
@@ -1537,6 +1537,11 @@ impl Hooks for Mod {
             Some(pools) => pools.push(pool),
             None => event.table["pools"] = json!([pool]),
         }
+    }
+
+    /// The recipes were rebuilt: what compression looked up is asked again.
+    fn tags_updated(&self, _ctx: &dyn ReloadContext, _event: &mut TagsUpdatedEvent) {
+        compression::forget();
     }
 
     fn server_tick(&self, host: &mut dyn ServerHost, event: &mut ServerTickEvent<'_>) {

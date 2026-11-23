@@ -10,9 +10,11 @@
 //! The slots keep the real stacks (`inventory`), so nothing here is stored twice: the chain is worked out from what
 //! the range holds each time, and the range is plain slots again once the upgrade is gone. The core below is
 //! generic over the item type, so its rules are tested without a game.
-use std::collections::VecDeque;
+use std::collections::{HashMap, VecDeque};
+use std::hash::Hash;
+use std::sync::{Arc, LazyLock, Mutex};
 
-use mod_api::{Host, Identifier, ItemStack, LevelRef, RecipeInput};
+use mod_api::{Host, Identifier, ItemKey, ItemStack, LevelRef, RecipeInput};
 
 use crate::contents::{self, Contents, Nbt, custom_data, get_int, put, set_custom_data};
 use crate::storage_items::StorageItem;
@@ -401,15 +403,96 @@ impl PartialEq for Key {
     }
 }
 
+/// What a lookup answered, kept until the recipes reload (the original's `RecipeHelper` caches the same way).
+struct Memo<K, V> {
+    map: HashMap<K, V>,
+}
+
+impl<K: Hash + Eq, V: Clone> Memo<K, V> {
+    fn new() -> Self {
+        Memo {
+            map: HashMap::new(),
+        }
+    }
+
+    fn get(&self, k: &K) -> Option<V> {
+        self.map.get(k).cloned()
+    }
+
+    fn put(&mut self, k: K, v: V) {
+        self.map.insert(k, v);
+    }
+}
+
+/// A recipe lookup's identity: the item, and the crafting grid's side (0 for the one-slot reverse).
+type Lookup = (ItemKey, u32);
+
+struct Cache {
+    lookups: Memo<Lookup, Option<(Key, u32)>>,
+    extra: Option<Arc<Vec<(Key, Key, u32)>>>,
+}
+
+static CACHE: LazyLock<Mutex<Cache>> = LazyLock::new(|| {
+    Mutex::new(Cache {
+        lookups: Memo::new(),
+        extra: None,
+    })
+});
+
+/// `key`'s answer from the memo `pick` finds in `store`, else `ask`'s (kept); no key, no memo. The lock is never
+/// held while asking.
+fn remember<S, K: Hash + Eq, V: Clone>(
+    store: &Mutex<S>,
+    key: Option<K>,
+    pick: impl Fn(&mut S) -> &mut Memo<K, V>,
+    ask: impl FnOnce() -> V,
+) -> V {
+    let Some(key) = key else { return ask() };
+    if let Ok(mut s) = store.lock()
+        && let Some(hit) = pick(&mut s).get(&key)
+    {
+        return hit;
+    }
+    let v = ask();
+    if let Ok(mut s) = store.lock() {
+        pick(&mut s).put(key, v.clone());
+    }
+    v
+}
+
+/// Recipes or tags were rebuilt: what was answered is asked again.
+pub fn forget() {
+    if let Ok(mut c) = CACHE.lock() {
+        c.lookups = Memo::new();
+        c.extra = None;
+    }
+}
+
 /// The crafting recipes of the world and `additional_decompressible_items.txt`.
 struct World<'a> {
     host: &'a dyn Host,
     level: Option<LevelRef>,
     crafting: Option<Identifier>,
-    extra: Vec<(Key, Key, u32)>,
+    extra: Arc<Vec<(Key, Key, u32)>>,
 }
 
 impl World<'_> {
+    /// What `item` crafts into on a `side` by `side` grid (side 0: the one-slot reverse, with the count it makes),
+    /// asked of the game once for each plain item until the recipes reload.
+    fn lookup(&self, side: u32, item: &Key) -> Option<(Key, u32)> {
+        let key = self.plain(item).then(|| (item.0.item(), side));
+        remember(
+            &CACHE,
+            key,
+            |c| &mut c.lookups,
+            || {
+                let size = side.max(1);
+                self.run(size, size, item)
+                    .and_then(|out| Some((Key(contents::with_count(&out, 1)?), out.count())))
+            },
+        )
+    }
+
     fn run(&self, width: u32, height: u32, item: &Key) -> Option<ItemStack> {
         let input = RecipeInput::Crafting {
             width,
@@ -426,12 +509,10 @@ impl World<'_> {
 
 impl Recipes<Key> for World<'_> {
     fn craft(&self, item: &Key, size: u32) -> Option<Key> {
-        let out = self.run(size, size, item)?;
-        Some(Key(contents::with_count(&out, 1)?))
+        self.lookup(size, item).map(|(k, _)| k)
     }
     fn uncraft(&self, item: &Key) -> Option<(Key, u32)> {
-        let out = self.run(1, 1, item)?;
-        Some((Key(contents::with_count(&out, 1)?), out.count()))
+        self.lookup(0, item)
     }
     fn configured(&self, item: &Key) -> Option<(Key, u32)> {
         self.extra
@@ -463,11 +544,19 @@ fn configured_items(host: &dyn Host) -> Vec<(Key, Key, u32)> {
 }
 
 fn world(host: &dyn Host) -> World<'_> {
+    let cached = CACHE.lock().ok().and_then(|c| c.extra.clone());
+    let extra = cached.unwrap_or_else(|| {
+        let parsed = Arc::new(configured_items(host));
+        if let Ok(mut c) = CACHE.lock() {
+            c.extra = Some(parsed.clone());
+        }
+        parsed
+    });
     World {
         host,
         level: host.level("minecraft:overworld"),
         crafting: Identifier::parse("minecraft:crafting").ok(),
-        extra: configured_items(host),
+        extra,
     }
 }
 
@@ -582,6 +671,19 @@ impl<'a> Banks<'a> {
         let n = chain.calculated(&slots)[at];
         let d = chain.defs[at].as_ref()?;
         contents::with_count(&d.item.0, n as u32)
+    }
+
+    /// Every covered slot's shown stack, each range's chain derived once.
+    pub fn fill(&self, c: &Contents, out: &mut [Option<ItemStack>]) {
+        for bank in &self.list {
+            let (chain, slots) = self.chain(c, bank, None);
+            let counts = chain.calculated(&slots);
+            for k in 0..bank.len {
+                out[bank.first + k] = chain.defs[k]
+                    .as_ref()
+                    .and_then(|d| contents::with_count(&d.item.0, counts[k] as u32));
+            }
+        }
     }
 
     /// Most that slot `slot` holds of what it holds (what the pipes see as its capacity).
@@ -702,15 +804,9 @@ impl Contents {
         if banks.is_empty() {
             return self.slots.clone();
         }
-        (0..self.slots.len())
-            .map(|i| {
-                if banks.covers(i) {
-                    banks.shown(self, i)
-                } else {
-                    self.slots[i].clone()
-                }
-            })
-            .collect()
+        let mut out = self.slots.clone();
+        banks.fill(self, &mut out);
+        out
     }
 
     /// What slot `slot` shows.
@@ -810,6 +906,56 @@ pub fn cleaned(up: &mut ItemStack) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_lookup_reaches_the_game_once_until_forgotten() {
+        let store = Mutex::new(Memo::<u8, Option<u8>>::new());
+        let asked = std::cell::Cell::new(0);
+        let ask = |v: Option<u8>| {
+            asked.set(asked.get() + 1);
+            v
+        };
+        for _ in 0..5 {
+            assert_eq!(remember(&store, Some(1), |m| m, || ask(Some(9))), Some(9));
+            assert_eq!(remember(&store, Some(2), |m| m, || ask(None)), None);
+        }
+        assert_eq!(asked.get(), 2);
+        // A key-less lookup (an item with components) is always asked.
+        remember(&store, None, |m| m, || ask(None));
+        remember(&store, None, |m| m, || ask(None));
+        assert_eq!(asked.get(), 4);
+        *store.lock().unwrap() = Memo::new();
+        remember(&store, Some(1), |m| m, || ask(Some(9)));
+        assert_eq!(asked.get(), 5);
+    }
+
+    /// Counts what a chain asks.
+    struct Counting(std::cell::Cell<usize>);
+    impl Recipes<&'static str> for Counting {
+        fn craft(&self, _: &&'static str, _: u32) -> Option<&'static str> {
+            self.0.set(self.0.get() + 1);
+            None
+        }
+        fn uncraft(&self, _: &&'static str) -> Option<(&'static str, u32)> {
+            self.0.set(self.0.get() + 1);
+            None
+        }
+        fn configured(&self, _: &&'static str) -> Option<(&'static str, u32)> {
+            None
+        }
+        fn plain(&self, _: &&'static str) -> bool {
+            true
+        }
+    }
+
+    #[test]
+    fn a_chain_is_derived_with_a_fixed_number_of_queries() {
+        let r = Counting(std::cell::Cell::new(0));
+        let slots: Vec<Slot<&'static str>> = vec![Some(("a", 3)), None, None];
+        Chain::derive(&slots, None, &r, &|_: &&'static str| 64);
+        let once = r.0.get();
+        assert!(once > 0 && once <= 8, "{once}");
+    }
 
     /// Nuggets, ingots, blocks: 9 to one; "dust" to "glow" 4 to one only by config; everything else alone.
     struct Fake;
