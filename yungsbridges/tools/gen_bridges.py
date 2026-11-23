@@ -116,8 +116,8 @@ def main():
     shutil.rmtree(data, ignore_errors=True)
     for sub in ('tags/worldgen/biome', 'neoforge/biome_modifier', 'worldgen/placed_feature'):
         shutil.copytree(os.path.join(SRC, sub), os.path.join(data, sub))
-    os.makedirs(os.path.join(data, 'worldgen/configured_feature'))
-    with open(os.path.join(data, 'worldgen/configured_feature/bridge_list.json'), 'w') as f:
+    os.makedirs(os.path.join(data, 'worldgen/feature'))
+    with open(os.path.join(data, 'worldgen/feature/bridge_list.json'), 'w') as f:
         f.write('{\n  "type": "yungsbridges:bridge_list"\n}\n')
 
 
