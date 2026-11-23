@@ -9,7 +9,7 @@ A port of [Sophisticated Backpacks](https://github.com/Salandora/SophisticatedBa
 - Six backpack tiers (leather to netherite) that keep their contents and upgrades in the item: open one from your hand or with the Open Backpack key (B), or place it with sneak + use and pick it back up with an empty hand.
 - Sophisticated Storage's tiered chests, barrels (with limited one-to-four-slot barrels) and shulker boxes in every wood, which keep their contents when broken or packed; chests placed side by side join.
 - A paged storage screen with sorting, upgrade slots, upgrade settings and a crafting grid.
-- Upgrades that work while carried or placed: pickup, magnet, void, feeding, compacting, compression (a range of slots that holds a material and everything it compresses to, 3 to 9 slots), refill, restock and deposit, hopper (sides and input and output filters), smelting, smoking and blasting (manual and automatic, with a furnace view), and stack upgrades that raise each slot's limit.
+- Upgrades that work while carried or placed: pickup, magnet, void, feeding, compacting, tool swapper (the best tool for the block you start mining, or sword for an attack, from the backpack), compression (a range of slots that holds a material and everything it compresses to, 3 to 9 slots), refill, restock and deposit, hopper (sides and input and output filters), smelting, smoking and blasting (manual and automatic, with a furnace view), and stack upgrades that raise each slot's limit.
 - The filter upgrade limits what hoppers and pipes may put into a placed storage and take out of it (in, out or both; allow list, block list or what the storage already holds).
 - Every filter (pickup, void, feeding, hopper, cooking and the rest) is an allow or block list matched by item, by mod or by tags (any or all of the chosen ones), and optionally by durability and components too.
 - Tier upgrades crafted in place keep the contents; dye backpacks and storage in the crafting grid.
@@ -22,9 +22,10 @@ A port of [Sophisticated Backpacks](https://github.com/Salandora/SophisticatedBa
 ## Differences from the original
 
 - The original's own screen (tabs, memory and no-sort slots) is a chest menu here; its sort and page buttons sit at the two ends of the bottom control row, and the sort button position setting swaps them or hides sort.
-- The tool swapper, stonecutter, anvil, smithing, inception, everlasting and infinity upgrades sit in their slot and do nothing yet; the storage network blocks do not work yet.
+- The stonecutter, anvil, smithing, inception, everlasting and infinity upgrades sit in their slot and do nothing yet; the storage network blocks do not work yet.
 - The hopper upgrade's view lists the sides (advanced only) and, for each filter, its type and a button that opens the filter; left-click an inventory item to add it to the input filter, right-click for the output filter. The contents filter does not look at memory slots (not ported).
 - The compression upgrade weighs one crafting recipe per grid where the original weighs every matching one, and a slot's shown count stops at 2147483647. It cannot go in beside a compacting upgrade, as in the original.
+- The advanced tool swapper does not swap tools when you right-click a block or entity (stripping, shearing, flattening): the game gives mods no way to ask whether a tool works on a block. Weapons are ranked by their main-hand attack damage modifiers and the item tags `minecraft:swords` and `minecraft:axes`.
 - A cooking upgrade that is switched off or taken out keeps no paused progress: its burn and cook clocks run on. In an automatic one, right-click an inventory item to add it to the matching filter.
 - Worn backpacks are drawn on the body in their default colours; dyed and spawn-egg colours are not drawn. A monster's potion effects are given when it joins the level; a creeper bearer loses its beneficial effects when it explodes.
 - A bucket of experience holds 1000 mB of the experience fluid and gives it up whole into a pipe or tank; an empty vanilla bucket cannot take experience from a tank yet (the game's bucket handler only knows water and lava; sunrise#5070).

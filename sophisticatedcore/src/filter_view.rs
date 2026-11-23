@@ -205,6 +205,37 @@ fn own(host: &dyn Host, u: &Upgrade, up: &ItemStack) -> [Option<ItemStack>; 2] {
             },
             None,
         ],
+        Kind::ToolSwapper if u.advanced => [
+            match crate::swapper::Mode::read(up) {
+                crate::swapper::Mode::Any => button(
+                    host,
+                    "minecraft:iron_pickaxe",
+                    "Swaps any tool",
+                    &[
+                        "Swaps in a better tool for what you mine",
+                        "Click: only when holding a tool",
+                    ],
+                ),
+                crate::swapper::Mode::OnlyTools => button(
+                    host,
+                    "minecraft:iron_axe",
+                    "Swaps tools only",
+                    &["Not when holding a sword", "Click: don't swap"],
+                ),
+                crate::swapper::Mode::NoSwap => button(
+                    host,
+                    "minecraft:barrier",
+                    "Doesn't swap for blocks",
+                    &["Click: swap any tool"],
+                ),
+            },
+            toggle(
+                host,
+                crate::swapper::swaps_weapons(up),
+                "Swaps weapons",
+                "Click: swap in a sword or axe when attacking",
+            ),
+        ],
         _ => [None, None],
     }
 }
@@ -447,6 +478,15 @@ pub fn click(
             return (Outcome::Changed(c), None);
         } else if i == base + 4 && key.is_empty() && u.kind == Kind::Filter {
             Direction::read(&up).next().write(&mut up);
+            c.upgrades[j] = Some(up);
+            return (Outcome::Changed(c), None);
+        } else if i == base + 4 && key.is_empty() && u.kind == Kind::ToolSwapper && u.advanced {
+            crate::swapper::Mode::read(&up).next().write(&mut up);
+            c.upgrades[j] = Some(up);
+            return (Outcome::Changed(c), None);
+        } else if i == base + 5 && key.is_empty() && u.kind == Kind::ToolSwapper && u.advanced {
+            let v = !crate::swapper::swaps_weapons(&up);
+            upgrades::set_flag(&mut up, "shouldSwapWeapon", v);
             c.upgrades[j] = Some(up);
             return (Outcome::Changed(c), None);
         } else if i == base + 4 && key.is_empty() && u.kind == Kind::Magnet {

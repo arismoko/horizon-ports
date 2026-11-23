@@ -498,6 +498,14 @@ pub fn may_add_upgrade(
     {
         return Err("There's already a Compression upgrade in another upgrade slot");
     }
+    if u.kind == Kind::ToolSwapper
+        && c.upgrades
+            .iter()
+            .flatten()
+            .any(|x| upgrades::of(host, x).is_some_and(|o| o.kind == Kind::ToolSwapper))
+    {
+        return Err("There's already a Tool Swapper upgrade in another upgrade slot");
+    }
     if matches!(u.kind, Kind::Tank | Kind::Battery)
         && c.upgrades
             .iter()

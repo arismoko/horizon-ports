@@ -42,6 +42,7 @@ mod options;
 mod places;
 mod storage;
 mod storage_items;
+mod swapper;
 mod ticking;
 mod upgrades;
 mod worn;
@@ -53,17 +54,18 @@ use std::sync::{Arc, Mutex};
 
 use mod_api::serde_json::json;
 use mod_api::{
-    BlockEntityOnLoadEvent, BlockEntityPart, BlockPart, BlockSide, BlockState, BlockUpdateFlags,
-    BreakBlockEvent, BuildCreativeModeTabContentsEvent, CanFitInsideContainerItemsEvent,
-    ClientHost, DataLoadContext, EntityJoinLevelEvent, EquipmentSlot, FinalizeSpawnEvent, Flow,
-    Hand, Hooks, Host, HostSide, IPayloadContext, IPayloadHandler, ITEMS, Identifier,
-    InputKeyEvent, InteractionResult, ItemPart, ItemPickedUpPostEvent, ItemResource, ItemStack,
-    KeyAction, KeyRegistration, LeftClickBlockEvent, LevelSide, LivingDropsEvent, LivingRef,
-    LoopContext, LootTableLoadEvent, MenuClickedEvent, MenuClosedEvent, MenuPart, MenuReplace,
-    ModContainer, MouseButtonPostEvent, OnBlockPlacedByEvent, PayloadBytes, PayloadHandleError,
-    PayloadId, Registrar, RegistrationContext, ResourceHandler, RightClickBlockEvent,
-    RightClickItemEvent, ServerHost, ServerTickEvent, ServerTickPhase, SoundSource, SpawnReason,
-    StateForPlacementEvent, TooltipEvent, UseItemOnEvent, UseOnEvent, UseWithoutItemEvent,
+    AttackEntityEvent, BlockEntityOnLoadEvent, BlockEntityPart, BlockPart, BlockSide, BlockState,
+    BlockUpdateFlags, BreakBlockEvent, BuildCreativeModeTabContentsEvent,
+    CanFitInsideContainerItemsEvent, ClientHost, DataLoadContext, EntityJoinLevelEvent,
+    EquipmentSlot, FinalizeSpawnEvent, Flow, Hand, Hooks, Host, HostSide, IPayloadContext,
+    IPayloadHandler, ITEMS, Identifier, InputKeyEvent, InteractionResult, ItemPart,
+    ItemPickedUpPostEvent, ItemResource, ItemStack, KeyAction, KeyRegistration,
+    LeftClickBlockEvent, LevelSide, LivingDropsEvent, LivingRef, LoopContext, LootTableLoadEvent,
+    MenuClickedEvent, MenuClosedEvent, MenuPart, MenuReplace, ModContainer, MouseButtonPostEvent,
+    OnBlockPlacedByEvent, PayloadBytes, PayloadHandleError, PayloadId, Registrar,
+    RegistrationContext, ResourceHandler, RightClickBlockEvent, RightClickItemEvent, ServerHost,
+    ServerTickEvent, ServerTickPhase, SoundSource, SpawnReason, StateForPlacementEvent,
+    TooltipEvent, UseItemOnEvent, UseOnEvent, UseWithoutItemEvent,
 };
 
 use contents::Contents;
@@ -1631,6 +1633,14 @@ impl Hooks for Mod {
         Flow::Continue
     }
 
+    /// ToolSwapperUpgradeWrapper.onAttackEntity: the best weapon the backpack holds goes into the hand.
+    fn attack_entity(&self, host: &mut dyn ServerHost, _event: &mut AttackEntityEvent<'_>) -> Flow {
+        if let Some(player) = host.players().acting_player() {
+            swapper::on_attack(host, player);
+        }
+        Flow::Continue
+    }
+
     /// LimitedBarrelBlock.attack: a left click on the front takes one of the slot's item (a stack when sneaking).
     fn left_click_block(&self, host: &mut dyn ServerHost, event: &mut LeftClickBlockEvent) -> Flow {
         let Some(player) = host.players().acting_player() else {
@@ -1642,6 +1652,7 @@ impl Hooks for Mod {
         let Some(level) = host.level(&dim) else {
             return Flow::Continue;
         };
+        swapper::on_block_click(host, player, level, event.pos);
         let Some(kind) = storage::kind_of_block(&storage::block_id(&*host, level, event.pos))
         else {
             return Flow::Continue;

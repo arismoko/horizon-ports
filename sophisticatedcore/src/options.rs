@@ -55,7 +55,7 @@ const BACKPACK_GROUP_DEFAULTS: [i64; 3] = [3, 1, 1];
 const STORAGE_GROUP_DEFAULTS: [i64; 3] = [2, 1, 1];
 
 /// The filtered upgrades and their `filterSlots` defaults, basic and advanced.
-pub const FILTERED: [(&str, i64, i64); 9] = [
+pub const FILTERED: [(&str, i64, i64); 10] = [
     ("pickup", 9, 16),
     ("filter", 9, 16),
     ("magnet", 9, 16),
@@ -65,6 +65,7 @@ pub const FILTERED: [(&str, i64, i64); 9] = [
     ("restock", 9, 16),
     ("deposit", 9, 16),
     ("refill", 6, 12),
+    ("tool_swapper", 8, 8),
 ];
 /// `JukeboxUpgradeConfig.numberOfSlots` of the advanced jukebox upgrade (the basic one holds one disc).
 const JUKEBOX_SLOTS: i64 = 12;
@@ -288,7 +289,7 @@ mod tests {
     fn upgrade_settings_start_at_the_jars_defaults() {
         let t = read_tune(&|_| None);
         assert_eq!(&t.filters[..2], &[9, 16]);
-        assert_eq!(&t.filters[16..], &[6, 12]);
+        assert_eq!(&t.filters[16..], &[6, 12, 8, 8]);
         assert_eq!(t.jukebox_slots, 12);
         assert_eq!(t.compression_slots, 5);
         assert_eq!((t.hopper_ticks, t.hopper_stack), ([8, 2], [1, 4]));
@@ -506,7 +507,7 @@ pub struct Tune {
     pub backpack_groups: [usize; 3],
     pub storage_groups: [usize; 3],
     /// Filter slots by [`FILTERED`] index, basic at `2 * i`, advanced after it.
-    pub filters: [usize; 18],
+    pub filters: [usize; 20],
     pub jukebox_slots: usize,
     pub compression_slots: usize,
     /// Basic then advanced.
