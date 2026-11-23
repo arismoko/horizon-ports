@@ -39,6 +39,7 @@ mod jukebox;
 mod liquid_caps;
 mod menu;
 mod mobs;
+mod network;
 mod options;
 mod paintbrush;
 mod places;
@@ -1139,6 +1140,95 @@ impl ItemPart for PaintbrushItem {
     }
 }
 
+/// ControllerBlock: using it puts the held stack (twice in quick succession, everything of the network's items in the
+/// inventory) into the network.
+struct ControllerBlock(Arc<Shared>);
+
+#[mod_api::sunrise_part]
+impl BlockPart for ControllerBlock {
+    fn use_item_on(
+        &self,
+        host: &mut dyn ServerHost,
+        event: &mut UseItemOnEvent<'_>,
+    ) -> Option<InteractionResult> {
+        if places::sneaking(&*host, event.click.player) {
+            return None;
+        }
+        self.use_at(host, event.click, true)
+    }
+
+    fn use_without_item(
+        &self,
+        host: &mut dyn ServerHost,
+        event: &mut UseWithoutItemEvent<'_>,
+    ) -> Option<InteractionResult> {
+        self.use_at(host, event.click, false)
+    }
+}
+
+impl ControllerBlock {
+    fn use_at(
+        &self,
+        host: &mut dyn ServerHost,
+        click: &mod_api::BlockClick<'_>,
+        holding: bool,
+    ) -> Option<InteractionResult> {
+        if !matches!(click.hand, Hand::Main) {
+            return Some(InteractionResult::Success);
+        }
+        let dim = click.dimension.key().id().to_string();
+        let level = host.level(&dim)?;
+        let player = host.player(click.player)?;
+        let now = self.0.tick();
+        let again = lock(&self.0.deposits)
+            .get(&click.player)
+            .is_some_and(|(t, p)| *p == click.pos && now.saturating_sub(*t) < 10);
+        lock(&self.0.deposits).insert(click.player, (now, click.pos));
+        if holding || again {
+            network::deposit(host, player, level, click.pos, again);
+        }
+        Some(InteractionResult::Success)
+    }
+}
+
+/// StorageLinkBlock: it faces away from the block it was put on, and the other way when that block is a link
+/// already facing this one.
+struct LinkBlock;
+
+#[mod_api::sunrise_part]
+impl BlockPart for LinkBlock {
+    fn state_for_placement(
+        &self,
+        level: LevelSide<'_>,
+        event: &mut StateForPlacementEvent<'_>,
+    ) -> Option<Option<BlockState>> {
+        let (LevelSide::Server(level) | LevelSide::Client(level)) = level;
+        let ctx = event.context;
+        let face = match ctx.face {
+            mod_api::Direction::Up => "up",
+            mod_api::Direction::Down => "down",
+            mod_api::Direction::North => "north",
+            mod_api::Direction::South => "south",
+            mod_api::Direction::West => "west",
+            mod_api::Direction::East => "east",
+        };
+        let v = storage::dir_vec(face);
+        let behind = [ctx.pos.x - v[0], ctx.pos.y - v[1], ctx.pos.z - v[2]];
+        let facing = match level
+            .block_state(behind)
+            .and_then(|b| level.state_string(b))
+        {
+            Some(s) if s.starts_with(network::LINK) && s.contains(&format!("facing={face}")) => {
+                render::opposite(face)
+            }
+            _ => face,
+        };
+        level
+            .block_state_id(&format!("{}[facing={facing}]", network::LINK))
+            .map(Some)
+    }
+}
+
 /// DecorationTableBlock: using it opens the table's menu.
 struct TableBlock(Arc<Shared>);
 
@@ -1470,6 +1560,53 @@ impl Hooks for Mod {
                 },
             );
             let _ = r.register_attachment_type("sophisticatedstorage:decoration_table", false);
+            let _ = r.register_attachment_type("sophisticatedstorage:controller", false);
+            let _ = r.register_attachment_type("sophisticatedstorage:network_node", false);
+            let ckey = r.block_key(network::CONTROLLER);
+            r.block_part(ckey, ControllerBlock(self.shared.clone()));
+            r.block_capability_before_game(&ITEMS, &ckey, move |_, at: BlockSide, _, _, offer| {
+                offer.offer(|| {
+                    Box::new(network::NetHandler::new(
+                        at.level,
+                        at.pos,
+                        false,
+                        network::View::Full,
+                    )) as Box<dyn ResourceHandler<ItemResource>>
+                });
+            });
+            for (id, view) in [
+                (network::IO, network::View::Full),
+                (network::INPUT, network::View::Input),
+                (network::OUTPUT, network::View::Output),
+            ] {
+                let key = r.block_key(id);
+                r.block_capability_before_game(
+                    &ITEMS,
+                    &key,
+                    move |_, at: BlockSide, _, _, offer| {
+                        offer.offer(|| {
+                            Box::new(network::NetHandler::new(at.level, at.pos, true, view))
+                                as Box<dyn ResourceHandler<ItemResource>>
+                        });
+                    },
+                );
+            }
+            let lkey = r.block_key(network::LINK);
+            r.block_part(lkey, LinkBlock);
+            let kind = r
+                .block_entity_type("controller")
+                .blocks(&[network::CONTROLLER])
+                .build();
+            if let Err(e) = r.block_entity_part_with_state(&kind, network::ControllerEntity) {
+                eprintln!("[sophisticatedcore] controller block entity part refused: {e:?}");
+            }
+            let kind = r
+                .block_entity_type("network_node")
+                .blocks(&[network::LINK, network::IO, network::INPUT, network::OUTPUT])
+                .build();
+            if let Err(e) = r.block_entity_part_with_state(&kind, network::NodeEntity) {
+                eprintln!("[sophisticatedcore] network node block entity part refused: {e:?}");
+            }
             let kind = r
                 .block_entity_type("decoration_table")
                 .blocks(&["sophisticatedstorage:decoration_table"])

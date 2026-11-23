@@ -4,9 +4,10 @@
 //! The mode and the controller position live in the tool's custom data (`mode`, `controllerPos` as a block position's
 //! long); the flags it toggles live in the storage's own stack (`locked`, `showLock`, `showTier`, `showUpgrades`,
 //! `showCounts`, `showFillLevels`).
-use mod_api::{Compound, ItemStack, LevelRef, ServerHost, Tag};
+use mod_api::{ItemStack, LevelRef, ServerHost, Tag};
 
-use crate::contents::{Nbt, custom_data, get_bool, get_str, put, set_custom_data};
+use crate::contents::{Nbt, custom_data, get_bool, get_long, get_str, put, set_custom_data};
+use crate::network;
 use crate::storage::{self, kind_of_block};
 use crate::storage_items::Family;
 
@@ -124,13 +125,6 @@ pub fn unpack(v: i64) -> [i32; 3] {
     ]
 }
 
-fn get_long(c: &Compound, k: &str) -> Option<i64> {
-    match c.at(k)? {
-        Tag::Long(v) => Some(*v),
-        _ => None,
-    }
-}
-
 /// The controller the tool holds.
 pub fn controller_link(tool: &ItemStack) -> Option<[i32; 3]> {
     get_long(&custom_data(tool), CONTROLLER_POS).map(unpack)
@@ -179,22 +173,14 @@ pub fn use_on(
         if block == CONTROLLER {
             return Used::Done(Some(pos));
         }
-        if kind_of_block(block).is_none() {
+        if !network::linkable(block) {
             return Used::Passed;
         }
-        let Some(mut st) = storage::read_be(&*host, level, pos) else {
-            return Used::Passed;
-        };
-        let mut d = custom_data(&st);
-        match controller_link(tool) {
-            Some(c) => put(&mut d, CONTROLLER_POS, Tag::Long(pack(c))),
-            None => {
-                d.del(CONTROLLER_POS);
-            }
-        }
-        set_custom_data(&mut st, d);
-        storage::write_be(host, level, pos, Some(st));
+        network::link(host, level, pos, controller_link(tool));
         return Used::Done(controller_link(tool));
+    }
+    if block == CONTROLLER {
+        return toggle_all(host, level, pos, m, tool);
     }
     let Some(kind) = kind_of_block(block) else {
         return Used::Passed;
@@ -210,6 +196,45 @@ pub fn use_on(
     put(&mut d, key, Tag::Byte(i8::from(!now)));
     set_custom_data(&mut st, d);
     storage::write_be(host, level, pos, Some(st));
+    Used::Done(controller_link(tool))
+}
+
+/// A toggle on the controller reaches every storage in its network (ControllerBlockEntity.toggleLock and the like):
+/// when any is off they all go on, otherwise they all go off. The lock display counts only the locked ones.
+fn toggle_all(
+    host: &mut dyn ServerHost,
+    level: LevelRef,
+    pos: [i32; 3],
+    m: Mode,
+    tool: &ItemStack,
+) -> Used {
+    if m.flag(Family::LimitedBarrel).is_none() {
+        return Used::Passed;
+    }
+    let net = network::net_of(&*host, level, pos);
+    let mut targets = Vec::new();
+    for p in net.storages {
+        let Some(kind) = kind_of_block(&storage::block_id(&*host, level, p)) else {
+            continue;
+        };
+        let (Some((key, default)), Some(st)) =
+            (m.flag(kind.family), storage::read_be(&*host, level, p))
+        else {
+            continue;
+        };
+        let d = custom_data(&st);
+        if m == Mode::LockDisplay && get_bool(&d, "locked") != Some(true) {
+            continue;
+        }
+        targets.push((p, st, key, get_bool(&d, key).unwrap_or(default)));
+    }
+    let to = targets.iter().any(|t| !t.3);
+    for (p, mut st, key, _) in targets {
+        let mut d = custom_data(&st);
+        put(&mut d, key, Tag::Byte(i8::from(to)));
+        set_custom_data(&mut st, d);
+        storage::write_be(host, level, p, Some(st));
+    }
     Used::Done(controller_link(tool))
 }
 

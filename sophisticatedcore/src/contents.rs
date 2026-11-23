@@ -57,6 +57,13 @@ pub fn set_custom_data(stack: &mut ItemStack, data: Compound) {
     let _ = stack.apply_components(&patch);
 }
 
+pub fn get_long(c: &Compound, k: &str) -> Option<i64> {
+    match c.at(k)? {
+        Tag::Long(v) => Some(*v),
+        _ => None,
+    }
+}
+
 pub fn get_int(c: &Compound, k: &str) -> Option<i32> {
     match c.at(k)? {
         Tag::Byte(v) => Some(i32::from(*v)),

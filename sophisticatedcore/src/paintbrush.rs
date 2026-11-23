@@ -192,6 +192,18 @@ pub fn use_on(
         paint(host, player, hand_slot, brush, level, pos, 1.0);
         return true;
     }
+    if block == crate::network::CONTROLLER {
+        let net = crate::network::net_of(&*host, level, pos);
+        let mut seen = Vec::new();
+        for p in net.storages {
+            let main = storage::main_pos(&*host, level, p);
+            if !seen.contains(&main) {
+                seen.push(main);
+                paint(host, player, hand_slot, brush, level, main, 0.6);
+            }
+        }
+        return true;
+    }
     false
 }
 

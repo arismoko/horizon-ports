@@ -63,7 +63,7 @@ pub fn set_worn(host: &mut dyn Host, uuid: u128, slot: &str, stack: Option<ItemS
 }
 
 /// The player's inventory slots 0..=40 (main, armour, off hand), as owned stacks.
-fn readable(host: &dyn Host, player: PlayerRef) -> Option<(Vec<Option<ItemStack>>, bool)> {
+pub fn readable(host: &dyn Host, player: PlayerRef) -> Option<(Vec<Option<ItemStack>>, bool)> {
     player.with_inventory(host, |inventory| {
         let mut inv = vec![None; 41];
         let mut whole = true;

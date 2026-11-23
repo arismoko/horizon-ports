@@ -10,13 +10,18 @@ use mod_api::{
     ItemStack, ModBlockEntity, Tag, Text,
 };
 
-use crate::contents::{INVENTORY, Nbt, UPGRADES, custom_data, get_bool, get_int, put, read_items};
+use crate::contents::{
+    INVENTORY, Nbt, UPGRADES, custom_data, get_bool, get_int, get_long, put, read_items,
+};
+use crate::storage;
 use crate::storage_items::{self, Family};
 use crate::upgrades;
 
 const MAIN: &str = "mainColor";
 const ACCENT: &str = "accentColor";
 const SLOTS: &str = "slots";
+/// The controller a storage is linked to, as a packed position (`i64::MIN` for none).
+pub const LINKED_TO: &str = "linkedTo";
 const UPGRADE_ITEMS: &str = "upgrades";
 /// `DyeColor.WHITE.getTextColor()`, the count's colour before any slot colour.
 const COUNT_COLOR: u32 = 0xF9FFFE;
@@ -40,6 +45,16 @@ pub fn update_tag(entity: &ModBlockEntity) -> Option<Compound> {
     for k in [MAIN, ACCENT] {
         put(&mut tag, k, Tag::Int(get_int(&data, k).unwrap_or(-1)));
     }
+    put(
+        &mut tag,
+        LINKED_TO,
+        Tag::Long(get_long(&data, "controllerPos").unwrap_or(i64::MIN)),
+    );
+    put(
+        &mut tag,
+        storage::PACKED,
+        Tag::Byte(i8::from(get_bool(&data, storage::PACKED) == Some(true))),
+    );
     let empty = Tag::List(Vec::new());
     put(
         &mut tag,
@@ -361,6 +376,36 @@ fn one(stack: &ItemStack) -> ItemStack {
     let mut s = stack.clone();
     let _ = s.set_count(1);
     s
+}
+
+/// The network's debug view (ControllerRenderer): two lines of text on a face of a storage, `order` in the network and
+/// its `slots`, in the frame of a barrel's count on that face. `at` is the storage's offset from the block drawn.
+pub fn debug_text(
+    draw: &mut dyn BlockEntityDrawContext,
+    at: [f32; 3],
+    face: &str,
+    order: usize,
+    slots: usize,
+) {
+    draw.push();
+    draw.translate(at);
+    if let Some((axis, deg)) = north_based(opposite(face)) {
+        draw.rotate_about(axis, deg, [0.5, 0.5, 0.5]);
+    }
+    draw.translate([1.0, 0.0, 1.0]);
+    for (i, line) in [format!("Order: {order}"), format!("Slots: {slots}")]
+        .into_iter()
+        .enumerate()
+    {
+        draw.push();
+        draw.translate([-0.5, 0.65 - i as f32 * 0.15, 0.001 - 0.75 / 16.0]);
+        draw.scale([MULTIPLE_FONT, -MULTIPLE_FONT, MULTIPLE_FONT]);
+        let text = Text::literal(line);
+        let width = draw.text_width(&text);
+        let _ = draw.text(&text, [-width / 2.0, 0.0], COUNT_COLOR, false, None);
+        draw.pop();
+    }
+    draw.pop();
 }
 
 fn counts(
