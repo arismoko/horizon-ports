@@ -62,6 +62,16 @@ const JUKEBOX_SLOTS: i64 = 12;
 const HOPPER_TICKS: [i64; 2] = [8, 2];
 const HOPPER_STACK: [i64; 2] = [1, 4];
 
+/// The cooking upgrades, in the order of [`Tune::cooking`]: the manual ones, then the automatic ones.
+pub const COOKING: [&str; 6] = [
+    "smelting_upgrade",
+    "smoking_upgrade",
+    "blasting_upgrade",
+    "auto_smelting_upgrade",
+    "auto_smoking_upgrade",
+    "auto_blasting_upgrade",
+];
+
 pub enum Kind {
     Toggle(bool),
     /// Minimum, maximum, step, default.
@@ -332,8 +342,17 @@ pub fn tier_specs() -> Vec<(String, Kind)> {
             STORAGE_GROUP_DEFAULTS[g],
         );
     }
+    for name in &COOKING[3..] {
+        range(format!("{name}_input_filter_slots"), 1, 20, 8);
+        range(format!("{name}_fuel_filter_slots"), 1, 20, 4);
+    }
     for name in ["void_upgrade", "advanced_void_upgrade"] {
         out.push((format!("{name}_void_anything_enabled"), Kind::Toggle(true)));
+    }
+    for name in COOKING {
+        for key in ["smelting_speed_multiplier", "fuel_efficiency_multiplier"] {
+            out.push((format!("{name}_{key}"), Kind::Range(0.25, 4.0, 0.05, 1.0)));
+        }
     }
     out
 }
@@ -357,6 +376,10 @@ pub struct Tune {
     pub hopper_ticks: [usize; 2],
     pub hopper_stack: [usize; 2],
     pub void_anything: [bool; 2],
+    /// Smelting speed and fuel efficiency multipliers by [`COOKING`] index.
+    pub cooking: [(f64, f64); 6],
+    /// Input and fuel filter slots of the automatic cooking upgrades.
+    pub cook_filters: [[usize; 2]; 3],
 }
 
 static TUNE: RwLock<Option<Tune>> = RwLock::new(None);
@@ -442,6 +465,23 @@ fn read_tune(get: &dyn Fn(&str) -> Option<String>) -> Tune {
             get(&format!("{name}_void_anything_enabled")).as_deref(),
             true,
         );
+    }
+    for (i, name) in COOKING.iter().enumerate() {
+        let m = |key: &str| {
+            get(&format!("{name}_{key}"))
+                .and_then(|t| t.trim().parse::<f64>().ok())
+                .map_or(1.0, |v| v.clamp(0.25, 4.0))
+        };
+        t.cooking[i] = (
+            m("smelting_speed_multiplier"),
+            m("fuel_efficiency_multiplier"),
+        );
+        if i >= 3 {
+            t.cook_filters[i - 3] = [
+                int(get(&format!("{name}_input_filter_slots")), 8, 1, 20) as usize,
+                int(get(&format!("{name}_fuel_filter_slots")), 4, 1, 20) as usize,
+            ];
+        }
     }
     for (g, name) in GROUPS.iter().enumerate() {
         t.backpack_groups[g] = int(

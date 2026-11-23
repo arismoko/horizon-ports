@@ -298,6 +298,23 @@ fn compact(host: &mut dyn ServerHost, uuid: u128, c: &mut Carried) -> bool {
     compact_contents(&*host, level, c.kind, &mut c.contents)
 }
 
+/// The cooking upgrades of a carried storage, every tick.
+fn cook(host: &mut dyn ServerHost, uuid: u128, c: &mut Carried) -> bool {
+    let Some(id) = contents::uuid(&c.stack) else {
+        return false;
+    };
+    let Some(player) = host.player(uuid) else {
+        return false;
+    };
+    let Some(dim) = player.dimension(&*host).map(|d| d.to_string()) else {
+        return false;
+    };
+    let Some(level) = host.level(&dim) else {
+        return false;
+    };
+    crate::cooking::run(&*host, level, id, c.kind, &mut c.contents)
+}
+
 /// The compacting upgrade's work on `contents` (in a carried or a placed storage).
 pub fn compact_contents(
     host: &dyn mod_api::Host,
@@ -476,6 +493,15 @@ pub fn tick(host: &mut dyn ServerHost, uuid: u128, n: u64) -> Vec<[i32; 4]> {
             if c.has(&*host, Kind::Refill) && refill(host, uuid, c) {
                 c.contents_changed = true;
             }
+        }
+    }
+    for c in list.iter_mut() {
+        let cooks = c
+            .ups(&*host)
+            .iter()
+            .any(|(_, u)| matches!(u.kind, Kind::Cooking(_)));
+        if cooks && cook(host, uuid, c) {
+            c.contents_changed = true;
         }
     }
     let mut saved = Vec::new();

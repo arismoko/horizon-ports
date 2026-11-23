@@ -25,6 +25,7 @@
 #![allow(clippy::needless_range_loop, clippy::type_complexity)]
 
 mod contents;
+mod cooking;
 mod crafting;
 mod jukebox;
 mod menu;

@@ -33,6 +33,10 @@ pub enum View {
     Jukebox {
         slot: usize,
     },
+    /// A cooking upgrade's furnace (and, for the automatic ones, its two filters).
+    Cooking {
+        slot: usize,
+    },
 }
 
 #[derive(Clone, Debug)]
@@ -77,7 +81,7 @@ const UNKNOWN_MSG: &str = "This item's mod isn't installed: it stays here, saved
 const GRID: [usize; 9] = [0, 1, 2, 9, 10, 11, 18, 19, 20];
 const RESULT: usize = 14;
 
-fn item(host: &dyn Host, id: &str) -> Option<ItemStack> {
+pub(crate) fn item(host: &dyn Host, id: &str) -> Option<ItemStack> {
     let key = host.item_key(&Identifier::parse(id).ok()?)?;
     ItemStack::new(key, 1)
 }
@@ -136,7 +140,7 @@ fn shown(host: &dyn Host, st: &ItemStack) -> Option<ItemStack> {
 }
 
 fn kind_has_view(u: &upgrades::Upgrade) -> bool {
-    u.filters > 0 || matches!(u.kind, Kind::Crafting | Kind::Jukebox)
+    u.filters > 0 || matches!(u.kind, Kind::Crafting | Kind::Jukebox | Kind::Cooking(_))
 }
 
 /// What the menu shows for the session's view.
@@ -308,6 +312,7 @@ pub fn render(host: &mut dyn ServerHost, s: &Session, c: &Contents) -> Vec<Optio
             }
             out[base + 8] = Some(up.clone());
         }
+        View::Cooking { slot } => render_cooking(host, s, c, *slot, &mut out),
         View::Jukebox { slot } => {
             let Some(up) = c.upgrades.get(*slot).cloned().flatten() else {
                 return out;
@@ -647,6 +652,7 @@ pub fn click(
         View::Main { page } => click_main(host, player, s, c, ev.slot, page, shift, right),
         View::Settings { slot } => click_settings(host, player, s, c, ev.slot, slot),
         View::Jukebox { slot } => click_jukebox(host, player, s, c, ev.slot, slot, uuid),
+        View::Cooking { slot } => click_cooking(host, player, s, c, ev.slot, slot, right),
         View::Crafting { slot, selected } => {
             click_crafting(host, player, s, c, ev.slot, slot, selected, shift)
         }
@@ -761,6 +767,7 @@ fn click_main(
                     selected: None,
                 },
                 Kind::Jukebox => View::Jukebox { slot: j },
+                Kind::Cooking(_) => View::Cooking { slot: j },
                 _ => View::Settings { slot: j },
             };
             return (Outcome::View(view), None);
@@ -841,6 +848,240 @@ fn click_settings(
         } else if i == base + 5 && u.kind == Kind::Magnet {
             let v = !upgrades::flag(&up, "pickupXp", true);
             upgrades::set_flag(&mut up, "pickupXp", v);
+        } else {
+            return (Outcome::Nothing, None);
+        }
+    }
+    c.upgrades[j] = Some(up);
+    (Outcome::Changed(c), None)
+}
+
+/// Where the filters of an automatic cooking view start: the input filter's first cell, then the fuel filter's
+/// (each on rows of its own), and the cells that fit above the control row.
+fn cooking_layout(base: usize, k: crate::cooking::Cooking) -> (usize, usize, usize, usize) {
+    let n = crate::options::tune().cook_filters[usize::from(k.recipe)];
+    let input_at = 9;
+    let fuel_at = input_at + n[0].div_ceil(9) * 9;
+    let shown = |at: usize, n: usize| n.min(base.saturating_sub(at));
+    (
+        input_at,
+        shown(input_at, n[0]),
+        fuel_at,
+        shown(fuel_at, n[1]),
+    )
+}
+
+fn render_cooking(
+    host: &mut dyn ServerHost,
+    s: &Session,
+    c: &Contents,
+    j: usize,
+    out: &mut [Option<ItemStack>],
+) {
+    let fill = filler(&*host);
+    let base = s.control();
+    let Some(up) = c.upgrades.get(j).cloned().flatten() else {
+        return;
+    };
+    let Some(Kind::Cooking(k)) = upgrades::of(&*host, &up).map(|u| u.kind) else {
+        return;
+    };
+    for cell in out.iter_mut().take(base + 9) {
+        *cell = fill.clone();
+    }
+    let cook = crate::cooking::read(&*host, &up);
+    let labels = [
+        ("minecraft:white_stained_glass_pane", "Input"),
+        ("minecraft:black_stained_glass_pane", "Fuel"),
+        ("minecraft:gray_stained_glass_pane", "Output"),
+    ];
+    for (i, (id, name)) in labels.iter().enumerate() {
+        out[i] = match &cook.slots[i] {
+            Some(st) => Some(st.clone()),
+            None => button(
+                &*host,
+                id,
+                name,
+                &[if i == 2 {
+                    "Smelted items collect here"
+                } else {
+                    "Click an item in your inventory to put it here"
+                }],
+            ),
+        };
+    }
+    let level = host
+        .level("minecraft:overworld")
+        .and_then(|l| l.game_time(&*host))
+        .unwrap_or(0);
+    let burning = cook.burning(level) && cook.burn_total > 0;
+    out[4] = if burning {
+        let left = (cook.burn_finish - level).max(0);
+        button(
+            &*host,
+            "minecraft:blaze_powder",
+            "Burning",
+            &[&format!(
+                "{} of {} ticks of fuel left",
+                left, cook.burn_total
+            )],
+        )
+    } else {
+        button(&*host, "minecraft:gunpowder", "Not burning", &[])
+    };
+    if k.auto {
+        let (fi, ff) = crate::cooking::filters(&*host, &up, k);
+        for (at, f, mode) in [(6usize, &fi, "Input filter"), (7, &ff, "Fuel filter")] {
+            let name = format!(
+                "{mode}: {}",
+                if f.allow { "allow list" } else { "block list" }
+            );
+            out[at] = button(
+                &*host,
+                if f.allow {
+                    "minecraft:lime_dye"
+                } else {
+                    "minecraft:red_dye"
+                },
+                &name,
+                &["Click: switch between allow and block list"],
+            );
+        }
+        let (ia, ish, fa, fsh) = cooking_layout(base, k);
+        for (at, shown, f) in [(ia, ish, &fi), (fa, fsh, &ff)] {
+            for i in 0..shown {
+                out[at + i] = match f.items.get(i).cloned().flatten() {
+                    Some(x) => Some(x),
+                    None => button(
+                        &*host,
+                        "minecraft:white_stained_glass_pane",
+                        "Filter slot",
+                        &["Right-click an item in your inventory to add it"],
+                    ),
+                };
+            }
+        }
+    }
+    out[base] = button(&*host, "minecraft:arrow", "Back", &[]);
+    out[base + 8] = Some(up);
+}
+
+/// A click in a cooking upgrade's view: items in and out of the furnace's slots, the automatic upgrades' filters.
+fn click_cooking(
+    host: &mut dyn ServerHost,
+    player: PlayerRef,
+    s: &Session,
+    c: &Contents,
+    slot: i32,
+    j: usize,
+    right: bool,
+) -> (Outcome, Option<&'static str>) {
+    use crate::cooking::{Env, FUEL, INPUT, OUTPUT, Real};
+    let mut c = c.clone();
+    let base = s.control();
+    let Some(mut up) = c.upgrades.get(j).cloned().flatten() else {
+        return (Outcome::View(View::Main { page: 0 }), None);
+    };
+    let Some(Kind::Cooking(k)) = upgrades::of(&*host, &up).map(|u| u.kind) else {
+        return (Outcome::View(View::Main { page: 0 }), None);
+    };
+    let mut cook = crate::cooking::read(&*host, &up);
+    let (mut fi, mut ff) = crate::cooking::filters(&*host, &up, k);
+    let Some(level) = host.level("minecraft:overworld") else {
+        return (Outcome::Nothing, None);
+    };
+    if let Some(inv) = inventory_slot(s, slot) {
+        let invs = places::inventory(host, player);
+        let Some(st) = invs[inv as usize].clone() else {
+            return (Outcome::Nothing, None);
+        };
+        let env = Real {
+            host: &*host,
+            level,
+            kind: k,
+        };
+        let is_input = env.recipe(&st).is_some();
+        let is_fuel = env.burn(&st) > 0;
+        if right && k.auto {
+            let (f, what) = if is_input {
+                (&mut fi, "input")
+            } else if is_fuel {
+                (&mut ff, "fuel")
+            } else {
+                return (Outcome::Nothing, Some("It can't be cooked or burnt"));
+            };
+            if f.items.iter().flatten().any(|x| x.same_item(&st)) {
+                return (Outcome::Nothing, Some("Already in the filter"));
+            }
+            let Some(free) = f.items.iter().position(Option::is_none) else {
+                return (Outcome::Nothing, Some("The filter is full"));
+            };
+            f.items[free] = contents::with_count(&st, 1);
+            let key = if what == "input" {
+                "inputFilter"
+            } else {
+                "fuelFilter"
+            };
+            f.write(&*host, &mut up, key);
+        } else {
+            let (target, ok) = if is_input && (!k.auto || fi.matches(&*host, &st)) {
+                (INPUT, true)
+            } else if is_fuel && (!k.auto || ff.matches(&*host, &st)) {
+                (FUEL, true)
+            } else {
+                (INPUT, false)
+            };
+            if !ok {
+                return (Outcome::Nothing, Some("It can't be cooked or burnt here"));
+            }
+            let max = env.max(&st);
+            let held = cook.slots[target].clone();
+            let moved = match &held {
+                None => st.count().min(max),
+                Some(h) if contents::same(h, &st) => st.count().min(max.saturating_sub(h.count())),
+                Some(_) => 0,
+            };
+            if moved == 0 {
+                return (Outcome::Nothing, Some("That slot is full"));
+            }
+            let total = held.as_ref().map_or(0, |h| h.count()) + moved;
+            cook.slots[target] = contents::with_count(&st, total);
+            places::set_slot(host, player, inv, st.clone().shrink(moved));
+            crate::cooking::write(&*host, &mut up, &cook);
+        }
+    } else {
+        let Ok(i) = usize::try_from(slot) else {
+            return (Outcome::Nothing, None);
+        };
+        let (ia, ish, fa, fsh) = cooking_layout(base, k);
+        if i <= OUTPUT {
+            let Some(st) = cook.slots[i].take() else {
+                return (Outcome::Nothing, None);
+            };
+            places::give_or_drop(host, player, &st);
+            crate::cooking::write(&*host, &mut up, &cook);
+        } else if k.auto && (6..=7).contains(&i) {
+            let (f, key) = if i == 6 {
+                (&mut fi, "inputFilter")
+            } else {
+                (&mut ff, "fuelFilter")
+            };
+            f.allow = !f.allow;
+            f.write(&*host, &mut up, key);
+        } else if k.auto && (ia..ia + ish).contains(&i) {
+            if fi.items.get(i - ia).cloned().flatten().is_none() {
+                return (Outcome::Nothing, None);
+            }
+            fi.items[i - ia] = None;
+            fi.write(&*host, &mut up, "inputFilter");
+        } else if k.auto && (fa..fa + fsh).contains(&i) {
+            if ff.items.get(i - fa).cloned().flatten().is_none() {
+                return (Outcome::Nothing, None);
+            }
+            ff.items[i - fa] = None;
+            ff.write(&*host, &mut up, "fuelFilter");
+        } else if i == base {
+            return (Outcome::View(View::Main { page: 0 }), None);
         } else {
             return (Outcome::Nothing, None);
         }

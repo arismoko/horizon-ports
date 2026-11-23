@@ -23,6 +23,8 @@ pub enum Kind {
     Crafting,
     /// The jukebox upgrades: music discs played from the storage.
     Jukebox,
+    /// The smelting, smoking and blasting upgrades (manual and automatic).
+    Cooking(crate::cooking::Cooking),
     /// HopperUpgradeWrapper on a placed storage: pulls from the inventory above, pushes to the one below.
     Hopper,
     Stack(f64),
@@ -70,6 +72,26 @@ pub fn upgrade(id: &str) -> Option<Upgrade> {
         "crafting_upgrade" => u(Kind::Crafting, 0, false),
         "jukebox_upgrade" => u(Kind::Jukebox, 0, false),
         "hopper_upgrade" => u(Kind::Hopper, 0, false),
+        "smelting_upgrade"
+        | "smoking_upgrade"
+        | "blasting_upgrade"
+        | "auto_smelting_upgrade"
+        | "auto_smoking_upgrade"
+        | "auto_blasting_upgrade" => {
+            let auto = base.starts_with("auto_");
+            let recipe = if base.contains("smelting") {
+                0
+            } else if base.contains("smoking") {
+                1
+            } else {
+                2
+            };
+            u(
+                Kind::Cooking(crate::cooking::Cooking { recipe, auto }),
+                0,
+                false,
+            )
+        }
         "stack_upgrade_starter_tier" => u(Kind::Stack(1.5), 0, false),
         "stack_upgrade_tier_1" => u(Kind::Stack(2.0), 0, false),
         "stack_upgrade_tier_1_plus" => u(Kind::Stack(3.0), 0, false),
@@ -255,6 +277,15 @@ pub fn _settings_keys(c: &mut Compound) {
         "repeatMode",
         "discSlotActive",
         "discPlayed",
+        "cookingInventory",
+        "smeltingInventory",
+        "burnTimeFinish",
+        "burnTimeTotal",
+        "cookTimeFinish",
+        "cookTimeTotal",
+        "isCooking",
+        "inputFilter",
+        "fuelFilter",
     ] {
         c.del(k);
     }
