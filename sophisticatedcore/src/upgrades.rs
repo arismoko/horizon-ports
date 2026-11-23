@@ -245,6 +245,8 @@ pub fn _settings_keys(c: &mut Compound) {
         "matchNbt",
         "tags",
         "matchAnyTag",
+        "direction",
+        "filterByStorage",
         "shouldVoidOverflow",
         "pickupItems",
         "pickupXp",

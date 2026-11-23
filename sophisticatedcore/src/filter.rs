@@ -9,6 +9,7 @@ use mod_api::{Compound, Host, ItemStack, Tag};
 use crate::contents::{
     self, Nbt, custom_data, get_bool, get_str, put, read_items, set_custom_data, write_items,
 };
+use crate::upgrades::{self, Kind};
 
 /// What a stack is first compared on (PrimaryMatch).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -226,6 +227,80 @@ fn namespace(host: &dyn Host, s: &ItemStack) -> String {
         .to_owned()
 }
 
+/// Which way a filter upgrade filters (`direction`): what goes into the storage, what comes out, or both.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Direction {
+    Both,
+    Input,
+    Output,
+}
+
+impl Direction {
+    /// Direction.next.
+    pub fn next(self) -> Direction {
+        match self {
+            Direction::Both => Direction::Input,
+            Direction::Input => Direction::Output,
+            Direction::Output => Direction::Both,
+        }
+    }
+
+    /// Whether it filters what goes in (`input`) or what comes out.
+    pub fn applies(self, input: bool) -> bool {
+        match self {
+            Direction::Both => true,
+            Direction::Input => input,
+            Direction::Output => !input,
+        }
+    }
+
+    pub fn read(up: &ItemStack) -> Direction {
+        match get_str(&custom_data(up), "direction").as_deref() {
+            Some("input") => Direction::Input,
+            Some("output") => Direction::Output,
+            _ => Direction::Both,
+        }
+    }
+
+    pub fn write(self, up: &mut ItemStack) {
+        let mut d = custom_data(up);
+        let name = match self {
+            Direction::Both => "both",
+            Direction::Input => "input",
+            Direction::Output => "output",
+        };
+        put(&mut d, "direction", Tag::String(name.into()));
+        set_custom_data(up, d);
+    }
+}
+
+/// InventoryIOHandler: whether the storage's outside (hoppers, pipes) may put `stack` in (`input`) or take it out.
+/// With no filter upgrade facing that way everything passes; otherwise it must match one of them. `held` is what
+/// the storage holds, for the filters in contents mode.
+pub fn io_allowed<'a>(
+    host: &dyn Host,
+    upgrades: &[Option<ItemStack>],
+    stack: &ItemStack,
+    held: impl Iterator<Item = &'a ItemStack> + Clone,
+    input: bool,
+) -> bool {
+    let mut any = false;
+    for up in upgrades.iter().flatten() {
+        let Some(u) = upgrades::of(host, up).filter(|u| u.kind == Kind::Filter) else {
+            continue;
+        };
+        if !Direction::read(up).applies(input) {
+            continue;
+        }
+        any = true;
+        let f = Filter::read(host, up, "", u.filters, u.allow_default);
+        if f.matches_contents(host, stack, held.clone()) {
+            return true;
+        }
+    }
+    !any
+}
+
 /// The verdict of the filter's list or tags: `listed` says whether the stack matches some listed item, `tagged`
 /// whether it passes the tag match.
 fn decide(
@@ -290,6 +365,16 @@ mod tests {
         assert!(go(true, true, false, true, true, false));
         assert!(!go(false, true, false, true, true, true));
         assert!(go(false, true, false, false, false, true));
+    }
+
+    #[test]
+    fn a_direction_covers_its_ways() {
+        assert!(Direction::Both.applies(true) && Direction::Both.applies(false));
+        assert!(Direction::Input.applies(true) && !Direction::Input.applies(false));
+        assert!(!Direction::Output.applies(true) && Direction::Output.applies(false));
+        assert_eq!(Direction::Both.next(), Direction::Input);
+        assert_eq!(Direction::Input.next(), Direction::Output);
+        assert_eq!(Direction::Output.next(), Direction::Both);
     }
 
     #[test]

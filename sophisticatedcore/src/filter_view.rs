@@ -10,7 +10,7 @@
 use mod_api::{Host, ItemStack, PlayerRef, ServerHost};
 
 use crate::contents::{self, Contents};
-use crate::filter::{Filter, Primary};
+use crate::filter::{Direction, Filter, Primary};
 use crate::hopper;
 use crate::menu::{Outcome, Session, View, button, filler, inventory_slot};
 use crate::places;
@@ -42,14 +42,24 @@ fn parent(u: &Upgrade, slot: usize) -> View {
     }
 }
 
+/// The upgrades whose filters can match on what the storage holds (ContentsFilterLogic).
+fn contents_kind(u: &Upgrade) -> bool {
+    matches!(u.kind, Kind::Hopper | Kind::Filter)
+}
+
 /// Whether the upgrade has the list and match controls (a refill's list is only its items).
 fn has_match(u: &Upgrade) -> bool {
     u.kind != Kind::Refill
 }
 
 fn list_button(host: &dyn Host, u: &Upgrade, f: &Filter) -> Option<ItemStack> {
-    if u.kind == Kind::Hopper {
-        return crate::hopper_view::type_button(host, f, true);
+    if contents_kind(u) {
+        let what = if u.kind == Kind::Filter {
+            "filter"
+        } else {
+            "input"
+        };
+        return crate::hopper_view::type_button(host, f, what, u.kind != Kind::Filter);
     }
     if f.allow {
         button(
@@ -165,6 +175,35 @@ fn own(host: &dyn Host, u: &Upgrade, up: &ItemStack) -> [Option<ItemStack>; 2] {
                     &["Click: pull experience orbs"],
                 )
             },
+        ],
+        Kind::Filter => [
+            match Direction::read(up) {
+                Direction::Both => button(
+                    host,
+                    "minecraft:comparator",
+                    "Filters in and out",
+                    &[
+                        "Applies to what goes in and what comes out",
+                        "Click: only what goes in",
+                    ],
+                ),
+                Direction::Input => button(
+                    host,
+                    "minecraft:hopper",
+                    "Filters what goes in",
+                    &[
+                        "Hoppers and pipes putting items in",
+                        "Click: only what comes out",
+                    ],
+                ),
+                Direction::Output => button(
+                    host,
+                    "minecraft:dropper",
+                    "Filters what comes out",
+                    &["Hoppers and pipes taking items out", "Click: in and out"],
+                ),
+            },
+            None,
         ],
         _ => [None, None],
     }
@@ -383,7 +422,7 @@ pub fn click(
         } else if i == base + 1 && !by_tags && of > 1 {
             return (Outcome::View(here(flip(page, of, right))), None);
         } else if i == base + 2 && has_match(&u) {
-            if u.kind == Kind::Hopper {
+            if contents_kind(&u) {
                 hopper::cycle(&mut f);
             } else {
                 f.allow = !f.allow;
@@ -404,6 +443,10 @@ pub fn click(
             if v || crate::options::tune().void_anything[usize::from(u.advanced)] {
                 upgrades::set_flag(&mut up, "shouldVoidOverflow", v);
             }
+            c.upgrades[j] = Some(up);
+            return (Outcome::Changed(c), None);
+        } else if i == base + 4 && key.is_empty() && u.kind == Kind::Filter {
+            Direction::read(&up).next().write(&mut up);
             c.upgrades[j] = Some(up);
             return (Outcome::Changed(c), None);
         } else if i == base + 4 && key.is_empty() && u.kind == Kind::Magnet {

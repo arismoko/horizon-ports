@@ -1178,6 +1178,11 @@ impl Handler {
         )
     }
 
+    /// InventoryIOHandler: whether the filter upgrades let `stack` through in (`input`) or out.
+    fn passes(&self, host: &dyn Host, c: &Contents, stack: &ItemStack, input: bool) -> bool {
+        crate::filter::io_allowed(host, &c.upgrades, stack, c.slots.iter().flatten(), input)
+    }
+
     /// The void upgrade's answer for `stack`: Some(true) voids it all, Some(false) only what doesn't fit.
     fn void(&self, host: &dyn Host, c: &Contents, stack: &ItemStack) -> Option<bool> {
         c.upgrades.iter().flatten().find_map(|u| {
@@ -1233,7 +1238,11 @@ impl ResourceHandler<ItemResource> for Handler {
         .unwrap_or(0)
     }
     fn is_valid(&self, host: &mut dyn ServerHost, _index: usize, resource: &ItemResource) -> bool {
-        crate::menu::may_store(&*host, self.kind, resource.as_stack())
+        let h: &dyn Host = &*host;
+        crate::menu::may_store(h, self.kind, resource.as_stack())
+            && self
+                .with(h, |_, c| self.passes(h, c, resource.as_stack(), true))
+                .unwrap_or(false)
     }
     fn insert_at(
         &self,
@@ -1244,17 +1253,18 @@ impl ResourceHandler<ItemResource> for Handler {
         amount: u32,
     ) -> u32 {
         let h: &dyn Host = &*host;
-        let Some((st, mut c, lim, void)) = self.with(h, |s, c| {
+        let Some((st, mut c, lim, void, open)) = self.with(h, |s, c| {
             (
                 s.clone(),
                 c.clone(),
                 self.limit(h, c, resource.as_stack()),
                 self.void(h, c, resource.as_stack()),
+                self.passes(h, c, resource.as_stack(), true),
             )
         }) else {
             return 0;
         };
-        if !crate::menu::may_store(&*host, self.kind, resource.as_stack()) {
+        if !open || !crate::menu::may_store(&*host, self.kind, resource.as_stack()) {
             return 0;
         }
         if void == Some(true) {
@@ -1285,14 +1295,21 @@ impl ResourceHandler<ItemResource> for Handler {
         resource: &ItemResource,
         amount: u32,
     ) -> u32 {
-        let Some((st, mut c)) = self.with(&*host, |s, c| (s.clone(), c.clone())) else {
+        let h: &dyn Host = &*host;
+        let Some((st, mut c, open)) = self.with(h, |s, c| {
+            (
+                s.clone(),
+                c.clone(),
+                self.passes(h, c, resource.as_stack(), false),
+            )
+        }) else {
             return 0;
         };
         let Some(slot) = c.slots.get_mut(index) else {
             return 0;
         };
         let Some(cur) = slot.clone() else { return 0 };
-        if contents::is_unknown(&cur) || !resource.matches(&cur) {
+        if !open || contents::is_unknown(&cur) || !resource.matches(&cur) {
             return 0;
         }
         let take = cur.count().min(amount);
@@ -1311,17 +1328,18 @@ impl ResourceHandler<ItemResource> for Handler {
         amount: u32,
     ) -> Result<u32, Overanswered> {
         let h: &dyn Host = &*host;
-        let Some((st, mut c, lim, void)) = self.with(h, |s, c| {
+        let Some((st, mut c, lim, void, open)) = self.with(h, |s, c| {
             (
                 s.clone(),
                 c.clone(),
                 self.limit(h, c, resource.as_stack()),
                 self.void(h, c, resource.as_stack()),
+                self.passes(h, c, resource.as_stack(), true),
             )
         }) else {
             return Ok(0);
         };
-        if !crate::menu::may_store(&*host, self.kind, resource.as_stack()) {
+        if !open || !crate::menu::may_store(&*host, self.kind, resource.as_stack()) {
             return Ok(0);
         }
         if void == Some(true) {

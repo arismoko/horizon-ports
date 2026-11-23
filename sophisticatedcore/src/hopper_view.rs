@@ -63,8 +63,12 @@ fn io_button(host: &dyn Host, side: &str, dir: &str, io: Io) -> Option<ItemStack
     )
 }
 
-pub(crate) fn type_button(host: &dyn Host, f: &Filter, input: bool) -> Option<ItemStack> {
-    let what = if input { "input" } else { "output" };
+pub(crate) fn type_button(
+    host: &dyn Host,
+    f: &Filter,
+    what: &str,
+    input: bool,
+) -> Option<ItemStack> {
     match hopper::mode(f) {
         Mode::Allow => button(
             host,
@@ -149,9 +153,9 @@ pub fn render(
             );
         }
     }
-    put(l.in_type, type_button(&*host, &input, true));
+    put(l.in_type, type_button(&*host, &input, "input", true));
     put(l.in_open, open_button(&*host, &input, true));
-    put(l.out_type, type_button(&*host, &output, false));
+    put(l.out_type, type_button(&*host, &output, "output", false));
     put(l.out_open, open_button(&*host, &output, false));
     out[base] = button(&*host, "minecraft:arrow", "Back", &[]);
     out[base + 8] = Some(up);

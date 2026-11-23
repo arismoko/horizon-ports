@@ -10,6 +10,7 @@ A port of [Sophisticated Backpacks](https://github.com/Salandora/SophisticatedBa
 - Sophisticated Storage's tiered chests, barrels (with limited one-to-four-slot barrels) and shulker boxes in every wood, which keep their contents when broken or packed; chests placed side by side join.
 - A paged storage screen with sorting, upgrade slots, upgrade settings and a crafting grid.
 - Upgrades that work while carried or placed: pickup, magnet, void, feeding, compacting, refill, restock and deposit, hopper (sides and input and output filters), smelting, smoking and blasting (manual and automatic, with a furnace view), and stack upgrades that raise each slot's limit.
+- The filter upgrade limits what hoppers and pipes may put into a placed storage and take out of it (in, out or both; allow list, block list or what the storage already holds).
 - Every filter (pickup, void, feeding, hopper, cooking and the rest) is an allow or block list matched by item, by mod or by tags (any or all of the chosen ones), and optionally by durability and components too.
 - Tier upgrades crafted in place keep the contents; dye backpacks and storage in the crafting grid.
 - Backpacks in vanilla chest loot, as in the original (a setting turns it off).
@@ -21,7 +22,7 @@ A port of [Sophisticated Backpacks](https://github.com/Salandora/SophisticatedBa
 ## Differences from the original
 
 - The original's own screen (tabs, memory and no-sort slots) is a chest menu here; its sort and page buttons sit at the two ends of the bottom control row, and the sort button position setting swaps them or hides sort.
-- The tool swapper, stonecutter, anvil, smithing, inception, everlasting and infinity upgrades sit in their slot and do nothing yet; the filter upgrade and the storage network blocks do not work yet.
+- The tool swapper, stonecutter, anvil, smithing, inception, everlasting and infinity upgrades sit in their slot and do nothing yet; the storage network blocks do not work yet.
 - The hopper upgrade's view lists the sides (advanced only) and, for each filter, its type and a button that opens the filter; left-click an inventory item to add it to the input filter, right-click for the output filter. The contents filter does not look at memory slots (not ported).
 - A cooking upgrade that is switched off or taken out keeps no paused progress: its burn and cook clocks run on. In an automatic one, right-click an inventory item to add it to the matching filter.
 - Worn backpacks are drawn on the body in their default colours; dyed and spawn-egg colours are not drawn. A monster's potion effects are given when it joins the level; a creeper bearer loses its beneficial effects when it explodes.
