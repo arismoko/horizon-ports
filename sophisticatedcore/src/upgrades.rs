@@ -17,6 +17,7 @@ pub enum Kind {
     Magnet,
     Feeding,
     Compacting,
+    Compression,
     Void,
     Restock,
     Deposit,
@@ -71,6 +72,7 @@ pub fn upgrade(id: &str) -> Option<Upgrade> {
         "magnet_upgrade" => u(Kind::Magnet, f, false),
         "feeding_upgrade" => u(Kind::Feeding, f, false),
         "compacting_upgrade" => u(Kind::Compacting, f, false),
+        "compression_upgrade" => u(Kind::Compression, 0, false),
         "void_upgrade" => u(Kind::Void, f, true),
         "restock_upgrade" => u(Kind::Restock, f, false),
         "deposit_upgrade" => u(Kind::Deposit, f, false),
@@ -238,6 +240,8 @@ pub fn set_grid(host: &dyn Host, upgrade: &mut ItemStack, g: &[Option<ItemStack>
 /// A copy of `c` without the keys a settings view writes (so two upgrades compare by kind).
 pub fn _settings_keys(c: &mut Compound) {
     for k in [
+        "firstInventorySlot",
+        "slotCount",
         "filters",
         "isAllowList",
         "primaryMatch",

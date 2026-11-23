@@ -9,7 +9,7 @@ What it does:
 - Six backpack tiers (leather to netherite) that keep their contents and upgrades in the item: open one from your hand or with the Open Backpack key (B), or place it with sneak + use and pick it back up with an empty hand.
 - Sophisticated Storage's tiered chests, barrels (with limited one-to-four-slot barrels) and shulker boxes in every wood, which keep their contents when broken or packed; chests placed side by side join.
 - A paged storage screen with sorting, upgrade slots, upgrade settings and a crafting grid.
-- Upgrades that work while carried or placed: pickup, magnet, void, feeding, compacting, refill, restock and deposit, hopper (sides and input and output filters), smelting, smoking and blasting (manual and automatic, with a furnace view), and stack upgrades that raise each slot's limit.
+- Upgrades that work while carried or placed: pickup, magnet, void, feeding, compacting, compression (a range of slots that holds a material and everything it compresses to, 3 to 9 slots), refill, restock and deposit, hopper (sides and input and output filters), smelting, smoking and blasting (manual and automatic, with a furnace view), and stack upgrades that raise each slot's limit.
 - The filter upgrade limits what hoppers and pipes may put into a placed storage and take out of it (in, out or both; allow list, block list or what the storage already holds).
 - Every filter (pickup, void, feeding, hopper, cooking and the rest) is an allow or block list matched by item, by mod or by tags (any or all of the chosen ones), and optionally by durability and components too.
 - Tier upgrades crafted in place keep the contents; dye backpacks and storage in the crafting grid.
@@ -17,12 +17,13 @@ What it does:
 - Keys in Controls: Open Backpack (B), Sort (middle mouse button, in a storage screen), Inventory Interaction (C, restock and deposit on the block you look at), and switches for the upgrades in slots 1 to 5 (Z and X for the first two): a switched-off upgrade does nothing.
 - Settings (Options > Mods): backpack slowness for carrying too many, only the worn backpack's upgrades, chest loot, backpacks in container items, chests and barrels dropping packed, the drop count that forces packing, one wood variant in the creative tab, the magnet ranges, the button click sound and where the sort button sits.
 - Monsters (zombies, skeletons, creepers and the other listed kinds) may spawn wearing a backpack, with armour and extra health; a player's kill may drop it filled with loot. Chance, loot, health, armour, drop chance and looting bonus are settings.
-- Per-tier settings for slot counts, cooking speed and fuel efficiency, automatic cooking filter sizes, upgrade slots, limited-barrel multipliers and the most upgrades of each kind, and text files in `config/sophisticatedcore/` for items a backpack or shulker box refuses, blocks the interaction key skips, items that never stack, and which monsters wear a backpack. All are read while the game runs.
+- Per-tier settings for slot counts, cooking speed and fuel efficiency, automatic cooking filter sizes, upgrade slots, limited-barrel multipliers and the most upgrades of each kind, and text files in `config/sophisticatedcore/` for items a backpack or shulker box refuses, blocks the interaction key skips, items that never stack, what compressed items break into, and which monsters wear a backpack. All are read while the game runs.
 
 Differences from the original:
 
 - The original's own screen (tabs, memory and no-sort slots) is a chest menu here; its sort and page buttons sit at the two ends of the bottom control row, and the sort button position setting swaps them or hides sort.
 - The tool swapper, stonecutter, anvil, smithing, inception, everlasting and infinity upgrades sit in their slot and do nothing yet; the storage network blocks do not work yet.
+- The compression upgrade weighs one crafting recipe per grid where the original weighs every matching one, and a slot's shown count stops at 2147483647. It cannot go in beside a compacting upgrade, as in the original.
 - A cooking upgrade that is switched off or taken out keeps no paused progress: its burn and cook clocks run on. In an automatic one, right-click an inventory item to add it to the matching filter.
 - Worn backpacks are drawn on the body in their default colours; dyed and spawn-egg colours are not drawn. A monster's potion effects are given when it joins the level; a creeper bearer loses its beneficial effects when it explodes.
 - Backpacks now take vanilla shulker boxes, and shulker boxes take backpacks, as the original does; the container-item switches in settings refuse them again.

@@ -1018,7 +1018,8 @@ pub fn limited_deposit(
         let Some(h) = inv[i as usize].clone() else {
             continue;
         };
-        match &c.slots[slot] {
+        let shown = c.shown_at(&*host, kind, slot);
+        match &shown {
             Some(cur) if !contents::same(cur, &h) => continue,
             None if all => continue,
             _ => {}
@@ -1026,13 +1027,21 @@ pub fn limited_deposit(
         if !crate::menu::may_store(&*host, kind, &h) {
             continue;
         }
-        let lim = upgrades::limit(&*host, &h, m);
-        let have = c.slots[slot].as_ref().map_or(0, |s| s.count());
-        let put = lim.saturating_sub(have).min(h.count());
+        let banks = crate::compression::Banks::of(&*host, kind, &c);
+        let put = if banks.covers(slot) {
+            banks.insert_at(&mut c, slot, &h, h.count())
+        } else {
+            let lim = upgrades::limit(&*host, &h, m);
+            let have = c.slots[slot].as_ref().map_or(0, |s| s.count());
+            let put = lim.saturating_sub(have).min(h.count());
+            if put > 0 {
+                c.slots[slot] = contents::with_count(&h, have + put);
+            }
+            put
+        };
         if put == 0 {
             continue;
         }
-        c.slots[slot] = contents::with_count(&h, have + put);
         places::set_slot(host, player, i, h.clone().shrink(put));
         moved = true;
     }
@@ -1063,10 +1072,7 @@ pub fn limited_take(
     }
     let mut c = Contents::read(&*host, &st, kind);
     let Some(cur) = c
-        .slots
-        .get(slot)
-        .cloned()
-        .flatten()
+        .shown_at(&*host, kind, slot)
         .filter(|s| !contents::is_unknown(s))
     else {
         return false;
@@ -1076,7 +1082,7 @@ pub fn limited_take(
     let Some(out) = contents::with_count(&cur, n) else {
         return false;
     };
-    c.slots[slot] = contents::with_count(&cur, cur.count() - n);
+    c.take_from(&*host, kind, slot, n);
     c.write(&*host, &mut st, kind);
     write_be(host, level, pos, Some(st));
     places::give_or_drop(host, player, &out);
@@ -1194,11 +1200,8 @@ impl Handler {
 }
 
 /// Slot `index`'s stack unless it is the stand-in of an unknown item (hidden from hoppers and other mods).
-fn movable(c: &Contents, index: usize) -> Option<ItemStack> {
-    c.slots
-        .get(index)
-        .cloned()
-        .flatten()
+fn movable(host: &dyn Host, kind: &StorageItem, c: &Contents, index: usize) -> Option<ItemStack> {
+    c.shown_at(host, kind, index)
         .filter(|s| !contents::is_unknown(s))
 }
 
@@ -1207,25 +1210,32 @@ impl ResourceHandler<ItemResource> for Handler {
         self.with(&*host, |_, c| c.slots.len()).unwrap_or(0)
     }
     fn resource(&self, host: &mut dyn ServerHost, index: usize) -> Option<ItemResource> {
-        self.with(&*host, |_, c| {
-            movable(c, index).map(|s| ItemResource::of(&s))
+        let h: &dyn Host = &*host;
+        self.with(h, |_, c| {
+            movable(h, self.kind, c, index).map(|s| ItemResource::of(&s))
         })
         .flatten()
     }
     fn amount(&self, host: &mut dyn ServerHost, index: usize) -> u32 {
-        self.with(&*host, |_, c| movable(c, index).map_or(0, |s| s.count()))
-            .unwrap_or(0)
+        let h: &dyn Host = &*host;
+        self.with(h, |_, c| {
+            movable(h, self.kind, c, index).map_or(0, |s| s.count())
+        })
+        .unwrap_or(0)
     }
     /// With no resource, the slot's limit for an item that stacks to 64 (`getSlotLimit`).
     fn capacity(
         &self,
         host: &mut dyn ServerHost,
-        _index: usize,
+        index: usize,
         resource: Option<&ItemResource>,
     ) -> u32 {
         let h: &dyn Host = &*host;
         self.with(h, |_, c| match resource {
-            Some(resource) => self.limit(h, c, resource.as_stack()),
+            Some(resource) => crate::compression::Banks::of(h, self.kind, c)
+                .limit(c, index)
+                .filter(|l| *l > 0)
+                .unwrap_or_else(|| self.limit(h, c, resource.as_stack())),
             None => {
                 let v = (64.0 * upgrades::multiplier(h, self.kind, &c.upgrades)).floor();
                 if v >= f64::from(u32::MAX) {
@@ -1270,6 +1280,14 @@ impl ResourceHandler<ItemResource> for Handler {
         if void == Some(true) {
             return amount;
         }
+        let banks = crate::compression::Banks::of(h, self.kind, &c);
+        if banks.covers(index) {
+            let put = banks.insert_at(&mut c, index, resource.as_stack(), amount);
+            if put > 0 && !self.store(host, tx, st, c) {
+                return 0;
+            }
+            return if void == Some(false) { amount } else { put };
+        }
         let Some(slot) = c.slots.get_mut(index) else {
             return 0;
         };
@@ -1305,6 +1323,18 @@ impl ResourceHandler<ItemResource> for Handler {
         }) else {
             return 0;
         };
+        let banks = crate::compression::Banks::of(h, self.kind, &c);
+        if banks.covers(index) {
+            let shown = banks.shown(&c, index);
+            if !open || !shown.is_some_and(|s| resource.matches(&s)) {
+                return 0;
+            }
+            let take = banks.take_at(&mut c, index, amount);
+            if take > 0 && !self.store(host, tx, st, c) {
+                return 0;
+            }
+            return take;
+        }
         let Some(slot) = c.slots.get_mut(index) else {
             return 0;
         };
@@ -1328,11 +1358,10 @@ impl ResourceHandler<ItemResource> for Handler {
         amount: u32,
     ) -> Result<u32, Overanswered> {
         let h: &dyn Host = &*host;
-        let Some((st, mut c, lim, void, open)) = self.with(h, |s, c| {
+        let Some((st, mut c, void, open)) = self.with(h, |s, c| {
             (
                 s.clone(),
                 c.clone(),
-                self.limit(h, c, resource.as_stack()),
                 self.void(h, c, resource.as_stack()),
                 self.passes(h, c, resource.as_stack(), true),
             )
@@ -1345,7 +1374,7 @@ impl ResourceHandler<ItemResource> for Handler {
         if void == Some(true) {
             return Ok(amount);
         }
-        let went = contents::insert(&mut c.slots, resource.as_stack(), amount, lim);
+        let went = c.add(&*host, self.kind, resource.as_stack(), amount);
         if went > 0 && !self.store(host, tx, st, c) {
             return Ok(0);
         }
@@ -1409,7 +1438,6 @@ fn magnet(
     let Some(ents) = entities_in(&*host, level, min, max) else {
         return false;
     };
-    let m = upgrades::multiplier(&*host, kind, &c.upgrades);
     let mut changed = false;
     for e in ents {
         let Some(item) = host.item_entity(e) else {
@@ -1427,8 +1455,7 @@ fn magnet(
         if !wanted || !crate::menu::may_store(&*host, kind, &st) {
             continue;
         }
-        let lim = upgrades::limit(&*host, &st, m);
-        let went = contents::insert(&mut c.slots, &st, st.count(), lim);
+        let went = c.add(&*host, kind, &st, st.count());
         if went == 0 {
             continue;
         }

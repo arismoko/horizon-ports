@@ -119,9 +119,7 @@ pub fn accept(host: &dyn mod_api::Host, c: &mut Carried, stack: &ItemStack, magn
     {
         return n;
     }
-    let m = upgrades::multiplier(host, c.kind, &c.contents.upgrades);
-    let lim = upgrades::limit(host, stack, m);
-    let went = contents::insert(&mut c.contents.slots, stack, n, lim);
+    let went = c.contents.add(host, c.kind, stack, n);
     if went < n && void.is_some() { n } else { went }
 }
 
@@ -242,8 +240,9 @@ fn feed(host: &mut dyn ServerHost, uuid: u128, c: &mut Carried) -> bool {
     let Some((up, k)) = ups.iter().find(|(_, k)| k.kind == Kind::Feeding).cloned() else {
         return false;
     };
-    for i in 0..c.contents.slots.len() {
-        let Some(st) = c.contents.slots[i].clone() else {
+    let visible = c.contents.visible(&*host, c.kind);
+    for (i, st) in visible.into_iter().enumerate() {
+        let Some(st) = st else {
             continue;
         };
         let Some((n, sat)) = upgrades::food(&*host, &st) else {
@@ -259,11 +258,9 @@ fn feed(host: &mut dyn ServerHost, uuid: u128, c: &mut Carried) -> bool {
         if !player.feed(host, n, sat) {
             return false;
         }
-        c.contents.slots[i] = st.clone().shrink(1);
+        c.contents.take_from(&*host, c.kind, i, 1);
         if let Some(rem) = upgrades::use_remainder(&*host, &st) {
-            let m = upgrades::multiplier(&*host, c.kind, &c.contents.upgrades);
-            let lim = upgrades::limit(&*host, &rem, m);
-            let went = contents::insert(&mut c.contents.slots, &rem, rem.count(), lim);
+            let went = c.contents.add(&*host, c.kind, &rem, rem.count());
             if let Some(rest) = rem.clone().shrink(went) {
                 places::give_or_drop(host, player, &rest);
             }
@@ -453,7 +450,7 @@ fn refill(host: &mut dyn ServerHost, uuid: u128, c: &mut Carried) -> bool {
             if st.count() >= max {
                 break;
             }
-            let got = contents::extract(&mut c.contents.slots, &st, max - st.count());
+            let got = c.contents.remove(&*host, c.kind, &st, max - st.count());
             if got > 0 {
                 places::set_slot(
                     host,
@@ -654,7 +651,6 @@ pub fn interact(
     let Some(handler) = level.capability(host, &mod_api::ITEMS, pos, side) else {
         return false;
     };
-    let mult = upgrades::multiplier(&*host, c.kind, &c.contents.upgrades);
     // ContentsFilterLogic with no filters: the storage's own contents decide (`filterByStorage` is the jar's
     // default for these two only when set; an empty block list matches everything, as here).
     let mut moved_in = 0;
@@ -672,9 +668,8 @@ pub fn interact(
             if !upgrades::matches(&*host, up, k, &stack) {
                 continue;
             }
-            let lim = upgrades::limit(&*host, &stack, mult);
-            let mut trial = c.contents.slots.clone();
-            let fits = contents::insert(&mut trial, &stack, amount, lim);
+            let mut trial = c.contents.clone();
+            let fits = trial.add(&*host, c.kind, &stack, amount);
             if fits == 0 {
                 continue;
             }
@@ -682,14 +677,15 @@ pub fn interact(
                 .transaction(|host, tx| Ok::<u32, ()>(handler.extract_at(host, tx, i, &res, fits)))
                 .unwrap_or(0);
             if got > 0 {
-                contents::insert(&mut c.contents.slots, &stack, got, lim);
+                c.contents.add(&*host, c.kind, &stack, got);
                 moved_in += 1;
             }
         }
     }
     for (up, k) in &deposit {
-        for i in 0..c.contents.slots.len() {
-            let Some(stack) = c.contents.slots[i].clone() else {
+        let visible = c.contents.visible(&*host, c.kind);
+        for (i, stack) in visible.into_iter().enumerate() {
+            let Some(stack) = stack else {
                 continue;
             };
             if !upgrades::matches(&*host, up, k, &stack) {
@@ -703,7 +699,7 @@ pub fn interact(
                 })
                 .unwrap_or(0);
             if put > 0 {
-                c.contents.slots[i] = stack.clone().shrink(put);
+                c.contents.take_from(&*host, c.kind, i, put);
                 moved_out += 1;
             }
         }

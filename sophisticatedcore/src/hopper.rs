@@ -14,7 +14,7 @@ use crate::contents::{self, Contents, Nbt, custom_data, put, set_custom_data};
 use crate::filter::Filter;
 use crate::storage::{self, add, dir_of, dir_vec};
 use crate::storage_items::StorageItem;
-use crate::upgrades::{self, Upgrade};
+use crate::upgrades::Upgrade;
 
 type Items = Capability<dyn ResourceHandler<ItemResource>>;
 
@@ -259,7 +259,6 @@ fn pull(
     kind: &StorageItem,
     c: &mut Contents,
     filter: &Filter,
-    mult: f64,
     max: u32,
 ) -> bool {
     for i in 0..src.size(host) {
@@ -274,9 +273,8 @@ fn pull(
         {
             continue;
         }
-        let lim = upgrades::limit(&*host, &stack, mult);
-        let mut trial = c.slots.clone();
-        let fits = contents::insert(&mut trial, &stack, max.min(amount), lim);
+        let mut trial = c.clone();
+        let fits = trial.add(&*host, kind, &stack, max.min(amount));
         if fits == 0 {
             continue;
         }
@@ -284,7 +282,7 @@ fn pull(
             .transaction(|host, tx| Ok::<u32, ()>(src.extract_at(host, tx, i, &res, fits)))
             .unwrap_or(0);
         if got > 0 {
-            contents::insert(&mut c.slots, &stack, got, lim);
+            c.add(&*host, kind, &stack, got);
             return true;
         }
     }
@@ -295,6 +293,7 @@ fn pull(
 fn push(
     host: &mut dyn ServerHost,
     dst: &Items,
+    kind: &StorageItem,
     c: &mut Contents,
     filter: &Filter,
     max: u32,
@@ -306,8 +305,9 @@ fn push(
     } else {
         Vec::new()
     };
-    for i in 0..c.slots.len() {
-        let Some(st) = c.slots[i].clone().filter(|s| !contents::is_unknown(s)) else {
+    let visible = c.visible(&*host, kind);
+    for (i, st) in visible.into_iter().enumerate() {
+        let Some(st) = st.filter(|s| !contents::is_unknown(s)) else {
             continue;
         };
         if !filter.matches_contents(&*host, &st, &held) {
@@ -319,7 +319,7 @@ fn push(
             .transaction(|host, tx| Ok::<u32, ()>(dst.insert(host, tx, &res, n).unwrap_or(0)))
             .unwrap_or(0);
         if put > 0 {
-            c.slots[i] = st.clone().shrink(put);
+            c.take_from(&*host, kind, i, put);
             return true;
         }
     }
@@ -369,13 +369,12 @@ pub fn run(
     u: &Upgrade,
 ) -> bool {
     let max = crate::options::tune().hopper_stack[usize::from(u.advanced)] as u32;
-    let mult = upgrades::multiplier(&*host, kind, &c.upgrades);
     let (input, output) = filters(&*host, up, u.advanced);
     let dirs = read_dirs(up, u.advanced, &facing(&*host, level, pos));
     let mut changed = false;
     for dir in &dirs.push {
         for dst in neighbours(host, level, pos, dir) {
-            if push(host, &dst, c, &output, max) {
+            if push(host, &dst, kind, c, &output, max) {
                 changed = true;
                 break;
             }
@@ -383,7 +382,7 @@ pub fn run(
     }
     for dir in &dirs.pull {
         for src in neighbours(host, level, pos, dir) {
-            if pull(host, &src, kind, c, &input, mult, max) {
+            if pull(host, &src, kind, c, &input, max) {
                 changed = true;
                 break;
             }

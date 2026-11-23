@@ -68,6 +68,8 @@ pub const FILTERED: [(&str, i64, i64); 9] = [
 ];
 /// `JukeboxUpgradeConfig.numberOfSlots` of the advanced jukebox upgrade (the basic one holds one disc).
 const JUKEBOX_SLOTS: i64 = 12;
+/// `CompressionUpgradeConfig.maxNumberOfSlots`.
+const COMPRESSION_SLOTS: i64 = 5;
 /// `HopperUpgradeConfig`: ticks between transfers and the most items per transfer, basic then advanced.
 const HOPPER_TICKS: [i64; 2] = [8, 2];
 const HOPPER_STACK: [i64; 2] = [1, 4];
@@ -288,6 +290,7 @@ mod tests {
         assert_eq!(&t.filters[..2], &[9, 16]);
         assert_eq!(&t.filters[16..], &[6, 12]);
         assert_eq!(t.jukebox_slots, 12);
+        assert_eq!(t.compression_slots, 5);
         assert_eq!((t.hopper_ticks, t.hopper_stack), ([8, 2], [1, 4]));
         assert_eq!(t.void_anything, [true, true]);
         let t = read_tune(&|k| match k {
@@ -399,6 +402,12 @@ pub fn tier_specs() -> Vec<(String, Kind)> {
         16,
         JUKEBOX_SLOTS,
     );
+    range(
+        "compression_upgrade_max_number_of_slots".to_owned(),
+        3,
+        9,
+        COMPRESSION_SLOTS,
+    );
     for (a, name) in ["hopper_upgrade", "advanced_hopper_upgrade"]
         .iter()
         .enumerate()
@@ -499,6 +508,7 @@ pub struct Tune {
     /// Filter slots by [`FILTERED`] index, basic at `2 * i`, advanced after it.
     pub filters: [usize; 18],
     pub jukebox_slots: usize,
+    pub compression_slots: usize,
     /// Basic then advanced.
     pub hopper_ticks: [usize; 2],
     pub hopper_stack: [usize; 2],
@@ -578,6 +588,12 @@ fn read_tune(get: &dyn Fn(&str) -> Option<String>) -> Tune {
         ) as usize;
     }
     t.jukebox_slots = int(get("advanced_jukebox_upgrade_slots"), JUKEBOX_SLOTS, 1, 16) as usize;
+    t.compression_slots = int(
+        get("compression_upgrade_max_number_of_slots"),
+        COMPRESSION_SLOTS,
+        3,
+        9,
+    ) as usize;
     for (a, name) in ["hopper_upgrade", "advanced_hopper_upgrade"]
         .iter()
         .enumerate()
@@ -719,6 +735,8 @@ pub struct Lists {
     pub entity_loot: Vec<String>,
     /// Discs entities with a jukebox upgrade never play (`discBlockList`).
     pub disc_block: Vec<String>,
+    /// `compressed=Nxbroken` lines: what a compressed item breaks into when no recipe says (`additionalDecompressibleItems`).
+    pub decompressible: Vec<String>,
 }
 
 fn read_list(host: &dyn Host, file: &str, help: &str, defaults: &str) -> Vec<String> {
@@ -790,6 +808,12 @@ impl Lists {
                 "non_stackable.txt",
                 "Items the stack upgrades don't multiply.",
                 "minecraft:bundle\nminecraft:shulker_box\n",
+            ),
+            decompressible: read_list(
+                host,
+                "additional_decompressible_items.txt",
+                "What compressed items break into where no recipe reverses them: compressed=Nxbroken, N 4 or 9.",
+                "minecraft:glowstone=4xminecraft:glowstone_dust\nminecraft:quartz_block=4xminecraft:quartz\n",
             ),
         })
     }

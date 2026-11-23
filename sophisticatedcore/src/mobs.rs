@@ -402,15 +402,13 @@ pub fn dropped_backpack(
         && let Some(table) = loot_table(&*host, kind)
         && let Some(level) = entity.level(&*host)
     {
-        let mult = upgrades::multiplier(&*host, &item, &c.upgrades);
         for _ in 0..difficulty {
             let Ok(Some(rolled)) = level.roll_loot(host, &table, pos, None, Some(entity)) else {
                 break;
             };
             for st in rolled {
-                let lim = upgrades::limit(&*host, &st, mult);
                 let n = st.count();
-                contents::insert(&mut c.slots, &st, n, lim);
+                c.add(&*host, &item, &st, n);
             }
         }
     }

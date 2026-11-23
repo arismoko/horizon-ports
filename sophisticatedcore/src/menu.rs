@@ -190,10 +190,11 @@ pub fn render(host: &mut dyn ServerHost, s: &Session, c: &Contents) -> Vec<Optio
     let base = s.control();
     match &s.view {
         View::Main { page } => {
+            let visible = c.visible(&*host, s.kind);
             for i in 0..s.page_size() {
                 let idx = page * s.page_size() + i;
                 out[i] = if idx < s.slots {
-                    c.slots[idx].as_ref().and_then(|st| shown(&*host, st))
+                    visible[idx].as_ref().and_then(|st| shown(&*host, st))
                 } else {
                     fill.clone()
                 };
@@ -486,6 +487,17 @@ pub fn may_add_upgrade(
             return Err("No more upgrades of this kind fit");
         }
     }
+    if u.kind == Kind::Compression {
+        crate::compression::may_add(host, kind, c)?;
+    }
+    if u.kind == Kind::Compacting
+        && c.upgrades
+            .iter()
+            .flatten()
+            .any(|x| upgrades::of(host, x).is_some_and(|o| o.kind == Kind::Compression))
+    {
+        return Err("There's already a Compression upgrade in another upgrade slot");
+    }
     if matches!(u.kind, Kind::Tank | Kind::Battery)
         && c.upgrades
             .iter()
@@ -566,18 +578,22 @@ pub fn sort(host: &dyn Host, kind: &StorageItem, c: &mut Contents) {
         return;
     }
     let m = upgrades::multiplier(host, kind, &c.upgrades);
-    // Stand-ins of unknown items stay in their slots.
-    let mut all: Vec<ItemStack> = c
-        .slots
-        .iter_mut()
-        .filter(|s| s.as_ref().is_some_and(|s| !contents::is_unknown(s)))
-        .filter_map(Option::take)
-        .collect();
+    let banks = crate::compression::Banks::of(host, kind, c);
+    // Stand-ins of unknown items stay in their slots; a compression range keeps its slots.
+    let mut all: Vec<ItemStack> = Vec::new();
+    c.plain(&banks, |slots| {
+        all = slots
+            .iter_mut()
+            .filter(|s| s.as_ref().is_some_and(|s| !contents::is_unknown(s)))
+            .filter_map(Option::take)
+            .collect();
+        0
+    });
     all.sort_by_key(|s| (contents::item_id(host, s), std::cmp::Reverse(s.count())));
     for st in all {
         let lim = upgrades::limit(host, &st, m);
         let n = st.count();
-        let went = contents::insert(&mut c.slots, &st, n, lim);
+        let went = c.plain(&banks, |slots| contents::insert(slots, &st, n, lim));
         debug_assert_eq!(went, n);
     }
 }
@@ -643,7 +659,6 @@ fn click_main(
 ) -> (Outcome, Option<&'static str>) {
     let mut c = c.clone();
     let base = s.control();
-    let m = upgrades::multiplier(&*host, s.kind, &c.upgrades);
     if let Some(inv) = inventory_slot(s, slot) {
         // An inventory stack into the storage.
         let invs = places::inventory(host, player);
@@ -657,9 +672,10 @@ fn click_main(
             && upgrades::of(&*host, &st).is_some()
             && let Some(j) = (0..c.upgrades.len()).find(|&j| c.upgrades[j].is_none())
         {
-            let one = contents::with_count(&st, 1).unwrap_or(st.clone());
+            let mut one = contents::with_count(&st, 1).unwrap_or(st.clone());
             match may_add_upgrade(&*host, s.kind, &c, j, &one) {
                 Ok(()) => {
+                    crate::compression::on_added(&*host, &c, &mut one);
                     c.upgrades[j] = Some(one);
                     places::set_slot(host, player, inv, st.clone().shrink(1));
                     return (Outcome::Changed(c), None);
@@ -668,8 +684,7 @@ fn click_main(
             }
         }
         let want = if right { 1 } else { st.count() };
-        let lim = upgrades::limit(&*host, &st, m);
-        let went = contents::insert(&mut c.slots, &st, want, lim);
+        let went = c.add(&*host, s.kind, &st, want);
         if went == 0 {
             return (Outcome::Nothing, Some("It's full"));
         }
@@ -682,7 +697,7 @@ fn click_main(
     if i < base {
         // A stored stack to the inventory.
         let idx = page * s.page_size() + i;
-        let Some(st) = c.slots.get(idx).cloned().flatten() else {
+        let Some(st) = c.visible(&*host, s.kind).get(idx).cloned().flatten() else {
             return (Outcome::Nothing, None);
         };
         if contents::is_unknown(&st) {
@@ -703,7 +718,7 @@ fn click_main(
         if gone == 0 {
             return (Outcome::Nothing, Some("Your inventory is full"));
         }
-        c.slots[idx] = contents::with_count(&st, st.count() - gone);
+        c.take_from(&*host, s.kind, idx, gone);
         return (Outcome::Changed(c), None);
     }
     let (sort_at, page_at) = control_cells(base, crate::options::tune().sort_position);
@@ -753,7 +768,9 @@ fn click_main(
         if let Err(e) = may_remove_upgrade(&*host, s.kind, &c, j) {
             return (Outcome::Nothing, Some(e));
         }
-        if places::give(host, player, &up) > 0 {
+        let mut back = up.clone();
+        crate::compression::cleaned(&mut back);
+        if places::give(host, player, &back) > 0 {
             return (Outcome::Nothing, Some("Your inventory is full"));
         }
         c.upgrades[j] = None;
@@ -1145,7 +1162,7 @@ fn click_crafting(
             for k in 0..9 {
                 if grid[k].is_none()
                     && let Some(was) = &before[k]
-                    && contents::extract(&mut c.slots, was, 1) == 1
+                    && c.remove(&*host, s.kind, was, 1) == 1
                 {
                     grid[k] = contents::with_count(was, 1);
                 }
