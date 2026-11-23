@@ -31,7 +31,17 @@ pub mod key {
     pub const LOOTING_CHANCE: &str = "mob_backpack_looting_chance";
     pub const BACKPACK_CONTAINERS_DENIED: &str = "backpack_container_items_disallowed";
     pub const STORAGE_CONTAINERS_DENIED: &str = "shulker_box_container_items_disallowed";
+    pub const BUTTON_SOUND: &str = "play_button_sound";
+    pub const SORT_POSITION: &str = "sort_buttons_position";
 }
+
+/// `SortButtonsPosition`, in the order the setting cycles through them.
+pub const SORT_POSITIONS: [&str; 4] = [
+    "title_line_right",
+    "below_upgrades",
+    "below_upgrade_tabs",
+    "hidden",
+];
 
 const TIERS: [&str; 6] = ["leather", "copper", "iron", "gold", "diamond", "netherite"];
 const BACKPACK_SLOTS: [i64; 6] = [27, 45, 54, 81, 108, 120];
@@ -100,6 +110,7 @@ pub const SPECS: &[(&str, Kind)] = &[
     (key::LOOTING_CHANCE, Kind::Range(0.0, 0.3, 0.01, 0.15)),
     (key::BACKPACK_CONTAINERS_DENIED, Kind::Toggle(false)),
     (key::STORAGE_CONTAINERS_DENIED, Kind::Toggle(false)),
+    (key::BUTTON_SOUND, Kind::Toggle(true)),
 ];
 
 /// The options as they stand now.
@@ -199,6 +210,20 @@ mod tests {
         assert_eq!(t.storage_groups, [2, 1, 1]);
         let t = read_tune(&|k| (k == "backpack_iron_slots").then(|| "60".to_owned()));
         assert_eq!(t.backpack_slots[2], 60);
+    }
+
+    #[test]
+    fn sort_position_and_button_sound() {
+        let t = read_tune(&|_| None);
+        assert_eq!((t.sort_position, t.button_sound), (0, true));
+        let t = read_tune(&|k| match k {
+            "sort_buttons_position" => Some("2".to_owned()),
+            "play_button_sound" => Some("false".to_owned()),
+            _ => None,
+        });
+        assert_eq!((t.sort_position, t.button_sound), (2, false));
+        let t = read_tune(&|k| (k == "sort_buttons_position").then(|| "9".to_owned()));
+        assert_eq!(t.sort_position, 0, "an index past the options falls back");
     }
 
     #[test]
@@ -380,6 +405,10 @@ pub struct Tune {
     pub cooking: [(f64, f64); 6],
     /// Input and fuel filter slots of the automatic cooking upgrades.
     pub cook_filters: [[usize; 2]; 3],
+    /// `playButtonSound`.
+    pub button_sound: bool,
+    /// Index into [`SORT_POSITIONS`].
+    pub sort_position: usize,
 }
 
 static TUNE: RwLock<Option<Tune>> = RwLock::new(None);
@@ -466,6 +495,11 @@ fn read_tune(get: &dyn Fn(&str) -> Option<String>) -> Tune {
             true,
         );
     }
+    t.button_sound = flag(get(key::BUTTON_SOUND).as_deref(), true);
+    t.sort_position = get(key::SORT_POSITION)
+        .and_then(|v| v.trim().parse::<usize>().ok())
+        .filter(|&v| v < SORT_POSITIONS.len())
+        .unwrap_or(0);
     for (i, name) in COOKING.iter().enumerate() {
         let m = |key: &str| {
             get(&format!("{name}_{key}"))

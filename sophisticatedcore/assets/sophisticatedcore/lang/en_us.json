@@ -370,5 +370,11 @@
   "sophisticatedcore.config.auto_blasting_upgrade_smelting_speed_multiplier": "Auto blasting upgrade cooking speed multiplier",
   "sophisticatedcore.config.auto_blasting_upgrade_fuel_efficiency_multiplier": "Auto blasting upgrade fuel efficiency multiplier",
   "sophisticatedcore.config.auto_blasting_upgrade_input_filter_slots": "Auto blasting upgrade input filter slots",
-  "sophisticatedcore.config.auto_blasting_upgrade_fuel_filter_slots": "Auto blasting upgrade fuel filter slots"
+  "sophisticatedcore.config.auto_blasting_upgrade_fuel_filter_slots": "Auto blasting upgrade fuel filter slots",
+  "sophisticatedcore.config.sort_buttons_position": "Sort button position",
+  "sophisticatedcore.config.play_button_sound": "Play button sound",
+  "sophisticatedcore.config.sort_buttons_position.title_line_right": "Title line, right",
+  "sophisticatedcore.config.sort_buttons_position.below_upgrades": "Below upgrades",
+  "sophisticatedcore.config.sort_buttons_position.below_upgrade_tabs": "Below upgrade tabs",
+  "sophisticatedcore.config.sort_buttons_position.hidden": "Hidden"
 }

@@ -143,6 +143,17 @@ fn kind_has_view(u: &upgrades::Upgrade) -> bool {
     u.filters > 0 || matches!(u.kind, Kind::Crafting | Kind::Jukebox | Kind::Cooking(_))
 }
 
+/// The control-row cells of the sort button and the page button, by the `sort_buttons_position`
+/// setting (an index into `options::SORT_POSITIONS`): the title line puts sort first and the page
+/// button last, the two below-upgrades positions swap them, and hidden has no sort button.
+fn control_cells(base: usize, position: usize) -> (Option<usize>, usize) {
+    match position {
+        1 | 2 => (Some(base + 8), base),
+        3 => (None, base + 8),
+        _ => (Some(base), base + 8),
+    }
+}
+
 /// What the menu shows for the session's view.
 pub fn render(host: &mut dyn ServerHost, s: &Session, c: &Contents) -> Vec<Option<ItemStack>> {
     let mut out: Vec<Option<ItemStack>> = vec![None; s.own_slots()];
@@ -158,12 +169,17 @@ pub fn render(host: &mut dyn ServerHost, s: &Session, c: &Contents) -> Vec<Optio
                     fill.clone()
                 };
             }
-            out[base] = button(
-                &*host,
-                "minecraft:hopper",
-                "Sort",
-                &["Merges and sorts the contents by item"],
-            );
+            let (sort_at, page_at) = control_cells(base, crate::options::tune().sort_position);
+            out[base] = fill.clone();
+            out[base + 8] = fill.clone();
+            if let Some(at) = sort_at {
+                out[at] = button(
+                    &*host,
+                    "minecraft:hopper",
+                    "Sort",
+                    &["Merges and sorts the contents by item"],
+                );
+            }
             for j in 0..7 {
                 out[base + 1 + j] = if j < c.upgrades.len() {
                     match &c.upgrades[j] {
@@ -179,17 +195,15 @@ pub fn render(host: &mut dyn ServerHost, s: &Session, c: &Contents) -> Vec<Optio
                     fill.clone()
                 };
             }
-            out[base + 8] = if s.pages() > 1 {
+            if s.pages() > 1 {
                 let name = format!("Page {} of {}", page + 1, s.pages());
-                button(
+                out[page_at] = button(
                     &*host,
                     "minecraft:paper",
                     &name,
                     &["Click: next page", "Right-click: previous page"],
-                )
-            } else {
-                fill.clone()
-            };
+                );
+            }
         }
         View::Settings { slot } => {
             let Some(up) = c.upgrades.get(*slot).cloned().flatten() else {
@@ -735,11 +749,12 @@ fn click_main(
         c.slots[idx] = contents::with_count(&st, st.count() - gone);
         return (Outcome::Changed(c), None);
     }
-    if i == base {
+    let (sort_at, page_at) = control_cells(base, crate::options::tune().sort_position);
+    if Some(i) == sort_at {
         sort(&*host, s.kind, &mut c);
         return (Outcome::Changed(c), None);
     }
-    if i == base + 8 {
+    if i == page_at {
         let n = s.pages();
         if n > 1 {
             let next = if right {
@@ -1379,6 +1394,14 @@ fn title(host: &dyn Host, st: &ItemStack, kind: &StorageItem) -> String {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn control_cells_follow_the_position() {
+        assert_eq!(control_cells(27, 0), (Some(27), 35));
+        assert_eq!(control_cells(27, 1), (Some(35), 27));
+        assert_eq!(control_cells(27, 2), (Some(35), 27));
+        assert_eq!(control_cells(27, 3), (None, 35));
+    }
+
     use super::*;
 
     #[test]

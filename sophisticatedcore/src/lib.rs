@@ -471,6 +471,9 @@ impl Shared {
         };
         let c = Contents::read(&*host, &st, kind);
         let (outcome, msg) = menu::click(host, uuid, &s, &c, ev);
+        let base = s.control() as i64;
+        let button_hit =
+            (base..base + 9).contains(&i64::from(ev.slot)) && !matches!(outcome, Outcome::Nothing);
         let changed = match outcome {
             Outcome::Changed(c2) => Some(c2),
             Outcome::ChangedView(c2, v) => {
@@ -497,6 +500,18 @@ impl Shared {
                     s.loc
                 );
             }
+        }
+        if button_hit
+            && options::tune().button_sound
+            && let Some(p) = host.player(uuid)
+        {
+            let _ = p.play_sound(
+                host,
+                "minecraft:ui.button.click",
+                SoundSource::Master,
+                0.25,
+                1.0,
+            );
         }
         if let Some(m) = msg {
             places::message(host, uuid, m);
@@ -1187,6 +1202,13 @@ impl Hooks for Mod {
             };
             let _ = r.register_setting(spec);
         }
+        let _ = r.register_setting(mod_api::SettingSpec::choice(
+            options::key::SORT_POSITION,
+            "sophisticatedcore.config.sort_buttons_position",
+            options::SORT_POSITIONS
+                .map(|p| format!("sophisticatedcore.config.sort_buttons_position.{p}")),
+            0,
+        ));
         for (name, kind) in options::tier_specs() {
             let label = format!("sophisticatedcore.config.{name}");
             if let options::Kind::Range(min, max, step, default) = kind {
