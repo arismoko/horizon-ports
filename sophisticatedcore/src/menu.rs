@@ -207,7 +207,19 @@ pub fn render(host: &mut dyn ServerHost, s: &Session, c: &Contents) -> Vec<Optio
             for i in 0..s.page_size() {
                 let idx = page * s.page_size() + i;
                 out[i] = if idx < s.slots {
-                    visible[idx].as_ref().and_then(|st| shown(&*host, st))
+                    match (&visible[idx], c.memory.get(idx).and_then(Option::as_ref)) {
+                        (Some(st), _) => shown(&*host, st),
+                        (None, Some(m)) => button(
+                            &*host,
+                            &contents::item_id(&*host, m),
+                            "Memory slot",
+                            &[
+                                "Only this item goes in this slot",
+                                "Shift-right-click to forget it",
+                            ],
+                        ),
+                        (None, None) => None,
+                    }
                 } else {
                     fill.clone()
                 };
@@ -220,7 +232,10 @@ pub fn render(host: &mut dyn ServerHost, s: &Session, c: &Contents) -> Vec<Optio
                     &*host,
                     "minecraft:hopper",
                     "Sort",
-                    &["Merges and sorts the contents by item"],
+                    &[
+                        "Merges and sorts the contents by item",
+                        "Right-click: memory slots match components too (or not)",
+                    ],
                 );
             }
             for j in 0..7 {
@@ -646,13 +661,29 @@ pub fn sort(host: &dyn Host, kind: &StorageItem, c: &mut Contents) {
     }
     let m = upgrades::multiplier(host, kind, &c.upgrades);
     let banks = crate::compression::Banks::of(host, kind, c);
-    // Stand-ins of unknown items stay in their slots; a compression range keeps its slots.
+    // Stand-ins of unknown items stay in their slots; a compression range keeps its slots; so do memory slots
+    // (the original leaves them out of the sort).
+    let free: Vec<bool> = (0..c.slots.len())
+        .filter(|i| !banks.covers(*i))
+        .map(|i| c.memory.get(i).is_none_or(Option::is_none))
+        .collect();
+    let modes: Vec<u8> = free
+        .iter()
+        .map(|&f| {
+            if f {
+                contents::ACCEPTS
+            } else {
+                contents::REFUSES
+            }
+        })
+        .collect();
     let mut all: Vec<ItemStack> = Vec::new();
     c.plain(&banks, |slots| {
         all = slots
             .iter_mut()
-            .filter(|s| s.as_ref().is_some_and(|s| !contents::is_unknown(s)))
-            .filter_map(Option::take)
+            .zip(&free)
+            .filter(|(s, f)| **f && s.as_ref().is_some_and(|s| !contents::is_unknown(s)))
+            .filter_map(|(s, _)| s.take())
             .collect();
         0
     });
@@ -660,7 +691,9 @@ pub fn sort(host: &dyn Host, kind: &StorageItem, c: &mut Contents) {
     for st in all {
         let lim = upgrades::limit(host, &st, m);
         let n = st.count();
-        let went = c.plain(&banks, |slots| contents::insert(slots, &st, n, lim));
+        let went = c.plain(&banks, |slots| {
+            contents::insert_with(slots, &st, n, lim, true, Some(&modes))
+        });
         debug_assert_eq!(went, n);
     }
 }
@@ -789,8 +822,16 @@ fn click_main(
         return (Outcome::Nothing, None);
     };
     if i < base {
-        // A stored stack to the inventory.
         let idx = page * s.page_size() + i;
+        if shift && right {
+            // Keeps the slot for what it holds (MemorySettingsCategory.selectSlot), or forgets it.
+            let holds = c.shown_at(&*host, s.kind, idx);
+            if !c.toggle_memory(idx, holds.as_ref()) {
+                return (Outcome::Nothing, Some("Put the item in the slot first"));
+            }
+            return (Outcome::Changed(c), None);
+        }
+        // A stored stack to the inventory.
         let Some(st) = c.visible(&*host, s.kind).get(idx).cloned().flatten() else {
             return (Outcome::Nothing, None);
         };
@@ -817,6 +858,15 @@ fn click_main(
     }
     let (sort_at, page_at) = control_cells(base, crate::options::tune().sort_position);
     if Some(i) == sort_at {
+        if right {
+            c.exact = !c.exact;
+            let msg = if c.exact {
+                "Memory slots now match components too"
+            } else {
+                "Memory slots now match the item only"
+            };
+            return (Outcome::Changed(c), Some(msg));
+        }
         sort(&*host, s.kind, &mut c);
         return (Outcome::Changed(c), None);
     }

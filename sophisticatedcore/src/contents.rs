@@ -355,6 +355,44 @@ pub struct Contents {
     pub kept_upgrades: Vec<Compound>,
     /// The storage is locked (`locked`): see `tool::locked`.
     pub locked: bool,
+    /// The memory slots (`MemorySettingsCategory`): per slot the stack (count 1) it is kept for, none for an
+    /// ordinary slot. Empty when the storage has none.
+    pub memory: Vec<Option<ItemStack>>,
+    /// Memory slots match the stack's components too (the category's `ignoreNbt` off).
+    pub exact: bool,
+}
+
+/// `memory` in the stack's custom_data: the slots' stacks, and whether they match components.
+const MEMORY: &str = "memory";
+const MEMORY_EXACT: &str = "memoryExact";
+
+/// How a slot takes a stack (see `Contents::modes`).
+pub const REFUSES: u8 = 0;
+pub const ACCEPTS: u8 = 1;
+/// A memory slot kept for exactly this item: it is filled before any other empty slot.
+pub const PREFERS: u8 = 2;
+
+/// Whether a memory slot kept for `memo` takes `stack` (`MemorySettingsCategory.matchesFilter`).
+pub fn memory_matches(memo: &ItemStack, exact: bool, stack: &ItemStack) -> bool {
+    memo.same_item(stack) && (!exact || memo.same_components(stack))
+}
+
+/// How a slot takes a stack, from whether it has a memory and the memory matches the stack.
+pub fn slot_mode(memory_match: Option<bool>) -> u8 {
+    match memory_match {
+        None => ACCEPTS,
+        Some(true) => PREFERS,
+        Some(false) => REFUSES,
+    }
+}
+
+/// The empty slots in the order a stack fills them: preferred ones first, refusing ones never.
+pub fn fill_order(modes: Option<&[u8]>, n: usize) -> Vec<usize> {
+    let mode = |i: usize| modes.and_then(|m| m.get(i)).copied().unwrap_or(ACCEPTS);
+    [PREFERS, ACCEPTS]
+        .into_iter()
+        .flat_map(|want| (0..n).filter(move |&i| mode(i) == want))
+        .collect()
 }
 
 /// `doubleChest` (ChestBlockItem.isDoubleChest's key): a chest whose stack holds a double chest's contents.
@@ -411,6 +449,58 @@ impl Contents {
             kept,
             kept_upgrades,
             locked: get_bool(&data, "locked") == Some(true),
+            memory: match data.at(MEMORY) {
+                Some(m) => read_items(host, Some(m), size),
+                None => Vec::new(),
+            },
+            exact: get_bool(&data, MEMORY_EXACT) == Some(true),
+        }
+    }
+
+    /// Whether some slot is kept for `stack`'s item (`isMemorizedItem`).
+    pub fn memorizes(&self, stack: &ItemStack) -> bool {
+        self.memory
+            .iter()
+            .flatten()
+            .any(|m| memory_matches(m, self.exact, stack))
+    }
+
+    /// How each slot takes `stack`: a memory slot only what it is kept for (and that first), the others anything.
+    /// None when no slot has a memory.
+    pub fn modes(&self, stack: &ItemStack) -> Option<Vec<u8>> {
+        if self.memory.iter().all(Option::is_none) {
+            return None;
+        }
+        Some(
+            (0..self.slots.len())
+                .map(|i| {
+                    slot_mode(
+                        self.memory
+                            .get(i)
+                            .and_then(Option::as_ref)
+                            .map(|m| memory_matches(m, self.exact, stack)),
+                    )
+                })
+                .collect(),
+        )
+    }
+
+    /// Keeps slot `slot` for what it holds (or forgets its memory); false when there is nothing to keep.
+    pub fn toggle_memory(&mut self, slot: usize, holds: Option<&ItemStack>) -> bool {
+        if slot >= self.slots.len() {
+            return false;
+        }
+        self.memory.resize(self.slots.len(), None);
+        if self.memory[slot].is_some() {
+            self.memory[slot] = None;
+            return true;
+        }
+        match holds.and_then(|h| with_count(h, 1)) {
+            Some(one) => {
+                self.memory[slot] = Some(one);
+                true
+            }
+            None => false,
         }
     }
 
@@ -427,6 +517,13 @@ impl Contents {
             UPGRADES,
             write_items_kept(host, &self.upgrades, &self.kept_upgrades),
         );
+        if self.memory.iter().any(Option::is_some) {
+            put(&mut data, MEMORY, write_items(host, &self.memory));
+            put(&mut data, MEMORY_EXACT, Tag::Byte(i8::from(self.exact)));
+        } else {
+            data.del(MEMORY);
+            data.del(MEMORY_EXACT);
+        }
         put(
             &mut data,
             "inventorySlots",
@@ -469,6 +566,8 @@ impl Contents {
             "contentsUuid",
             DOUBLE,
             "packed",
+            MEMORY,
+            MEMORY_EXACT,
         ] {
             data.del(k);
         }
@@ -495,7 +594,7 @@ impl Contents {
             upgrades: only(&self.upgrades),
             kept: self.kept.clone(),
             kept_upgrades: self.kept_upgrades.clone(),
-            locked: false,
+            ..Default::default()
         };
         (!c.is_empty()).then_some(c)
     }
@@ -536,36 +635,42 @@ pub fn same(a: &ItemStack, b: &ItemStack) -> bool {
 /// Puts up to `amount` of `stack` into `slots`, onto the same item first and then into empty slots, no slot past
 /// its limit; how many went in.
 pub fn insert(slots: &mut [Option<ItemStack>], stack: &ItemStack, amount: u32, limit: u32) -> u32 {
-    insert_with(slots, stack, amount, limit, true)
+    insert_with(slots, stack, amount, limit, true, None)
 }
 
-/// `insert`, with `fill_empty` false only onto stacks already there.
+/// `insert`, with `fill_empty` false only onto stacks already there, and `modes` (one per slot, see `Contents::modes`)
+/// saying which slots take the stack: none refuse, empty preferred slots are filled before the other empty ones.
 pub fn insert_with(
     slots: &mut [Option<ItemStack>],
     stack: &ItemStack,
     amount: u32,
     limit: u32,
     fill_empty: bool,
+    modes: Option<&[u8]>,
 ) -> u32 {
+    let mode = |i: usize| modes.and_then(|m| m.get(i)).copied().unwrap_or(ACCEPTS);
     let mut left = amount;
-    for s in slots.iter_mut().flatten() {
+    for (i, s) in slots.iter_mut().enumerate() {
         if left == 0 {
             break;
         }
-        if same(s, stack) && s.count() < limit {
+        let Some(s) = s.as_mut() else { continue };
+        if mode(i) != REFUSES && same(s, stack) && s.count() < limit {
             let put = (limit - s.count()).min(left);
             let _ = s.set_count(s.count() + put);
             left -= put;
         }
     }
-    for s in slots.iter_mut() {
-        if left == 0 || !fill_empty {
-            break;
-        }
-        if s.is_none() {
-            let put = limit.min(left);
-            *s = with_count(stack, put);
-            left -= put;
+    if fill_empty {
+        for i in fill_order(modes, slots.len()) {
+            if left == 0 {
+                break;
+            }
+            if slots[i].is_none() {
+                let put = limit.min(left);
+                slots[i] = with_count(stack, put);
+                left -= put;
+            }
         }
     }
     amount - left
@@ -602,6 +707,16 @@ pub fn count_of(slots: &[Option<ItemStack>], stack: &ItemStack) -> u64 {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_memory_slot_takes_only_its_item_and_is_filled_first() {
+        assert_eq!(slot_mode(None), ACCEPTS);
+        assert_eq!(slot_mode(Some(true)), PREFERS);
+        assert_eq!(slot_mode(Some(false)), REFUSES);
+        let modes = [ACCEPTS, REFUSES, PREFERS, ACCEPTS, PREFERS];
+        assert_eq!(fill_order(Some(&modes), 5), [2, 4, 0, 3]);
+        assert_eq!(fill_order(None, 3), [0, 1, 2]);
+    }
 
     #[test]
     fn uuids_differ() {

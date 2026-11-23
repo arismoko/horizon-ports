@@ -17,7 +17,7 @@
 //!   (one slot holding the backpack, spilled when broken), the chest loot injections (Homestead's
 //!   `chestLootEnabled = true`) and the crafting kinds (`crafting`).
 //!
-//! Not ported: the jar's own screen (tabs, sorting buttons, the memory and no-sort slot settings), the anvil
+//! Not ported: the jar's own screen (tabs, sorting buttons, the no-sort slot setting), the anvil
 //! upgrade (it sits in its slot and does nothing), inception in a backpack placed as a block.
 // Menus and inventories here are addressed by slot number, which these loops keep explicit.
 #![allow(clippy::needless_range_loop, clippy::type_complexity)]

@@ -787,13 +787,35 @@ impl Contents {
         let fill_empty = !(self.locked && kind.family == Family::LimitedBarrel);
         let banks = Banks::of(host, kind, self);
         let lim = upgrades::limit(host, stack, banks.mult);
+        let modes = self.modes(stack);
         if banks.is_empty() {
-            return contents::insert_with(&mut self.slots, stack, amount, lim, fill_empty);
+            return contents::insert_with(
+                &mut self.slots,
+                stack,
+                amount,
+                lim,
+                fill_empty,
+                modes.as_deref(),
+            );
         }
         let first = banks.insert(self, stack, amount);
+        // The modes of the slots outside the compression ranges, in the order `plain` hands them over.
+        let plain_modes: Option<Vec<u8>> = modes.map(|m| {
+            (0..self.slots.len())
+                .filter(|i| !banks.covers(*i))
+                .map(|i| m[i])
+                .collect()
+        });
         first
             + self.plain(&banks, |slots| {
-                contents::insert_with(slots, stack, amount - first, lim, fill_empty)
+                contents::insert_with(
+                    slots,
+                    stack,
+                    amount - first,
+                    lim,
+                    fill_empty,
+                    plain_modes.as_deref(),
+                )
             })
     }
 

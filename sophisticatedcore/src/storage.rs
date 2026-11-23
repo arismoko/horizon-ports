@@ -414,10 +414,14 @@ fn split_double(
         kept: c.kept.clone(),
         kept_upgrades: c.kept_upgrades.clone(),
         locked: false,
+        memory: c.memory.iter().take(n).cloned().collect(),
+        exact: c.exact,
     };
     let leave = Contents {
         slots: c.slots[n..].to_vec(),
         upgrades: vec![None; kind.upgrade_count()],
+        memory: c.memory.iter().skip(n).cloned().collect(),
+        exact: c.exact,
         ..Default::default()
     };
     let unflag = |s: &mut ItemStack| {
@@ -1134,6 +1138,11 @@ impl Handler {
             kind,
             cache: Mutex::new(None),
         }
+    }
+
+    /// Whether a memory slot of this storage is kept for `stack` (`isMemorizedItem`).
+    pub fn memorizes(&self, host: &dyn Host, stack: &ItemStack) -> bool {
+        self.with(host, |_, c| c.memorizes(stack)).unwrap_or(false)
     }
 
     fn with<R>(&self, host: &dyn Host, f: impl FnOnce(&ItemStack, &Contents) -> R) -> Option<R> {

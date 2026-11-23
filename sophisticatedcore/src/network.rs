@@ -528,6 +528,11 @@ impl NetHandler {
         }
     }
 
+    /// Whether a storage of the network keeps a memory slot for `stack` (ControllerBlockEntityBase.isMemorizedItem).
+    fn memorizes(&self, host: &dyn Host, stack: &mod_api::ItemStack) -> bool {
+        self.parts(host).iter().any(|h| h.memorizes(host, stack))
+    }
+
     fn parts(&self, host: &dyn Host) -> &[Handler] {
         self.parts.get_or_init(|| {
             let controller = if self.node {
@@ -661,13 +666,21 @@ impl ResourceHandler<ItemResource> for NetHandler {
         let holds = |host: &mut dyn ServerHost, h: &Handler| {
             (0..h.size(host)).any(|i| h.resource(host, i).is_some_and(|r| &r == resource))
         };
+        let stack = resource.as_stack();
         let mut done = vec![false; parts.len()];
-        for pass in 0..2 {
+        // The storages with a memory slot for the item first, then those already holding it, then any with room
+        // (the original's `memorizedItemStorages` before the stacks it holds).
+        for pass in 0..3 {
             for (i, h) in parts.iter().enumerate() {
                 if left == 0 {
                     return Ok(amount);
                 }
-                if done[i] || (pass == 0 && !holds(host, h)) {
+                let skip = match pass {
+                    0 => !h.memorizes(&*host, stack),
+                    1 => !holds(host, h),
+                    _ => false,
+                };
+                if done[i] || skip {
                     continue;
                 }
                 done[i] = true;
@@ -782,7 +795,7 @@ pub fn deposit(
         let Some(stack) = inv.get(i as usize).cloned().flatten() else {
             continue;
         };
-        if !held.contains(&stack.item()) {
+        if !held.contains(&stack.item()) && !net.memorizes(&*host, &stack) {
             continue;
         }
         let res = ItemResource::of(&stack);
