@@ -40,6 +40,7 @@ mod storage_items;
 mod ticking;
 mod upgrades;
 mod worn;
+mod xp_bucket;
 
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -1119,9 +1120,22 @@ impl Hooks for Mod {
         let has = |ns: &str| cx.mods().iter().any(|p| p.namespaces().any(|n| n == ns));
         let backpacks = has("sophisticatedbackpacks");
         let storage_loaded = has("sophisticatedstorage");
-        // Experience, as the original's `xp_still`: a fluid with no block, flowing form or bucket.
-        // The original's defaults: tick delay 5, drop-off 1, slope search 4, no source conversion, a bucket.
-        r.declare_world_fluid("xp_still", mod_api::WorldFluid::default());
+        // Experience, as the original's `xp_still`: a tank fluid with no block or flowing form; it travels in
+        // the `xp_bucket` item.
+        let xp = r.declare_fluid("xp_still");
+        let empty_bucket = r.item_key("minecraft:bucket");
+        r.item_capability(
+            &mod_api::ITEM_FLUIDS,
+            "sophisticatedcore:xp_bucket",
+            move |_, place| {
+                Some(Box::new(xp_bucket::XpBucket {
+                    place: place.clone(),
+                    xp,
+                    empty: empty_bucket,
+                })
+                    as Box<dyn ResourceHandler<mod_api::FluidResource>>)
+            },
+        );
         let keys = crafting::keys(r, backpacks, storage_loaded);
         r.register_crafting_recipe_serializer(
             UPGRADE_NEXT_TIER,
@@ -1646,19 +1660,6 @@ impl Hooks for Mod {
             return Flow::Cancel;
         }
         Flow::Continue
-    }
-
-    /// The experience fluid's sprites: the still one on the surface, the flowing one on its sides.
-    fn register_fluid_models(
-        &self,
-        _: &RegistrationContext,
-        event: &mut mod_api::RegisterFluidModelsEvent<'_>,
-    ) {
-        let mut m = mod_api::FluidModel::default();
-        m.fluid = "sophisticatedcore:xp_still".into();
-        m.still = Some("sophisticatedcore:block/xp_still".into());
-        m.flowing = Some("sophisticatedcore:block/xp_flowing".into());
-        event.register(m);
     }
 
     /// The jar's creative tab lists every wood of a chest or barrel (WoodStorageBlockBase.addCreativeTabItems); the
