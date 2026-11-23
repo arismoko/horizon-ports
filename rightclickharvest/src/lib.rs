@@ -1,145 +1,472 @@
-//! Right Click Harvest for Horizon: right-click a fully grown crop to harvest it and replant it,
-//! as the Fabric mod `rightclickharvest` (Homestead 2.0) does.
+//! Right Click Harvest for Sunrise: right-click a grown crop to harvest and replant it
+//! (`RightClickHarvest.onBlockUse` in the original), with a hoe's tier choosing how many
+//! neighbours go with it.
 //!
-//! The server's click (`right_click_block`) only checks the crop and claims the click; the
-//! harvest itself waits for the next server tick, outside the player's turn: vanilla's
-//! `loot spawn ... mine ... mainhand` drops what breaking the crop with the held item would
-//! (Fortune included), then `setblock` puts the crop back at age 0.
-//!
-//! Difference from the Java mod: the Java mod takes one seed out of the drops for the replant;
-//! this port leaves the drops as vanilla rolls them (one seed more per harvest).
+//! | Moment | Where | What it does |
+//! |---|---|---|
+//! | `right_click_block` | [`harvest`] | harvests on the server, and on the client claims the click |
+//! | `register_configs`, `config_loading`, `config_reloading` | this module | `config/rightclickharvest-common.toml` |
+
+pub mod rules;
+
 use std::sync::Mutex;
+use std::sync::atomic::{AtomicBool, Ordering};
 
 use mod_api::{
-    Flow, GameMode, Hooks, HostSide, InteractionResult, RightClickBlockEvent, ServerHost,
-    ServerTickEvent,
+    BlockClick, ClientHost, Config as ModConfig, ConfigContext, ConfigKind, ConfigLoadingEvent,
+    EquipmentSlot, Flow, Hand, Hooks, HostBlockStates, HostSide, InteractionResult, ItemStack,
+    LevelRef, LivingRef, PlayerRef, RegisterConfigsEvent, RightClickBlockEvent, ServerHost,
+    SoundPlay, StatType, Text,
 };
+use rules::{Config, Gate, Kind, Player, Tiers};
 
-/// A crop this mod harvests: its id, the age it's grown at, and properties to keep.
-struct Crop {
-    id: &'static str,
-    max_age: u32,
-    keep: &'static [&'static str],
+const MOD: &str = "rightclickharvest";
+
+static SETTINGS: Mutex<Config> = Mutex::new(Config {
+    require_hoe: false,
+    harvest_in_radius: true,
+    hunger: rules::Hunger::None,
+    experience: rules::Experience::None,
+});
+
+/// Whether the player has been told to hold a hoe (`hasUserBeenWarnedForNotUsingHoe`).
+static WARNED: AtomicBool = AtomicBool::new(false);
+
+fn settings() -> Config {
+    *SETTINGS.lock().unwrap_or_else(|e| e.into_inner())
 }
 
-const CROPS: &[Crop] = &[
-    Crop { id: "minecraft:wheat", max_age: 7, keep: &[] },
-    Crop { id: "minecraft:carrots", max_age: 7, keep: &[] },
-    Crop { id: "minecraft:potatoes", max_age: 7, keep: &[] },
-    Crop { id: "minecraft:beetroots", max_age: 3, keep: &[] },
-    Crop { id: "minecraft:nether_wart", max_age: 3, keep: &[] },
-    Crop { id: "minecraft:cocoa", max_age: 2, keep: &["facing"] },
-];
-
-/// One queued harvest.
-#[derive(Debug, Clone, PartialEq)]
-pub struct Harvest {
-    pub dimension: String,
-    pub player: String,
-    pub pos: [i32; 3],
-    /// The state to put back, as `/setblock` takes it.
-    pub replant: String,
+fn tags_of(host: &dyn mod_api::Host, stack: Option<&ItemStack>) -> Vec<String> {
+    stack
+        .and_then(|stack| host.tags().item_tags(stack.item()))
+        .map(|tags| tags.iter().map(ToString::to_string).collect())
+        .unwrap_or_default()
 }
 
-impl Harvest {
-    /// The commands that do the harvest, in order.
-    pub fn commands(&self) -> [String; 2] {
-        let [x, y, z] = self.pos;
-        [
-            format!(
-                "execute in {} as {} run loot spawn {:.1} {:.1} {:.1} mine {x} {y} {z} mainhand",
-                self.dimension,
-                self.player,
-                f64::from(x) + 0.5,
-                f64::from(y) + 0.5,
-                f64::from(z) + 0.5
-            ),
-            format!("execute in {} run setblock {x} {y} {z} {}", self.dimension, self.replant),
-        ]
+/// `isHoe` and the tier tags of the held stack: `#minecraft:hoes`, the tier tags, or a block
+/// transformer that tills.
+fn hoe(host: &dyn mod_api::Host, stack: Option<&ItemStack>) -> (bool, Tiers) {
+    let tags = tags_of(host, stack);
+    let has = |tag: &str| tags.iter().any(|t| t == tag);
+    let tiers = Tiers {
+        low: has("rightclickharvest:low_tier_hoes"),
+        mid: has("rightclickharvest:mid_tier_hoes"),
+        high: has("rightclickharvest:high_tier_hoes"),
+    };
+    let transformer = stack
+        .and_then(|stack| host.item_default_component(stack.item(), "minecraft:block_transformer"))
+        .is_some_and(|component| format!("{component:?}").contains("hoe"));
+    (
+        has("minecraft:hoes") || tiers.low || tiers.mid || tiers.high || transformer,
+        tiers,
+    )
+}
+
+/// A block as the harvester reads it.
+struct Cell {
+    id: String,
+    kind: Option<Kind>,
+    age: Option<(i32, i32)>,
+    blacklisted: bool,
+    hoe_never_required: bool,
+    radius_blacklisted: bool,
+}
+
+impl Cell {
+    /// The block at `pos`, or `None` where it cannot be read.
+    fn read(host: &dyn mod_api::Host, level: LevelRef, pos: [i32; 3]) -> Option<Self> {
+        let state = level.block_state(host, pos)?;
+        let text = host.block_state_string(state)?;
+        let id = text
+            .split_once('[')
+            .map_or(text.as_str(), |(id, _)| id)
+            .to_owned();
+        let key = state.block();
+        let in_tag = |tag: &str| host.block_in_tag(key, tag).unwrap_or(false);
+        let age = text
+            .split_once('[')
+            .and_then(|(_, props)| {
+                props
+                    .trim_end_matches(']')
+                    .split(',')
+                    .find_map(|pair| pair.strip_prefix("age="))
+            })
+            .and_then(|value| value.parse::<i32>().ok());
+        let max = age.and_then(|_| {
+            host.block_states()
+                .definition(key)?
+                .iter()
+                .find(|property| property.name == "age")?
+                .values
+                .iter()
+                .filter_map(|value| value.parse::<i32>().ok())
+                .max()
+        });
+        Some(Self {
+            kind: Kind::of(&id, in_tag("minecraft:crops"), age.is_some()),
+            id,
+            age: age.zip(max),
+            blacklisted: in_tag("rightclickharvest:blacklist"),
+            hoe_never_required: in_tag("rightclickharvest:hoe_never_required"),
+            radius_blacklisted: in_tag("rightclickharvest:radius_harvest_blacklist"),
+        })
+    }
+
+    /// `isMature`: the age is the largest the block has.
+    fn mature(&self) -> bool {
+        self.age.is_some_and(|(age, max)| age >= max)
     }
 }
 
-/// Runs a harvest's commands in order and stops at the first one that fails, so a crop whose
-/// loot didn't drop is never reset. True when every command ran.
-pub fn run_harvest(harvest: &Harvest, run: &mut dyn FnMut(&str) -> bool) -> bool {
-    for line in harvest.commands() {
-        if !run(&line) {
-            eprintln!("[rightclickharvest] command failed, harvest stopped: {line}");
+/// The player as the rules ask.
+fn player_state(host: &dyn mod_api::Host, player: PlayerRef, hand: Hand) -> Option<Player> {
+    Some(Player {
+        spectator: player.is_spectator(host)?,
+        crouching: player.entity().is_crouching(host).unwrap_or(false),
+        main_hand: hand == Hand::Main,
+        creative: player.is_creative(host).unwrap_or(false),
+        food_level: player.food(host).map_or(20, |food| food.level),
+        xp_level: player.experience(host).map_or(0, |xp| xp.level),
+    })
+}
+
+/// What the harvest of one cell needs from the click that started it.
+struct Click<'a> {
+    level: LevelRef,
+    player: PlayerRef,
+    hand: Hand,
+    stack: Option<&'a ItemStack>,
+    face_up: bool,
+}
+
+/// `RightClickHarvest.onBlockUse` on the server for the block at `pos`. True when it harvested.
+fn harvest_at(host: &mut dyn ServerHost, click: &Click<'_>, pos: [i32; 3], initial: bool) -> bool {
+    let config = settings();
+    let Some(cell) = Cell::read(&*host, click.level, pos) else {
+        return false;
+    };
+    let Some(player) = player_state(&*host, click.player, click.hand) else {
+        return false;
+    };
+    let (holding_hoe, tiers) = hoe(&*host, click.stack);
+    let hoe_in_use = match rules::gate(
+        player,
+        config,
+        cell.blacklisted,
+        cell.hoe_never_required,
+        holding_hoe,
+    ) {
+        Gate::Go { hoe_in_use } => hoe_in_use,
+        Gate::Pass | Gate::NeedHoe => return false,
+    };
+    if !initial && cell.radius_blacklisted {
+        return false;
+    }
+    let Some(kind) = cell.kind else {
+        return false;
+    };
+    let (break_pos, replant) = if kind.is_column() {
+        // Holding the block's own item and clicking its top places another on it.
+        let held = click.stack.and_then(|stack| stack.item().id(&*host));
+        let own = if kind == Kind::SugarCane {
+            "minecraft:sugar_cane"
+        } else {
+            "minecraft:cactus"
+        };
+        if click.face_up && held == Some(own) {
             return false;
         }
+        let level = click.level;
+        let Some(at) = rules::column_break(pos, |at| {
+            level
+                .block(&*host, at)
+                .is_some_and(|key| key.id(&*host) == Some(cell.id.as_str()))
+        }) else {
+            return false;
+        };
+        (at, false)
+    } else {
+        if !cell.mature() {
+            return false;
+        }
+        if initial
+            && config.harvest_in_radius
+            && !cell.radius_blacklisted
+            && holding_hoe
+            && let Some((radius, circle)) = tiers.radius()
+        {
+            for around in rules::radius_positions(pos, radius, circle) {
+                harvest_at(host, click, around, false);
+            }
+        }
+        (pos, true)
+    };
+    let held = click.stack;
+    let may = held.is_none_or(|stack| {
+        click
+            .player
+            .may_use_item_at(&*host, break_pos, mod_api::BlockFace::Up, stack)
+            .unwrap_or(true)
+    });
+    if !may {
+        return false;
+    }
+    complete(host, click, &cell, break_pos, hoe_in_use, replant)
+}
+
+/// `completeHarvest` on the server: stats, the drops without one seed, the replant or removal,
+/// tool wear, exhaustion and experience.
+fn complete(
+    host: &mut dyn ServerHost,
+    click: &Click<'_>,
+    cell: &Cell,
+    pos: [i32; 3],
+    hoe_in_use: bool,
+    replant: bool,
+) -> bool {
+    let config = settings();
+    let Some(state) = click.level.block_state(&*host, pos) else {
+        return false;
+    };
+    let block_id = cell.id.clone();
+    let _ = click.player.award_stat(host, StatType::Mined, &block_id, 1);
+    if let Some(stack) = click.stack
+        && let Some(item) = stack.item().id(&*host).map(str::to_owned)
+    {
+        let _ = click.player.award_stat(host, StatType::Used, &item, 1);
+    }
+    let drops = click
+        .level
+        .block_drops(host, pos, click.stack, Some(click.player.entity()))
+        .ok()
+        .flatten()
+        .unwrap_or_default();
+    let mut named: Vec<(String, u32)> = drops
+        .iter()
+        .map(|stack| {
+            (
+                stack.item().id(&*host).unwrap_or_default().to_owned(),
+                stack.count(),
+            )
+        })
+        .collect();
+    if replant && let Some(item) = rules::replant_item(&cell.id) {
+        rules::take_replant(&mut named, item);
+    }
+    for (stack, (_, count)) in drops.into_iter().zip(&named) {
+        if *count == 0 {
+            continue;
+        }
+        let mut stack = stack;
+        if stack.set_count(*count).is_ok() {
+            let _ = click.level.pop_resource(host, pos, stack);
+        }
+    }
+    if replant {
+        let Some(text) = host.block_state_string(state) else {
+            return false;
+        };
+        let Some(next) = with_age_zero(&text).and_then(|text| host.block_state_id(&text)) else {
+            return false;
+        };
+        let _ = click.level.set_block(
+            host,
+            pos,
+            next,
+            mod_api::BlockUpdateFlags::NEIGHBORS | mod_api::BlockUpdateFlags::CLIENTS,
+        );
+        let _ = click.player.award_stat(host, StatType::Used, &block_id, 1);
+    } else {
+        let _ = click.level.remove_block(host, pos, false);
+    }
+    if hoe_in_use {
+        let slot = match click.hand {
+            Hand::Main => EquipmentSlot::MainHand,
+            Hand::Off => EquipmentSlot::OffHand,
+        };
+        let _ = LivingRef::new(click.player.entity()).hurt_and_break(host, slot, 1);
+    }
+    // Regular block breaking causes 0.005 exhaustion.
+    let _ = click
+        .player
+        .add_exhaustion(host, rules::exhaustion(config.hunger));
+    let roll = click
+        .level
+        .with_random(host, |random| random.next_int_bound(rules::XP_MAX + 1))
+        .unwrap_or(0);
+    let change = rules::experience_change(config.experience, roll);
+    if change < 0 {
+        let total = click.player.experience(&*host).map_or(0, |xp| xp.total);
+        let _ = click
+            .player
+            .set_total_experience(host, (total + change).max(0));
+    } else if change > 0 {
+        let [x, y, z] = click.player.entity().position(&*host).unwrap_or([0.0; 3]);
+        let _ = click.level.award_experience(host, x, y, z, change as u32);
     }
     true
 }
 
-/// The replanted state for `block` if it's a supported crop at full age.
-/// `prop` reads a property of the clicked block.
-pub fn replant_state(block: &str, prop: &dyn Fn(&str) -> Option<String>) -> Option<String> {
-    let crop = CROPS.iter().find(|c| c.id == block)?;
-    let age: u32 = prop("age")?.parse().ok()?;
-    if age < crop.max_age {
-        return None;
+/// A block state's text with `age` set to 0, every other property kept (`getReplantState`).
+pub fn with_age_zero(text: &str) -> Option<String> {
+    let (block, props) = text.strip_suffix(']')?.split_once('[')?;
+    let mut found = false;
+    let props: Vec<String> = props
+        .split(',')
+        .map(|pair| {
+            if pair.starts_with("age=") {
+                found = true;
+                "age=0".to_owned()
+            } else {
+                pair.to_owned()
+            }
+        })
+        .collect();
+    found.then(|| format!("{block}[{}]", props.join(",")))
+}
+
+/// What the client makes of a click.
+enum Predicted {
+    /// A harvest the server will do.
+    Harvest(String),
+    /// A bare hand over a crop that needs a hoe.
+    Warn,
+    /// Nothing of ours.
+    Nothing,
+}
+
+/// The client's side of a click: the same checks without any effect, so the swing and the
+/// planting sound go with a harvest the server does.
+fn predict(host: &dyn ClientHost, click: &BlockClick<'_>) -> Predicted {
+    let Some(level) = host.level(click.dimension.key().id()) else {
+        return Predicted::Nothing;
+    };
+    let Some(player) = host.local_player() else {
+        return Predicted::Nothing;
+    };
+    let Some(cell) = Cell::read(host, level, click.pos) else {
+        return Predicted::Nothing;
+    };
+    let Some(state) = player_state(host, player, click.hand) else {
+        return Predicted::Nothing;
+    };
+    let (holding_hoe, _) = hoe(host, click.stack);
+    let Some(kind) = cell.kind else {
+        return Predicted::Nothing;
+    };
+    let harvestable = if kind.is_column() {
+        true
+    } else {
+        cell.mature()
+    };
+    match rules::gate(
+        state,
+        settings(),
+        cell.blacklisted,
+        cell.hoe_never_required,
+        holding_hoe,
+    ) {
+        Gate::Go { .. } => {}
+        Gate::NeedHoe => {
+            return if harvestable && click.stack.is_none() {
+                Predicted::Warn
+            } else {
+                Predicted::Nothing
+            };
+        }
+        Gate::Pass => return Predicted::Nothing,
     }
-    let mut props = vec!["age=0".to_string()];
-    for key in crop.keep {
-        props.push(format!("{key}={}", prop(key)?));
+    if kind.is_column() {
+        let id = cell.id.clone();
+        let found = rules::column_break(click.pos, |at| {
+            level
+                .block(host, at)
+                .is_some_and(|key| key.id(host) == Some(id.as_str()))
+        });
+        if found.is_none() {
+            return Predicted::Nothing;
+        }
+    } else if !cell.mature() {
+        return Predicted::Nothing;
     }
-    Some(format!("{}[{}]", crop.id, props.join(",")))
+    Predicted::Harvest(cell.id)
 }
 
 #[derive(Default)]
-struct Mod {
-    queue: Mutex<Vec<Harvest>>,
-}
+struct Mod;
 
-#[mod_api::horizon_mod]
+#[mod_api::sunrise_mod]
 impl Hooks for Mod {
     fn right_click_block(&self, host: HostSide<'_>, event: &mut RightClickBlockEvent<'_>) -> Flow {
-        let HostSide::Server(host) = host else {
-            return Flow::Continue;
-        };
-        if !host.on("rightclickharvest") {
-            return Flow::Continue;
-        }
         let click = event.click;
-        let Some(player) = host.player(click.player) else {
-            return Flow::Continue;
+        let handled = match host {
+            HostSide::Server(host) => {
+                let Some(player) = host.player(click.player) else {
+                    return Flow::Continue;
+                };
+                let Some(level) = host.level(click.dimension.key().id()) else {
+                    return Flow::Continue;
+                };
+                let context = Click {
+                    level,
+                    player,
+                    hand: click.hand,
+                    stack: click.stack,
+                    face_up: click.hit.face == [0, 1, 0],
+                };
+                harvest_at(host, &context, click.pos, true)
+            }
+            HostSide::Client(host) => match predict(&*host, click) {
+                Predicted::Harvest(id) => {
+                    let sound = if id == "minecraft:nether_wart" {
+                        "minecraft:item.nether_wart.plant"
+                    } else {
+                        "minecraft:item.crop.plant"
+                    };
+                    host.play_local_sound(&SoundPlay::ui(sound), 0);
+                    true
+                }
+                Predicted::Warn => {
+                    // `hasUserBeenWarnedForNotUsingHoe`: told once, then left alone.
+                    if !WARNED.swap(true, Ordering::Relaxed) {
+                        let _ = host.chat_line(Text::translate(
+                            "text.rightclickharvest.use_a_hoe_warning",
+                            vec![
+                                Text::translate("config.rightclickharvest.requireHoe", vec![]),
+                                Text::literal("false"),
+                            ],
+                        ));
+                    }
+                    false
+                }
+                Predicted::Nothing => false,
+            },
         };
-        // Spectators can't harvest; adventure mode can't break blocks.
-        if !matches!(player.game_mode(&*host), Some(GameMode::Survival | GameMode::Creative)) {
-            return Flow::Continue;
+        if handled {
+            *event.cancellation_result = InteractionResult::Success;
+            Flow::Cancel
+        } else {
+            Flow::Continue
         }
-        let dimension = click.dimension.key().id();
-        let Some(level) = host.level(dimension) else {
-            return Flow::Continue;
-        };
-        let pos = click.pos;
-        let reader: &dyn mod_api::Host = &*host;
-        let Some(block) = level.block(reader, pos).map(|k| k.id(reader)) else {
-            return Flow::Continue;
-        };
-        let read = |key: &str| level.block_property(reader, pos, key);
-        let Some(replant) = replant_state(&block, &read) else {
-            return Flow::Continue;
-        };
-        let Some(name) = player.name(reader) else {
-            return Flow::Continue;
-        };
-        let mut queue = self.queue.lock().unwrap_or_else(|e| e.into_inner());
-        // The hook runs once per hand: queue each crop once.
-        if !queue.iter().any(|h| h.pos == pos && h.dimension == dimension) {
-            queue.push(Harvest { dimension: dimension.to_string(), player: name, pos, replant });
-        }
-        *event.cancellation_result = InteractionResult::Success;
-        Flow::Cancel
     }
 
-    fn server_tick(&self, host: &mut dyn ServerHost, _event: &mut ServerTickEvent<'_>) {
-        let pending: Vec<Harvest> = {
-            let mut queue = self.queue.lock().unwrap_or_else(|e| e.into_inner());
-            std::mem::take(&mut *queue)
-        };
-        for harvest in pending {
-            run_harvest(&harvest, &mut |line| host.commands().run_command(line));
+    fn register_configs(&self, _: &dyn ConfigContext, event: &mut RegisterConfigsEvent<'_>) {
+        event.configs.push(ModConfig::new(
+            MOD,
+            ConfigKind::Common,
+            rules::DEFAULT_CONFIG,
+        ));
+    }
+
+    fn config_loading(&self, _: &dyn ConfigContext, event: &mut ConfigLoadingEvent<'_>) {
+        if event.config.mod_id == MOD {
+            *SETTINGS.lock().unwrap_or_else(|e| e.into_inner()) = Config::parse(&event.config.text);
+        }
+    }
+
+    fn config_reloading(&self, _: HostSide, event: &mut mod_api::ConfigReloadingEvent<'_>) {
+        if event.config.mod_id == MOD {
+            *SETTINGS.lock().unwrap_or_else(|e| e.into_inner()) = Config::parse(&event.config.text);
         }
     }
 }
@@ -148,78 +475,16 @@ impl Hooks for Mod {
 mod tests {
     use super::*;
 
-    fn props(list: &'static [(&'static str, &'static str)]) -> impl Fn(&str) -> Option<String> {
-        move |k| list.iter().find(|(key, _)| *key == k).map(|(_, v)| v.to_string())
-    }
-
     #[test]
-    fn grown_wheat_replants_at_age_zero() {
-        let p = props(&[("age", "7")]);
-        assert_eq!(replant_state("minecraft:wheat", &p).as_deref(), Some("minecraft:wheat[age=0]"));
-    }
-
-    #[test]
-    fn young_crops_and_other_blocks_are_left_alone() {
-        assert_eq!(replant_state("minecraft:wheat", &props(&[("age", "6")])), None);
-        assert_eq!(replant_state("minecraft:stone", &props(&[("age", "7")])), None);
-        assert_eq!(replant_state("minecraft:beetroots", &props(&[("age", "2")])), None);
-    }
-
-    #[test]
-    fn cocoa_keeps_its_facing() {
-        let p = props(&[("age", "2"), ("facing", "west")]);
+    fn replanting_resets_only_the_age() {
         assert_eq!(
-            replant_state("minecraft:cocoa", &p).as_deref(),
+            with_age_zero("minecraft:cocoa[age=2,facing=west]").as_deref(),
             Some("minecraft:cocoa[age=0,facing=west]")
         );
-    }
-
-    fn carrots() -> Harvest {
-        Harvest {
-            dimension: "minecraft:overworld".into(),
-            player: "Steve".into(),
-            pos: [-3, 64, 12],
-            replant: "minecraft:carrots[age=0]".into(),
-        }
-    }
-
-    #[test]
-    fn failed_loot_leaves_the_crop_alone() {
-        let mut ran = Vec::new();
-        let done = run_harvest(&carrots(), &mut |line| {
-            ran.push(line.to_string());
-            false
-        });
-        assert!(!done);
-        assert_eq!(ran.len(), 1, "setblock must not run after the loot command fails");
-        assert!(ran[0].contains("loot spawn"));
-    }
-
-    #[test]
-    fn successful_harvest_loots_then_replants() {
-        let mut ran = Vec::new();
-        let done = run_harvest(&carrots(), &mut |line| {
-            ran.push(line.to_string());
-            true
-        });
-        assert!(done);
-        assert_eq!(ran, carrots().commands().to_vec());
-    }
-
-    #[test]
-    fn commands_loot_then_replant_in_the_players_dimension() {
-        let h = Harvest {
-            dimension: "minecraft:overworld".into(),
-            player: "Steve".into(),
-            pos: [-3, 64, 12],
-            replant: "minecraft:carrots[age=0]".into(),
-        };
         assert_eq!(
-            h.commands(),
-            [
-                "execute in minecraft:overworld as Steve run loot spawn -2.5 64.5 12.5 mine -3 64 12 mainhand".to_string(),
-                "execute in minecraft:overworld run setblock -3 64 12 minecraft:carrots[age=0]".to_string(),
-            ]
+            with_age_zero("farmersdelight:tomatoes[age=3,ropelogged=true]").as_deref(),
+            Some("farmersdelight:tomatoes[age=0,ropelogged=true]")
         );
+        assert_eq!(with_age_zero("minecraft:stone"), None);
     }
 }

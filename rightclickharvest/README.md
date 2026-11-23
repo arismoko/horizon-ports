@@ -1,7 +1,39 @@
-# Right Click Harvest for Horizon
+# Right Click Harvest for Sunrise
 
 Right-click a grown crop to harvest and replant it.
 
-A port of [Right Click Harvest](https://github.com/JamCoreModding/right-click-harvest) 4.6.1+1.20.1 by Jamalam to [Horizon](https://github.com/horizon-rust/horizon) 26.3, under the original's licence (MIT, in `LICENSE`; see `NOTICE`).
+A port of [Right Click Harvest](https://github.com/JamCoreModding/right-click-harvest) by Jamalam to [Sunrise](https://playsunrise.net) (Minecraft Java 26.3), under the original's licence (MIT, in `LICENSE`; see `NOTICE`). One native mod on Sunrise's mod API.
 
-This folder is the package source: one native mod on Horizon's mod API only (no game module, no mixins). Release [`rightclickharvest-v0.4.0`](https://github.com/lavoide/horizon-ports/releases/tag/rightclickharvest-v0.4.0) holds `rightclickharvest.hmod`, built from this folder with Horizon's exact-build SDK `dd67b76ff23e28c6d8e21859df600d31572f81a0` (Horizon Mixins `e59da9094f0c2fdda6c627fe9eff22dec6a906f0`). Earlier versions, if any, are in this folder's history.
+## What it does
+
+- Right-click a fully grown crop (wheat, carrots, potatoes, beetroots, torchflowers, cocoa, nether wart, and crops from other mods) to harvest it with the drops a break would give, one seed or crop short, and replant it at its first age.
+- Right-click the second block of a sugar cane or cactus column to harvest it; the rest of the column falls as usual.
+- A hoe in the hand also harvests the crops around: tiers set by the `rightclickharvest:low_tier_hoes`, `mid_tier_hoes` and `high_tier_hoes` item tags (the four neighbours, the square around, the wider diamond), and `rightclickharvest:radius_harvest_blacklist` keeps cocoa, cane and cactus out of it.
+- Sneaking, the off hand and spectators never harvest; `rightclickharvest:blacklist` lists blocks that never do.
+- A hoe in use loses durability, a harvest awards the mined and used statistics, and spawn-protected ground is left alone.
+- `config/rightclickharvest-common.toml` holds the settings: `requireHoe` (crops need a hoe, except `rightclickharvest:hoe_never_required` blocks; a bare hand is told once), `harvestInRadius`, `hungerLevel` (none, low, normal, high: how much exhaustion a harvest adds, and no harvest with an empty food bar) and `experienceType` (none, cost or reward 0 to 2 points).
+- Translations in the eleven languages the original ships.
+
+## Differences from the original
+
+- A crop the port does not know the seed of (a modded crop) drops everything; vanilla crops give one seed or crop less, as the original does.
+- The warning about holding a hoe is shown once for each game session, not saved, and its words are not coloured.
+- Other mods' claim protection (the original asks the loader's break and place events) and the original's `AfterHarvest` event for other mods are not available; there is no in-game config screen.
+
+## Building
+
+With the Sunrise mod tool (`cargo sunrise-mod`, from the Sunrise SDK) and Rust:
+
+```sh
+cargo sunrise-mod build    # compiles against the pinned game, packs target/sunrise-mod/rightclickharvest.smod
+cargo sunrise-mod run      # builds it and starts the game with it
+cargo test
+```
+
+`sunrise-mod.toml` pins the Sunrise Dev build `dev-2026-11-22-7cfdf81` (game commit `7cfdf81463`). Sunrise builds native mods from source on the player's computer, against the exact game build.
+
+## Licence and credits
+
+Right Click Harvest is by Jamalam. This port is distributed under the original's licence, the **MIT licence**; `LICENSE` holds the text and `NOTICE` says where the port comes from.
+
+Ported to Minecraft 26.3 by lavoide ([lavoide/horizon-ports](https://github.com/lavoide/horizon-ports)), and to Sunrise by arismoko.
