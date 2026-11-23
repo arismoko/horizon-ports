@@ -10,12 +10,13 @@ What it does:
 - Each block drops what it would when mined with your axe (so Silk Touch and Fortune count), and the drops land at the stump.
 - The axe wears one point per log and you tire as if you had chopped each log, as in the original; Unbreaking applies.
 - Sneak to chop a single log. Persistent (player-placed) leaves are never part of a tree, and a tree of more than 256 logs is left alone.
+- Bigger trees take longer to chop: the more logs, the slower the bottom one breaks (up to nine times slower), as the original's dynamic mining speed.
 - Works in survival and creative, with any item named as an axe.
 
 Differences from the original:
 
 - The tree does not topple as an animated entity with its sounds: it comes down at once, at the end of the tick.
-- Bigger trees do not take longer to chop, and cactus, bamboo and chorus plants are left to vanilla.
+- Cactus, bamboo and chorus plants are left to vanilla.
 """
 categories = ["game-mechanics", "utility"]
 

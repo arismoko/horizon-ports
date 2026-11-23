@@ -16,19 +16,34 @@
 //!
 //! Sneaking is the player's `is_shift_key_down`; the held axe is the player's main hand.
 //!
-//! Not ported: the falling animation and its sounds, the 4 s before the drops land, slower
-//! mining for bigger trees (no mining-speed hook), and the cactus, bamboo and chorus "trees"
-//! (vanilla already breaks those upwards). Axes are matched by name.
-use std::collections::{HashSet, VecDeque};
+//! Bigger trees take longer to chop (the original's dynamic mining speed, on by default): the
+//! destroy speed is divided by `min(16, logs - 1) * 0.5 + 1`, on both sides, through
+//! `player_break_speed`, with the tree found once per player and log.
+//!
+//! Not ported: the falling animation and its sounds, the 4 s before the drops land, and the
+//! cactus, bamboo and chorus "trees" (vanilla already breaks those upwards). Axes are matched
+//! by name.
+use std::collections::{HashMap, HashSet, VecDeque};
 use std::sync::Mutex;
 
 use mod_api::{
-    BreakBlockEvent, EquipmentSlot, Flow, GameMode, Hand, Hooks, Host, ItemStack, LevelRef,
-    LivingRef, PlayerRef, ServerHost, ServerTickEvent, ServerTickPhase,
+    BreakBlockEvent, EntityRef, EquipmentSlot, Flow, GameMode, Hand, Hooks, Host, HostSide,
+    ItemStack, LevelRef, LivingRef, PlayerBreakSpeedEvent, PlayerRef, ServerHost, ServerTickEvent,
+    ServerTickPhase,
 };
 
 pub const MAX_LOGS: usize = 256;
 pub const MAX_LEAVES_RADIUS: u32 = 10;
+
+/// `dynamicMiningSpeed`'s defaults: `speedMultiplication` and `maxSpeedMultiplication`.
+const SPEED_MULTIPLICATION: f32 = 0.5;
+const MAX_SPEED_MULTIPLICATION: f32 = 16.0;
+
+/// GenericTree's mining speed modifier: what the destroy speed is divided by for a tree of
+/// `logs` logs, the chopped one included.
+pub fn speed_divisor(logs: usize) -> f32 {
+    MAX_SPEED_MULTIPLICATION.min(logs as f32 - 1.0) * SPEED_MULTIPLICATION + 1.0
+}
 
 /// `#minecraft:axes` by name.
 pub fn is_axe(item: &str) -> bool {
@@ -201,9 +216,33 @@ impl Felling {
     }
 }
 
+/// The log a player is mining and its speed divisor (None: not a tree).
+type MinedLog = ([i32; 3], Option<f32>);
+
 #[derive(Default)]
 struct Mod {
     queue: Mutex<Vec<Felling>>,
+    /// TreeHandler's TREE_SPEED_CACHES: per side and player, the log being mined and its
+    /// divisor (None: not a tree), found again when the player moves to another block.
+    speeds: Mutex<HashMap<(bool, u32), MinedLog>>,
+}
+
+/// Whether `player` would fell a tree by breaking `pos` now: survival or creative, not
+/// sneaking, an axe in the main hand. Returns the tree.
+fn chop(host: &dyn Host, player: EntityRef, pos: [i32; 3]) -> Option<Tree> {
+    if player.is_shift_key_down(host) == Some(true) {
+        return None;
+    }
+    let item = LivingRef::new(player)
+        .with_hand_item(host, Hand::Main, |held| {
+            held.item().id(host).map(str::to_owned)
+        })
+        .flatten()?;
+    if !is_axe(&item) {
+        return None;
+    }
+    let level = player.level(host)?;
+    find_tree(pos, &|p| read_block(host, level, p))
 }
 
 fn read_block(host: &dyn Host, level: LevelRef, pos: [i32; 3]) -> Block {
@@ -234,25 +273,15 @@ impl Hooks for Mod {
         if !matches!(mode, Some(GameMode::Survival | GameMode::Creative)) {
             return Flow::Continue;
         }
-        if player.entity().is_shift_key_down(host) == Some(true) {
-            return Flow::Continue;
-        }
-        let Some((item, axe)) = LivingRef::new(player.entity())
-            .with_hand_item(host, Hand::Main, |held| {
-                Some((held.item().id(host)?.to_owned(), held.project()?))
-            })
-            .flatten()
-        else {
+        let Some(tree) = chop(host, player.entity(), event.pos) else {
             return Flow::Continue;
         };
-        if !is_axe(&item) {
-            return Flow::Continue;
-        }
-        let Some(level) = player.level(host) else {
-            return Flow::Continue;
-        };
-        let read = |p: [i32; 3]| read_block(host, level, p);
-        let Some(tree) = find_tree(event.pos, &read) else {
+        let (Some(axe), Some(level)) = (
+            LivingRef::new(player.entity())
+                .with_hand_item(host, Hand::Main, |held| held.project())
+                .flatten(),
+            player.level(host),
+        ) else {
             return Flow::Continue;
         };
         let survival = matches!(mode, Some(GameMode::Survival));
@@ -265,6 +294,33 @@ impl Hooks for Mod {
             axe,
             survival,
         });
+        Flow::Continue
+    }
+
+    fn player_break_speed(&self, host: HostSide, event: &mut PlayerBreakSpeedEvent) -> Flow {
+        let (server, host): (bool, &dyn Host) = match &host {
+            HostSide::Server(host) => (true, &**host),
+            HostSide::Client(host) => (false, &**host),
+        };
+        if !host.on("fallingtrees") {
+            return Flow::Continue;
+        }
+        let mut speeds = self.speeds.lock().unwrap_or_else(|e| e.into_inner());
+        let key = (server, event.player);
+        let divisor = match speeds.get(&key) {
+            Some(&(pos, divisor)) if pos == event.pos => divisor,
+            _ => {
+                let divisor = host
+                    .entity(event.player)
+                    .and_then(|player| chop(host, player, event.pos))
+                    .map(|tree| speed_divisor(tree.logs.len() + 1));
+                speeds.insert(key, (event.pos, divisor));
+                divisor
+            }
+        };
+        if let Some(divisor) = divisor {
+            event.new_speed /= divisor;
+        }
         Flow::Continue
     }
 
@@ -309,6 +365,15 @@ mod tests {
                 ..Block::default()
             })
         }
+    }
+
+    #[test]
+    fn bigger_trees_mine_slower_up_to_a_cap() {
+        assert_eq!(speed_divisor(1), 1.0);
+        assert_eq!(speed_divisor(5), 3.0);
+        // 16 extra logs and more: 16 * 0.5 + 1.
+        assert_eq!(speed_divisor(17), 9.0);
+        assert_eq!(speed_divisor(200), 9.0);
     }
 
     #[test]
