@@ -1,0 +1,14 @@
+# Better Days for Sunrise: native code in src/.
+id = "betterdays"
+name = "Better Days"
+version = "0.5.0"
+description = "Set the length of day and night, and let sleeping speed the night up instead of skipping it."
+authors = ["wendall911", "lavoide", "arismoko"]
+license = "LGPL-3.0-or-later"
+credits = "Ported to Minecraft 26.3 by lavoide, and to Sunrise by arismoko."
+homepage = "https://github.com/arismoko/horizon-ports"
+side = "both"
+
+[native]
+game = "26.3"
+sunrise = "7cfdf81463ebb4a19705768273909f7f3f03601d"

@@ -1,84 +1,372 @@
-//! Better Days for Horizon: a slower clock, as Better Days 1.20.1 does with Homestead's config
-//! (`speedMethod = "MINUTES"`: the day, 23500 to 12500, lasts 25 real minutes, the night, 12500
-//! to 23500, 15 minutes; vanilla's are 10.8 and 9.2).
+//! Better Days for Sunrise: the overworld's clock runs at its own day and night speeds, a night's
+//! sleep speeds it up with the share of players in bed, and the players are told when someone lies
+//! down or gets up (`TimeService` and `BetterDaysMessages` in the original).
 //!
-//! 26.3's world clocks have a rate (`/time rate`), which the server and the clients' sky both
-//! follow, so this mod only switches the overworld clock's rate at dawn and dusk. Not ported:
-//! Better Days' sleep, which speeds the clock up while players sleep instead of skipping the
-//! night; vanilla's skip stays. The rate is saved with the world: without this mod a world keeps
-//! the last one (`/time rate 1` puts vanilla's back).
+//! | Moment | Where | What it does |
+//! |---|---|---|
+//! | `level_tick_post` | [`tick_overworld`] | sets the clock's rate: day, night or sleep speed |
+//! | `sleep_finished_time` | this module | the morning notice |
+//! | `player_bed_enter`, `player_bed_leave` | this module | the "is now sleeping" and "has left their bed" notices |
+//! | `screen_render_post` | this module | the clock drawn on the in-bed screen |
+//! | `register_configs`, `config_loading`, `config_reloading` | this module | `config/betterdays-common.toml` and `config/betterdays-client.toml` |
+
+pub mod rules;
+
+use std::ops::ControlFlow;
 use std::sync::Mutex;
 
-use mod_api::{Hooks, ServerHost, ServerTickEvent, ServerTickPhase};
+use mod_api::{
+    Config as ModConfig, ConfigContext, ConfigKind, ConfigLoadingEvent, ConfigReloadingEvent, Flow,
+    GameRuleValue, Hooks, HostSide, Identifier, LevelRef, LevelTickPostEvent, PlayerBedEnterEvent,
+    PlayerBedLeaveEvent, PlayerRef, RegisterConfigsEvent, ScreenRenderPostEvent, ServerHost,
+    SleepFinishedTimeEvent, Text,
+};
+use rules::{Client, Common, Interpolator, Message, Target};
 
-pub const DAY_START: f64 = 23500.0;
-pub const NIGHT_START: f64 = 12500.0;
-/// Homestead's `daySpeedMinutes` and `nightSpeedMinutes`.
-pub const DAY_MINUTES: f64 = 25.0;
-pub const NIGHT_MINUTES: f64 = 15.0;
+const MOD: &str = "betterdays";
+const OVERWORLD: &str = "minecraft:overworld";
+const ADVANCE_TIME: &str = "minecraft:advance_time";
+/// Ticks between two sends of the rate line while it has not changed.
+const RATE_REFRESH: u32 = 200;
 
-/// Clock ticks per game tick at `time` (any day): the part's length over its minutes in ticks.
-pub fn speed(time: f64) -> f64 {
-    let t = time.rem_euclid(24000.0);
-    let night_len = DAY_START - NIGHT_START;
-    if (NIGHT_START..DAY_START).contains(&t) {
-        night_len / (NIGHT_MINUTES * 1200.0)
-    } else {
-        (24000.0 - night_len) / (DAY_MINUTES * 1200.0)
+struct Loaded {
+    common: Common,
+    spline: Option<Interpolator>,
+}
+
+static COMMON: Mutex<Option<Loaded>> = Mutex::new(None);
+static CLIENT: Mutex<Option<Client>> = Mutex::new(None);
+
+fn load_common(text: &str) {
+    let common = Common::parse(text);
+    let spline = Interpolator::new(&common.points, common.smoothing);
+    *COMMON.lock().unwrap_or_else(|e| e.into_inner()) = Some(Loaded { common, spline });
+}
+
+fn with_common<R>(f: impl FnOnce(&Common, Option<&Interpolator>) -> R) -> R {
+    let mut guard = COMMON.lock().unwrap_or_else(|e| e.into_inner());
+    let loaded = guard.get_or_insert_with(|| {
+        let common = Common::default();
+        let spline = Interpolator::new(&common.points, common.smoothing);
+        Loaded { common, spline }
+    });
+    f(&loaded.common, loaded.spline.as_ref())
+}
+
+fn client() -> Client {
+    CLIENT
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .get_or_insert_with(Client::default)
+        .clone()
+}
+
+/// The rate last sent, as float bits, and the ticks since.
+static RATE: Mutex<Option<(u32, u32)>> = Mutex::new(None);
+
+fn rule_on(host: &dyn mod_api::Host, level: LevelRef, rule: &str) -> bool {
+    matches!(
+        level.game_rule(host, rule),
+        Ok(Some(GameRuleValue::Bool(true)))
+    )
+}
+
+fn asleep(host: &dyn mod_api::Host, player: PlayerRef) -> bool {
+    host.living(player.entity())
+        .and_then(|living| living.is_sleeping(host))
+        == Some(true)
+}
+
+/// The level's players who count for sleeping, and how many of them are in bed.
+fn sleep_counts(host: &dyn mod_api::Host, level: LevelRef) -> (usize, usize) {
+    let (mut active, mut sleeping) = (0, 0);
+    let _ = level.visit_online_players(host, &mut |player| {
+        if player.counts_for_sleep(host) == Some(true) {
+            active += 1;
+            if asleep(host, player) {
+                sleeping += 1;
+            }
+        }
+        ControlFlow::Continue(())
+    });
+    (active, sleeping)
+}
+
+fn players_of(host: &dyn mod_api::Host, level: LevelRef) -> Vec<PlayerRef> {
+    let mut players = Vec::new();
+    let _ = level.visit_online_players(host, &mut |player| {
+        players.push(player);
+        ControlFlow::Continue(())
+    });
+    players
+}
+
+/// The text with its `§` codes turned into styled runs.
+fn text_of(line: &str) -> Text {
+    rules::legacy_runs(line)
+        .into_iter()
+        .fold(Text::literal(""), |root, (run, look)| {
+            let mut part = Text::literal(run);
+            let style = &mut part.style;
+            style.color = look.color.map(str::to_owned);
+            style.bold = look.bold.then_some(true);
+            style.italic = look.italic.then_some(true);
+            style.underlined = look.underlined.then_some(true);
+            style.strikethrough = look.strikethrough.then_some(true);
+            style.obfuscated = look.obfuscated.then_some(true);
+            root.append(part)
+        })
+}
+
+/// `BetterDaysMessages.sendMessage`: the template filled in and sent to who the message names.
+fn send(
+    host: &mut dyn ServerHost,
+    message: &Message,
+    level: LevelRef,
+    variables: &[(&str, String)],
+) {
+    if message.text.is_empty() {
+        return;
+    }
+    let line = text_of(&rules::fill(&message.text, variables));
+    let mut targets: Vec<PlayerRef> = match message.target {
+        Target::Dimension => players_of(&*host, level),
+        Target::Sleeping => players_of(&*host, level)
+            .into_iter()
+            .filter(|p| asleep(&*host, *p))
+            .collect(),
+        Target::All => [OVERWORLD, "minecraft:the_nether", "minecraft:the_end"]
+            .into_iter()
+            .filter_map(|dimension| host.level(dimension))
+            .flat_map(|l| players_of(&*host, l))
+            .collect(),
+    };
+    targets.dedup();
+    for player in targets {
+        let _ = if message.chat.is_overlay() {
+            player.action_bar(host, line.clone())
+        } else {
+            player.tell(host, line.clone())
+        };
     }
 }
 
-/// The `/time rate` line for `rate`, as Java prints floats.
-pub fn rate_command(rate: f64) -> String {
-    format!("time rate {}", (rate * 10000.0).round() / 10000.0)
+fn percent(sleeping: usize, active: usize) -> usize {
+    if active == 0 {
+        0
+    } else {
+        (sleeping as f64 / active as f64 * 100.0) as usize
+    }
+}
+
+fn notice_variables(name: &str, active: usize, sleeping: usize) -> Vec<(&'static str, String)> {
+    vec![
+        ("player", name.to_owned()),
+        ("totalPlayers", active.to_string()),
+        ("sleepingPlayers", sleeping.to_string()),
+        ("sleepingPercentage", percent(sleeping, active).to_string()),
+    ]
+}
+
+/// `TimeService.tick`: the clock's rate for this tick.
+fn tick_overworld(host: &mut dyn ServerHost, level: LevelRef) {
+    if !rule_on(&*host, level, ADVANCE_TIME) {
+        return;
+    }
+    let Some(clock) = level.clock_time(&*host) else {
+        return;
+    };
+    let (active, sleeping) = sleep_counts(&*host, level);
+    let rate = with_common(|common, spline| {
+        let sleep = if common.sleep_feature {
+            common.sleep_speed(sleeping, active)
+        } else {
+            None
+        };
+        sleep.unwrap_or_else(|| common.time_speed(clock as f64, spline))
+    });
+    send_rate(host, rate);
+}
+
+fn send_rate(host: &mut dyn ServerHost, rate: f64) {
+    let bits = (rate as f32).to_bits();
+    {
+        let mut last = RATE.lock().unwrap_or_else(|e| e.into_inner());
+        match &mut *last {
+            Some((sent, since)) if *sent == bits && *since < RATE_REFRESH => {
+                *since += 1;
+                return;
+            }
+            slot => *slot = Some((bits, 0)),
+        }
+    }
+    host.commands().run_command(&rules::rate_command(rate));
+}
+
+fn level_of(host: &mut dyn ServerHost, uuid: u128) -> Option<LevelRef> {
+    host.player(uuid)?.level(&*host)
+}
+
+fn is_overworld(host: &dyn mod_api::Host, level: LevelRef) -> bool {
+    level.dimension().id(host) == Some(OVERWORLD)
 }
 
 #[derive(Default)]
-struct Mod {
-    /// The rate this mod last set.
-    applied: Mutex<Option<f64>>,
+struct Mod;
+
+/// `BetterDaysMessages.onEnterBed`.
+fn enter_notice(host: &mut dyn ServerHost, event: &PlayerBedEnterEvent<'_>) {
+    let Some(level) = level_of(host, event.player) else {
+        return;
+    };
+    if !rule_on(&*host, level, ADVANCE_TIME) {
+        return;
+    }
+    let (active, sleeping) = sleep_counts(&*host, level);
+    let message = with_common(|common, _| common.sleep_feature.then(|| common.enter_bed.clone()));
+    if let Some(message) = message.filter(|_| active > 1) {
+        let variables = notice_variables(event.name, active, sleeping + 1);
+        send(host, &message, level, &variables);
+    }
 }
 
-#[mod_api::horizon_mod]
+#[mod_api::sunrise_mod]
 impl Hooks for Mod {
-    fn server_tick(&self, host: &mut dyn ServerHost, event: &mut ServerTickEvent<'_>) {
-        if !matches!(event.phase, ServerTickPhase::ServerTickEnd { .. }) || !host.on("betterdays") {
+    fn level_tick_post(&self, host: HostSide<'_>, event: &mut LevelTickPostEvent) {
+        if let HostSide::Server(host) = host
+            && is_overworld(&*host, event.level)
+        {
+            tick_overworld(host, event.level);
+        }
+    }
+
+    fn player_bed_enter(
+        &self,
+        host: &mut dyn ServerHost,
+        event: &mut PlayerBedEnterEvent<'_>,
+    ) -> Flow {
+        if event.cancelled {
+            return Flow::Continue;
+        }
+        enter_notice(host, event);
+        Flow::Continue
+    }
+
+    fn sleep_finished_time(
+        &self,
+        host: &mut dyn ServerHost,
+        event: &mut SleepFinishedTimeEvent<'_>,
+    ) -> Flow {
+        if event.dimension == OVERWORLD
+            && let Some(level) = host.level(OVERWORLD)
+        {
+            let message =
+                with_common(|common, _| common.sleep_feature.then(|| common.morning.clone()));
+            if let Some(message) = message {
+                let (active, sleeping) = sleep_counts(&*host, level);
+                send(
+                    host,
+                    &message,
+                    level,
+                    &notice_variables("", active, sleeping),
+                );
+            }
+        }
+        Flow::Continue
+    }
+
+    fn player_bed_leave(&self, host: &mut dyn ServerHost, event: &mut PlayerBedLeaveEvent<'_>) {
+        if !event.update_level {
             return;
         }
-        let Some(day_time) = host.level("minecraft:overworld").and_then(|l| l.day_time(&*host)) else {
+        let Some(level) = level_of(host, event.player) else {
             return;
         };
-        let want = speed(day_time as f64);
-        let mut applied = self.applied.lock().unwrap_or_else(|e| e.into_inner());
-        if *applied != Some(want) {
-            // Fails when the clock already runs at that rate, which is as good.
-            host.commands().run_command(&rate_command(want));
-            *applied = Some(want);
+        let Some(clock) = level.clock_time(&*host) else {
+            return;
+        };
+        if !rule_on(&*host, level, ADVANCE_TIME) || rules::past_sunrise(clock) {
+            return;
         }
+        let (active, sleeping) = sleep_counts(&*host, level);
+        let message =
+            with_common(|common, _| common.sleep_feature.then(|| common.leave_bed.clone()));
+        let others = sleeping.saturating_sub(1);
+        if let Some(message) = message.filter(|_| active > 1 && others > 0) {
+            let variables = notice_variables(event.name, active, others);
+            send(host, &message, level, &variables);
+        }
+    }
+
+    fn screen_render_post(
+        &self,
+        host: &dyn mod_api::ClientHost,
+        event: &mut ScreenRenderPostEvent<'_>,
+    ) {
+        if event.screen.id != "chat" {
+            return;
+        }
+        let shown = with_common(|common, _| common.sleep_feature && common.display_bed_clock);
+        let sleeping = host
+            .local_player()
+            .is_some_and(|player| asleep(host, player));
+        if !shown || !sleeping {
+            return;
+        }
+        let Some(clock) = Identifier::parse("minecraft:clock")
+            .ok()
+            .and_then(|id| host.item_key(&id))
+        else {
+            return;
+        };
+        let client = client();
+        let [width, height] = event.draw.size();
+        event.draw.item(
+            clock,
+            client.clock_origin(width, height),
+            client.scale as f32,
+        );
+    }
+
+    fn register_configs(&self, _: &dyn ConfigContext, event: &mut RegisterConfigsEvent<'_>) {
+        event.configs.push(ModConfig::new(
+            MOD,
+            ConfigKind::Common,
+            rules::DEFAULT_COMMON,
+        ));
+        event.configs.push(ModConfig::new(
+            MOD,
+            ConfigKind::Client,
+            rules::DEFAULT_CLIENT,
+        ));
+    }
+
+    fn config_loading(&self, _: &dyn ConfigContext, event: &mut ConfigLoadingEvent<'_>) {
+        apply(
+            event.config.mod_id.as_str(),
+            event.config.kind,
+            &event.config.text,
+        );
+    }
+
+    fn config_reloading(&self, _: HostSide, event: &mut ConfigReloadingEvent<'_>) {
+        apply(
+            event.config.mod_id.as_str(),
+            event.config.kind,
+            &event.config.text,
+        );
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn day_and_night_take_their_minutes() {
-        for (start, goal, minutes) in [(23500.0, 36500.0, 25.0), (12500.0, 23500.0, 15.0)] {
-            let (mut t, mut ticks) = (start, 0u32);
-            while t < goal {
-                t += speed(t);
-                ticks += 1;
-            }
-            assert!((f64::from(ticks) / 1200.0 - minutes).abs() < 0.01, "{start}: {ticks}");
-        }
+fn apply(mod_id: &str, kind: ConfigKind, text: &str) {
+    if mod_id != MOD {
+        return;
     }
-
-    #[test]
-    fn rates_switch_at_dawn_and_dusk() {
-        assert_eq!(rate_command(speed(6000.0)), "time rate 0.4333");
-        assert_eq!(rate_command(speed(23600.0)), "time rate 0.4333");
-        assert_eq!(rate_command(speed(12500.0)), "time rate 0.6111");
-        assert_eq!(rate_command(speed(47400.0)), "time rate 0.6111");
+    match kind {
+        ConfigKind::Common => load_common(text),
+        ConfigKind::Client => {
+            *CLIENT.lock().unwrap_or_else(|e| e.into_inner()) = Some(Client::parse(text));
+        }
+        _ => {}
     }
 }

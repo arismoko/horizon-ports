@@ -1,0 +1,21 @@
+summary = "Set the length of day and night, and let sleeping speed time up."
+description = """
+Set the length of day and night, and let sleeping speed time up.
+
+A port of [Better Days](https://github.com/wendall911/BetterDays) 4.1.1.7 by wendall911 to [Sunrise](https://playsunrise.net) (Minecraft Java 26.3), under the original's licence (LGPL-3.0, in `LICENSE`; see `NOTICE`). One native mod on Sunrise's mod API.
+
+What it does:
+
+- Sets the overworld clock's speed from your settings: day and night ratios, lengths in real minutes, 12 real hours, or a day length by season and latitude, and interpolated time with a list of `tick,speed` pairs.
+- Sleeping speeds time up with the share of players in bed, on a tunable curve.
+- Notices when someone gets into or out of bed and when the morning comes, with templates and colour codes.
+- A clock on the in-bed screen.
+- `config/betterdays-common.toml` and `config/betterdays-client.toml`.
+
+Differences from the original:
+
+- Vanilla's night skip is not held back, so the sped-up sleep lasts until the game ends the night.
+- The weather, potion, hunger and block entity effects are not in this version.
+- There is no in-game config screen.
+"""
+categories = ["game-mechanics"]

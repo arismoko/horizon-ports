@@ -1,11 +1,12 @@
-Better Days for Horizon 26.3 (version 0.4.0)
+Better Days for Sunrise (version 0.5.0)
 
-A port of Better Days 3.3.4.5 by wendall911.
+A port of Better Days 4.1.1.7 by wendall911.
 Original source: https://github.com/wendall911/BetterDays
 Original licence: LGPL-3.0-or-later
 
-Ported to Horizon by lavoide: the rules are re-implemented in Rust on Horizon's mod API (no Java
-code is included). This port is distributed under the same licence as the original (LGPL-3.0-or-later); the licence text is in LICENSE. Built
-against Horizon's exact-build SDK dd67b76ff23e28c6d8e21859df600d31572f81a0.
+Ported to Horizon by lavoide and to Sunrise by arismoko: the rules are re-implemented in Rust on
+Sunrise's mod API (no Java code is included). This port is distributed under the same licence as
+the original (LGPL-3.0-or-later); the licence text is in LICENSE. The in-bed clock uses the
+original's mod icon as its own icon.
 
 LICENSE and COPYING.LESSER are the original's files; COPYING is the GNU GPL v3 text the LGPL builds on.

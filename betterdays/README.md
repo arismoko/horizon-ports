@@ -1,7 +1,22 @@
-# BetterDays for Horizon
+# Better Days for Sunrise
 
-Slower or faster days and nights.
+Set how long day and night last, and let sleeping change the speed of time.
 
-A port of [BetterDays](https://github.com/wendall911/BetterDays) 3.3.4.5 by wendall911 to [Horizon](https://github.com/horizon-rust/horizon) 26.3, under the original's licence (LGPL-3.0-or-later, in `LICENSE`; see `NOTICE`).
+A port of [Better Days](https://github.com/wendall911/BetterDays) 4.1.1.7 by wendall911 to [Sunrise](https://playsunrise.net) (Minecraft Java 26.3), under the original's licence (LGPL-3.0, in `LICENSE`, `COPYING` and `COPYING.LESSER`; see `NOTICE`). One native mod on Sunrise's mod API.
 
-This folder is the package source: one native mod on Horizon's mod API only (no game module, no mixins). Release [`betterdays-v0.4.0`](https://github.com/lavoide/horizon-ports/releases/tag/betterdays-v0.4.0) holds `betterdays.hmod`, built from this folder with Horizon's exact-build SDK `dd67b76ff23e28c6d8e21859df600d31572f81a0` (Horizon Mixins `e59da9094f0c2fdda6c627fe9eff22dec6a906f0`). Earlier versions, if any, are in this folder's history.
+## What it does
+
+- Sets the overworld clock's speed every tick from your settings: separate day and night ratios, lengths in real minutes, 12 real hours, or a day length by season and latitude, with the day beginning at `dayStart` and the night at `nightStart`.
+- Interpolated time: a list of `tick,speed` pairs with a smooth curve between them.
+- Sleeping speeds time up with the share of players in bed (a tunable curve between `sleepSpeedMin` and `sleepSpeedMax`, a fixed speed when all sleep, and a minimum share to start).
+- Notices when someone gets into or out of bed and when the morning comes, with `${player}`, `${totalPlayers}`, `${sleepingPlayers}` and `${sleepingPercentage}` and `§` colour codes, sent as a chat line or above the hotbar, to everyone, the dimension or the sleepers.
+- A clock on the in-bed screen, placed by `clockAlignment`, `clockScale` and `clockMargin`.
+- `config/betterdays-common.toml` and `config/betterdays-client.toml`, reloaded live.
+
+## Differences from the original
+
+- Vanilla's night skip is not held back: when enough players have slept, the game ends the night itself, so the sped-up sleep lasts until then. The morning notice comes when it does.
+- The weather, potion, hunger and block entity effects are not in this version.
+- The season mode uses the early-spring day, as the original does without a seasons mod.
+- The clock's speed is set with `time rate` when it changes (and every 200 ticks).
+- There is no in-game config screen.
