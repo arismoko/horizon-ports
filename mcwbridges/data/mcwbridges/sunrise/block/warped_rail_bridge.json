@@ -1,0 +1,42 @@
+{
+  "template": "minecraft:warped_planks",
+  "properties": {
+    "occludes": false
+  },
+  "shapes": {
+    "default": [
+      [
+        0.0,
+        0.000625,
+        0.0,
+        1.0,
+        1.0,
+        1.0
+      ]
+    ]
+  },
+  "state_properties": {
+    "facing": {
+      "type": "enum",
+      "values": [
+        "north",
+        "south",
+        "west",
+        "east"
+      ]
+    },
+    "powered": {
+      "type": "boolean"
+    }
+  },
+  "default_state": {
+    "facing": "north",
+    "powered": "false"
+  },
+  "components": {
+    "minecraft:cooking_fuel": {
+      "burn_time": 300,
+      "speed_multiplier": "minecraft:cooking/speed_default"
+    }
+  }
+}

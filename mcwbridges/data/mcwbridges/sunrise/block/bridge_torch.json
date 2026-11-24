@@ -1,0 +1,135 @@
+{
+  "template": "minecraft:oak_planks",
+  "properties": {
+    "hardness": 0.0,
+    "explosion_resistance": 2.0,
+    "light": 15,
+    "requires_tool": false,
+    "map_color": 13,
+    "sounds": "minecraft:oak_planks",
+    "occludes": false
+  },
+  "shapes": {
+    "properties": [
+      "facing",
+      "lightstate"
+    ],
+    "values": {
+      "east,bridge": [
+        [
+          0.3875,
+          0.0,
+          0.0,
+          0.6125,
+          0.5,
+          0.175
+        ]
+      ],
+      "south,bridge": [
+        [
+          0.825,
+          0.0,
+          0.3875,
+          1.0,
+          0.5,
+          0.6125
+        ]
+      ],
+      "west,bridge": [
+        [
+          0.3875,
+          0.0,
+          0.825,
+          0.6125,
+          0.5,
+          1.0
+        ]
+      ],
+      "north,bridge": [
+        [
+          0.0,
+          0.0,
+          0.3875,
+          0.175,
+          0.5,
+          0.6125
+        ]
+      ],
+      "east,stair": [
+        [
+          0.3875,
+          0.375,
+          0.0,
+          0.6125,
+          1.0,
+          0.175
+        ]
+      ],
+      "south,stair": [
+        [
+          0.825,
+          0.375,
+          0.3875,
+          1.0,
+          1.0,
+          0.6125
+        ]
+      ],
+      "west,stair": [
+        [
+          0.3875,
+          0.375,
+          0.825,
+          0.6125,
+          1.0,
+          1.0
+        ]
+      ],
+      "north,stair": [
+        [
+          0.0,
+          0.375,
+          0.3875,
+          0.175,
+          1.0,
+          0.6125
+        ]
+      ]
+    }
+  },
+  "collision_shapes": {
+    "default": []
+  },
+  "state_properties": {
+    "facing": {
+      "type": "enum",
+      "values": [
+        "north",
+        "south",
+        "west",
+        "east"
+      ]
+    },
+    "lightstate": {
+      "type": "enum",
+      "values": [
+        "bridge",
+        "stair"
+      ]
+    }
+  },
+  "default_state": {
+    "facing": "north",
+    "lightstate": "bridge"
+  },
+  "components": {
+    "!minecraft:cooking_fuel": {},
+    "minecraft:lore": [
+      {
+        "translate": "mcwbridges.light.desc",
+        "color": "gray",
+        "italic": false
+      }
+    ]
+  }
+}
