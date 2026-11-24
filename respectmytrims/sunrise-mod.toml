@@ -1,0 +1,14 @@
+# Respect My Trims for Sunrise: native code in src/.
+id = "respectmytrims"
+name = "Respect My Trims"
+version = "0.5.0"
+description = "Armour with a gold trim, or the snout pattern, keeps piglins calm like gold armour."
+authors = ["N (tnoctua)", "arismoko"]
+license = "LGPL-2.1-only"
+credits = "Ported to Minecraft 26.3 by lavoide, and to Sunrise by arismoko."
+homepage = "https://github.com/arismoko/sunrise-ports"
+side = "server"
+
+[native]
+game = "26.3"
+sunrise = "f8aa80e4c40cf1a5d30e85d13937f3fcf06d8237"

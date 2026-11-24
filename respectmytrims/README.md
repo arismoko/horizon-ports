@@ -1,7 +1,8 @@
-# Respect My Trims for Horizon
+# Respect My Trims for Sunrise
 
-Piglins respect gold armour trims.
+Armour with a gold trim, or any armour trimmed with the snout pattern, counts as gold for piglins: a calm piglin leaves you alone as if you wore a gold piece.
 
-A port of [Respect My Trims](https://github.com/tnoctua/respectmytrims) 1.0.0 by N (tnoctua) to [Horizon](https://github.com/horizon-rust/horizon) 26.3, under the original's licence (LGPL-2.1-only, in `LICENSE`; see `NOTICE`).
+- Any trimmable armour piece counts, on any slot.
+- Angry piglins still attack, as with gold armour.
 
-This folder is the package source: one native mod. Its code uses Horizon's mod API and engine mixins (listed in `horizon-mod.toml`). Release [`respectmytrims-v0.4.0`](https://github.com/lavoide/horizon-ports/releases/tag/respectmytrims-v0.4.0) holds `respectmytrims.hmod`, built from this folder with Horizon's exact-build SDK `dd67b76ff23e28c6d8e21859df600d31572f81a0` (Horizon Mixins `e59da9094f0c2fdda6c627fe9eff22dec6a906f0`). Earlier versions, if any, are in this folder's history.
+A port of [Respect My Trims](https://github.com/tnoctua/respectmytrims) 1.4.0 by N (tnoctua) to [Sunrise](https://playsunrise.net) (Minecraft Java 26.3), written in Rust on Sunrise's mod API, under the original's licence (LGPL-2.1-only, in `LICENSE`; see `NOTICE`).

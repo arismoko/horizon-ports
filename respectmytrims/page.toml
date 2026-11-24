@@ -1,0 +1,10 @@
+summary = "Armour with a gold trim, or the snout pattern, keeps piglins calm like gold armour."
+description = """
+Armour with a gold trim, or any armour trimmed with the snout pattern, counts as gold for piglins: a calm piglin leaves you alone as if you wore a gold piece.
+
+- Any trimmable armour piece counts, on any slot.
+- Angry piglins still attack, as with gold armour.
+
+A port of Respect My Trims by N (tnoctua), under the LGPL-2.1 licence.
+"""
+categories = ["game-mechanics"]
