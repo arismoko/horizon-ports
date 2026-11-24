@@ -49,8 +49,6 @@ struct Runtime {
     toast_icons_registered: bool,
     key_toggle_forced: Option<ModKeyMappingRef>,
     key_toggle_disabled: Option<ModKeyMappingRef>,
-    was_holding_forced: bool,
-    was_holding_disabled: bool,
 }
 
 impl Runtime {
@@ -72,8 +70,6 @@ impl Runtime {
             toast_icons_registered: false,
             key_toggle_forced: None,
             key_toggle_disabled: None,
-            was_holding_forced: false,
-            was_holding_disabled: false,
         }
     }
 
@@ -121,7 +117,7 @@ impl Runtime {
         }
     }
 
-    fn poll_keybinds(&mut self, host: &dyn ClientHost, now_ms: u64) {
+    fn poll_keybinds(&mut self, host: &mut dyn ClientHost, now_ms: u64) {
         if self.key_toggle_forced.is_none() {
             self.key_toggle_forced = host.mod_key_mapping(MOD_ID, KEY_TOGGLE_FORCED).ok();
         }
@@ -129,27 +125,21 @@ impl Runtime {
             self.key_toggle_disabled = host.mod_key_mapping(MOD_ID, KEY_TOGGLE_DISABLED).ok();
         }
 
-        let holding_forced = self
-            .key_toggle_forced
-            .and_then(|k| k.is_down(host).ok())
-            .unwrap_or(false);
-        if holding_forced && !self.was_holding_forced {
-            self.forcing_low_fps = !self.forcing_low_fps;
-            self.idle.on_activity(now_ms);
-            self.update_state(now_ms);
+        if let Some(key) = self.key_toggle_forced {
+            while key.consume_click(host).unwrap_or(false) {
+                self.forcing_low_fps = !self.forcing_low_fps;
+                self.idle.on_activity(now_ms);
+                self.update_state(now_ms);
+            }
         }
-        self.was_holding_forced = holding_forced;
 
-        let holding_disabled = self
-            .key_toggle_disabled
-            .and_then(|k| k.is_down(host).ok())
-            .unwrap_or(false);
-        if holding_disabled && !self.was_holding_disabled {
-            self.disabled_by_user = !self.disabled_by_user;
-            self.idle.on_activity(now_ms);
-            self.update_state(now_ms);
+        if let Some(key) = self.key_toggle_disabled {
+            while key.consume_click(host).unwrap_or(false) {
+                self.disabled_by_user = !self.disabled_by_user;
+                self.idle.on_activity(now_ms);
+                self.update_state(now_ms);
+            }
         }
-        self.was_holding_disabled = holding_disabled;
     }
 
     fn prepare_battery_toast(&mut self, host: &mut dyn ClientHost) -> Option<ModToast> {
