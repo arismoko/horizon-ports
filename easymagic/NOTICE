@@ -1,11 +1,9 @@
-Easy Magic for Horizon 26.3 (version 0.4.1)
+Easy Magic for Sunrise 26.3 (version 0.5.0)
 
-A port of Easy Magic 8.0.1 by Fuzs.
+A port of Easy Magic by Fuzs (8.0.1 / 26.3.1).
 Original source: https://github.com/Fuzss/easymagic
 Original licence: MPL-2.0
 
-Ported to Horizon by lavoide: the rules are re-implemented in Rust as a Horizon native mod (the mod API plus
-the [[native.mixin]] patches and game modules listed in horizon-mod.toml; no Java code is included). This port is distributed under the same licence as the original (MPL-2.0); the licence text is in LICENSE. Built
-against Horizon's exact-build SDK dd67b76ff23e28c6d8e21859df600d31572f81a0.
+Ported to Sunrise by lavoide and arismoko: the rules are re-implemented in Rust on Sunrise's typed mod API (no Java code is included). This port is distributed under the same licence as the original (MPL-2.0); the licence text is in LICENSE.
 
-LICENSE is the original jar's LICENSE.md (MPL-2.0). The original's assets licence (LICENSE-ASSETS.md, All Rights Reserved) doesn't apply: this package carries no assets from it.
+LICENSE is the original project's MPL-2.0 licence. None of the original project's All-Rights-Reserved image assets are included: the icon and reroll button graphics are original work for this port.
