@@ -136,14 +136,10 @@ impl IdleTracker {
         if config.idle.timeout_seconds == 0 {
             return false;
         }
-        match config.idle.condition {
-            IdleCondition::Vanilla => return false,
-            IdleCondition::OnBattery => {
-                if !battery.has_batteries || battery.state != BatteryState::Discharging {
-                    return false;
-                }
-            }
-            IdleCondition::None => {}
+        if config.idle.condition == IdleCondition::OnBattery
+            && (!battery.has_batteries || battery.state != BatteryState::Discharging)
+        {
+            return false;
         }
         let Some(last) = self.last_activity_ms else {
             return false;
@@ -420,9 +416,15 @@ mod tests {
         tracker.observe_motion(71_000, [11.0, 20.0], None);
         assert!(!tracker.is_idle(100_000, &cfg, BatterySnapshot::default()));
 
-        // Vanilla condition disables Dynamic FPS idle
+        // Vanilla condition still activates Dynamic FPS idle after timeout
         cfg.idle.condition = IdleCondition::Vanilla;
+        assert!(!tracker.is_idle(130_999, &cfg, BatterySnapshot::default()));
+        assert!(tracker.is_idle(131_000, &cfg, BatterySnapshot::default()));
+
+        // Zero timeout disables idle regardless of condition
+        cfg.idle.timeout_seconds = 0;
         assert!(!tracker.is_idle(999_999, &cfg, BatterySnapshot::default()));
+        cfg.idle.timeout_seconds = 60;
 
         // OnBattery requires discharging battery
         cfg.idle.condition = IdleCondition::OnBattery;
