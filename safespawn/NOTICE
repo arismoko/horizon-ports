@@ -1,11 +1,9 @@
-Safe Spawn for Horizon 26.3 (version 0.4.0)
+SafeSpawn for Sunrise (version 0.5.0)
 
-A port of Safe Spawn 1.0.0 by Tokimi, CozyStudios.
-Original source: https://github.com/CozyCord/SafeSpawn (named in the jar; no longer public as of 2026-11-19)
+A port of SafeSpawn 1.0.0 by Tokimi, CozyStudios.
+Original source: https://github.com/CozyCord/SafeSpawn (named in the jar; no longer public)
 Original licence: CC0-1.0
 
-Ported to Horizon by lavoide: the rules are re-implemented in Rust on Horizon's mod API (no Java
-code is included). This port is distributed under the same licence as the original (CC0-1.0); the licence text is in LICENSE. Built
-against Horizon's exact-build SDK dd67b76ff23e28c6d8e21859df600d31572f81a0.
-
-The jar names CC0-1.0 and ships no licence file; LICENSE is the CC0 1.0 text.
+Ported to Minecraft 26.3 by lavoide, and to Sunrise by arismoko: the rules are re-implemented in
+Rust on Sunrise's mod API (no Java code is included). The jar names CC0-1.0 and ships no licence
+file; LICENSE is the CC0 1.0 text.

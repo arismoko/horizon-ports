@@ -1,0 +1,16 @@
+summary = "New players never start standing in water, lava, fire or on leaves: they're moved to the nearest safe ground."
+description = """
+A player joining a world for the first time while standing on water, lava, magma, fire, wool or leaves is moved to the nearest safe ground within 128 blocks, and their spawn point with them.
+
+- Safe ground is the surface of a column standing on a solid full block that is not on the blocked list, with room for a player above.
+- The search walks square rings outward from the player, loading the chunks it crosses.
+- Each player is checked once, on their first join; the mark is kept in their saved data.
+- The blocked list is `config/safespawn/blocked_blocks.txt`: one block id or `#tag` per line.
+
+Differences from the original:
+
+- The settings are a plain list file; the original's own settings file format and defaults were not available to compare.
+
+A port of SafeSpawn by Tokimi, CozyStudios, under the CC0 licence.
+"""
+categories = ["utility", "game-mechanics"]

@@ -1,0 +1,14 @@
+# SafeSpawn for Sunrise: native code in src/.
+id = "safespawn"
+name = "SafeSpawn"
+version = "0.5.0"
+description = "New players never start standing in water, lava, fire or on leaves: they're moved to the nearest safe ground."
+authors = ["Tokimi", "CozyStudios", "arismoko"]
+license = "CC0-1.0"
+credits = "Ported to Minecraft 26.3 by lavoide, and to Sunrise by arismoko."
+homepage = "https://github.com/arismoko/sunrise-ports"
+side = "server"
+
+[native]
+game = "26.3"
+sunrise = "f8aa80e4c40cf1a5d30e85d13937f3fcf06d8237"
