@@ -1,198 +1,368 @@
-//! Show Me What You Got 1.1.1 (Apace, MIT), the server's half: a player's chat line that holds a
-//! shared item becomes `<name> text [item] text` for everyone, the item's `[name]` hoverable (as
-//! ShowMeWhatYouGot's ServerMessageDecoratorEvent decorates it).
+//! Show Me What You Got by Apace for Sunrise: in an inventory, Left Ctrl and the chat key over an
+//! item open the chat with the item's name in it. Sending the line shows everyone the item's
+//! hoverable name in its place, as vanilla's `ItemStack.getDisplayName` shows it, and an item
+//! hover in chat draws the item beside its name.
 //!
-//! The line stays the player's own chat message: the window's half first sends the decorated body
-//! on `smwyg:share`, then the line goes as ordinary signed chat through the game's whole chat path
-//! (hidden chat, the chat filter and mutes, every mod's `server_chat` and its cancel, the spam
-//! limit). This mod's `server_chat` swaps the decorated body in as the message's unsigned content
-//! (`withUnsignedContent`; the signature still covers what was typed) only when the line from that
-//! same player reaches it untouched and the body shows nothing the typed line didn't hold. A line
-//! the game or a mod refuses never reaches it, and a share payload alone shows nothing.
-//!
-//! The channel is an optional serverbound play payload (`PayloadRegistrar::play_to_server`; a raw
-//! channel can't be sent on from the client: `UnknownPayload`), declared in `register`; the
-//! window's half (`crate::game::smwyg`, runtime.rs) sends on it with the game's
-//! `send_payload_to_server`.
+//! The client remembers the shared stack and, on send, tells the server where its name sits in
+//! the line (`smwyg:share`). The server keeps that for the player's next chat message and swaps
+//! the hoverable name in as the message's content.
 use std::collections::HashMap;
-use std::sync::{Arc, Mutex};
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{LazyLock, Mutex, MutexGuard, OnceLock, PoisonError};
 
+use mod_api::text::{TextHover, TextStyle};
 use mod_api::{
-    Flow, Hooks, IPayloadContext, IPayloadHandler, PayloadBytes, PayloadHandleError, PayloadId,
-    Registrar, RegistrationContext, ServerChatEvent, ServerHost, text::TextContent,
+    ClientChatEvent, ClientHost, ClientTickPreEvent, ClientTooltipComponent, ComponentHoverEvent,
+    Compound, DrawContext, Hooks, Host, IPayloadContext, ItemRarity, ItemResource, ItemStack,
+    JavaString, PayloadId, PlayerLoggedOutEvent, RegisterClientTooltipComponentFactoriesEvent,
+    Registrar, RegistrationContext, RenderTooltipGatherComponentsEvent, ScreenClosingEvent,
+    ServerChatEvent, ServerHost, ServerStartedEvent, Tag, Text, ToServer, TooltipComponent,
+    TooltipComponentData, TooltipElement, TooltipFont,
 };
+
+const CHANNEL: &str = "smwyg:share";
+/// A stack whose custom data sets this is never drawn beside its hover name.
+const HIDE_STACK: &str = "smwyg:hide_stack";
+/// The original's gap between the icon and the name.
+const GAP: i32 = 3;
+/// `ItemStackTooltipComponent`: a slot's size.
+const ICON: i32 = 18;
+/// `ClientTextTooltip.getHeight`.
+const LINE: i32 = 10;
+
+/// Where the shared stack's name sits in the sent line (byte offsets), and the stack as vanilla's
+/// item NBT escape carries it.
+#[derive(Clone, Debug, mod_api::Wire)]
+struct Share {
+    start: u32,
+    end: u32,
+    id: String,
+    count: u32,
+    components: Option<Tag>,
+}
+
+/// The stack the share key took, and the name it put in the chat box.
+struct Pending {
+    name: String,
+    stack: ItemStack,
+}
+
+static TOKEN: OnceLock<ToServer<Share>> = OnceLock::new();
+/// Left Ctrl and the chat key were down at the last tick (the original's `sharedStack`).
+static HELD: AtomicBool = AtomicBool::new(false);
+static SHARING: Mutex<Option<Pending>> = Mutex::new(None);
+/// The item hover the chat drew this frame, for its tooltip to find.
+static HOVERED: Mutex<Option<(String, u32, Option<Tag>)>> = Mutex::new(None);
+/// Each player's share, kept for their next chat message.
+static SHARES: LazyLock<Mutex<HashMap<u128, Share>>> = LazyLock::new(Default::default);
+
+fn lock<T>(mutex: &Mutex<T>) -> MutexGuard<'_, T> {
+    mutex.lock().unwrap_or_else(PoisonError::into_inner)
+}
+
+/// An empty component patch carries nothing: compare it as none.
+fn patch(components: Option<Tag>) -> Option<Tag> {
+    components.filter(|tag| !matches!(tag, Tag::Compound(c) if c.is_empty()))
+}
+
+/// The stack's id, count and component patch, as a `show_item` hover carries them.
+fn hover_parts(host: &dyn Host, stack: &ItemStack) -> Option<(String, u32, Option<Tag>)> {
+    let nbt = stack.to_nbt(host)?;
+    let Some(Tag::String(id)) = nbt.get(&JavaString::from("id")) else {
+        return None;
+    };
+    let components = nbt.get(&JavaString::from("components")).cloned();
+    Some((id.to_string_lossy(), stack.count(), patch(components)))
+}
+
+/// `ItemStack.getDisplayName`: the hover name in square brackets, italic when renamed, in the
+/// rarity's colour, showing the stack on hover.
+fn display_name(host: &dyn Host, stack: &ItemStack) -> Option<Text> {
+    let mut name = Text::literal("").append(host.hover_name(stack).ok()?);
+    let renamed = stack.components().is_some_and(|c| {
+        c.as_nbt()
+            .contains_key(&JavaString::from("minecraft:custom_name"))
+    });
+    if renamed {
+        let mut style = TextStyle::default();
+        style.italic = Some(true);
+        name = name.with_style(style);
+    }
+    let color = match ItemResource::of(stack).rarity(host) {
+        ItemRarity::Uncommon => "yellow",
+        ItemRarity::Rare => "aqua",
+        ItemRarity::Epic => "light_purple",
+        _ => "white",
+    };
+    let (id, count, components) = hover_parts(host, stack)?;
+    let mut style = TextStyle::default();
+    style.color = Some(color.to_owned());
+    style.hover = Some(TextHover::Item {
+        id,
+        count,
+        components,
+    });
+    Some(Text::translate("chat.square_brackets", vec![name]).with_style(style))
+}
+
+fn hidden(components: Option<&Tag>) -> bool {
+    let Some(Tag::Compound(patch)) = components else {
+        return false;
+    };
+    let Some(Tag::Compound(data)) = patch.get(&JavaString::from("minecraft:custom_data")) else {
+        return false;
+    };
+    matches!(data.get(&JavaString::from(HIDE_STACK)), Some(Tag::Byte(b)) if *b != 0)
+}
+
+/// The first tooltip line with the item drawn before it.
+struct Row {
+    stack: ItemStack,
+    text: Text,
+    argb: u32,
+}
+
+impl TooltipComponentData for Row {}
+
+impl ClientTooltipComponent for Row {
+    fn height(&self, _: &dyn TooltipFont) -> i32 {
+        ICON.max(LINE)
+    }
+
+    fn width(&self, font: &dyn TooltipFont) -> i32 {
+        ICON + GAP + font.width(&self.text).unwrap_or(0)
+    }
+
+    fn draw_text(&self, font: &dyn TooltipFont, x: i32, y: i32, draw: &mut dyn DrawContext) {
+        let at = [
+            (x + ICON + GAP) as f32,
+            (y + (self.height(font) - LINE) / 2) as f32,
+        ];
+        let _ = draw.text_with_font(font.id(), &self.text, at, self.argb, true);
+    }
+
+    fn draw_image(
+        &self,
+        font: &dyn TooltipFont,
+        x: i32,
+        y: i32,
+        _: i32,
+        _: i32,
+        draw: &mut dyn DrawContext,
+    ) {
+        let count = self.stack.count();
+        let label = (count > 1).then(|| count.to_string());
+        let at = [x as f32, (y + (self.height(font) - ICON) / 2) as f32];
+        draw.gui_draw_item_with(&self.stack, at, Some(label.as_deref().unwrap_or("")));
+    }
+}
+
+fn on_share(share: Share, cx: &mut dyn IPayloadContext) -> Result<(), String> {
+    let player = cx.player().map_err(|e| format!("{e:?}"))?;
+    lock(&SHARES).insert(player.uuid(), share);
+    Ok(())
+}
 
 #[derive(Default)]
 struct Mod;
 
-/// The longest message accepted, in bytes (a chat line plus an item's components).
-const MAX: usize = 32 * 1024;
-
-/// Each player's announced share, by UUID: (the chat line it belongs to, the decorated body).
-/// Taken by that player's next chat line, which uses it only if it is that line.
-static PENDING: Mutex<Option<HashMap<u128, (String, mod_api::serde_json::Value)>>> = Mutex::new(None);
-
-struct Share;
-
-impl IPayloadHandler for Share {
-    fn handle(
-        &self,
-        payload: PayloadBytes,
-        context: &mut dyn IPayloadContext,
-    ) -> Result<(), PayloadHandleError> {
-        if payload.0.len() > MAX {
-            return Ok(());
-        }
-        // Only a share from a player the server knows: its UUID keys the chat line it decorates.
-        let Ok(player) = context.player() else {
-            return Ok(());
-        };
-        let Ok(host) = context.server_host() else {
-            return Ok(());
-        };
-        let uuid = player.uuid();
-        let Ok(mod_api::serde_json::Value::Object(map)) =
-            mod_api::serde_json::from_slice::<mod_api::serde_json::Value>(&payload.0)
-        else {
-            return Ok(());
-        };
-        let Some(text) = map.get("text").and_then(|t| t.as_str()) else {
-            return Ok(());
-        };
-        let Some(body @ mod_api::serde_json::Value::Array(_)) = map.get("body") else {
-            return Ok(());
-        };
-        // Only plain text and the item's hover go on: the sender is a client, and its body must
-        // not resolve selectors, scores and NBT or carry click actions.
-        let Some(body) = clean(body, 0) else {
-            return Ok(());
-        };
-        if !shows_only(&body, text) {
-            return Ok(());
-        }
-        PENDING
-            .lock()
-            .unwrap()
-            .get_or_insert_with(HashMap::new)
-            .insert(uuid, (text.to_string(), body));
-        Ok(())
-    }
-}
-
-/// Whether the body `["", before, item, after]` shows only what the typed `text` holds, so the chat
-/// filter, which reads the typed line, has seen every character the decorated line shows: `before`
-/// and `after` are the line's ends, and every literal string in the item's name (its hover aside)
-/// is in the part between them. A translated name shows the reader's own language string; only
-/// item and block keys, and the `[%s]` wrapper, pass. The item hover (its components) is the item's own, unchecked.
-fn shows_only(body: &mod_api::serde_json::Value, text: &str) -> bool {
-    use mod_api::serde_json::Value;
-    let Some([Value::String(head), Value::String(before), item, Value::String(after)]) =
-        body.as_array().map(Vec::as_slice)
-    else {
-        return false;
-    };
-    if !head.is_empty() || before.len() + after.len() > text.len() {
-        return false;
-    }
-    let (Some(rest), true) = (text.strip_prefix(before.as_str()), text.ends_with(after.as_str())) else {
-        return false;
-    };
-    let middle = &rest[..rest.len() - after.len()];
-    fn literals_in(v: &Value, middle: &str) -> bool {
-        match v {
-            Value::String(s) => middle.contains(s.as_str()),
-            Value::Array(items) => items.iter().all(|i| literals_in(i, middle)),
-            Value::Object(map) => map.iter().all(|(k, val)| match k.as_str() {
-                "text" | "fallback" => val.as_str().is_some_and(|s| middle.contains(s)),
-                // An item or block name's key (a key with no translation shows as itself), or the
-                // `[%s]` wrapper the game puts around a shared item's name (the brackets are in the
-                // typed line too).
-                "translate" => val.as_str().is_some_and(|k| {
-                    (k.starts_with("item.") || k.starts_with("block.") || k == "chat.square_brackets")
-                        && k.bytes().all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b"._-".contains(&b))
-                }),
-                "with" | "extra" => literals_in(val, middle),
-                _ => true,
-            }),
-            _ => true,
-        }
-    }
-    !middle.is_empty() && literals_in(item, middle)
-}
-
-/// A text component from the client, cut down to what a shared line holds: text, translation keys
-/// with their arguments, children, style flags and colours, and a `show_item` hover. Selector,
-/// score, NBT and keybind contents, click events and insertions are dropped. None when nothing is
-/// left or the nesting is deeper than a chat line needs.
-fn clean(v: &mod_api::serde_json::Value, depth: u32) -> Option<mod_api::serde_json::Value> {
-    use mod_api::serde_json::Value;
-    if depth > 8 {
-        return None;
-    }
-    match v {
-        Value::String(_) => Some(v.clone()),
-        Value::Array(items) => Some(Value::Array(items.iter().filter_map(|i| clean(i, depth + 1)).collect())),
-        Value::Object(map) => {
-            let mut out = mod_api::serde_json::Map::new();
-            for (k, val) in map {
-                let kept = match k.as_str() {
-                    "text" | "translate" | "fallback" | "color" | "font" => val.is_string().then(|| val.clone()),
-                    "bold" | "italic" | "underlined" | "strikethrough" | "obfuscated" => {
-                        val.is_boolean().then(|| val.clone())
-                    }
-                    "with" | "extra" => clean(val, depth + 1).filter(Value::is_array),
-                    "hover_event" => val
-                        .get("action")
-                        .and_then(Value::as_str)
-                        .filter(|a| *a == "show_item")
-                        .map(|_| val.clone()),
-                    _ => None,
-                };
-                if let Some(kept) = kept {
-                    out.insert(k.clone(), kept);
-                }
-            }
-            (out.contains_key("text") || out.contains_key("translate")).then_some(Value::Object(out))
-        }
-        _ => None,
-    }
-}
-
-#[mod_api::horizon_mod]
+#[mod_api::sunrise_mod]
 impl Hooks for Mod {
-    /// The player's chat line, through the game's chat checks and any earlier mod: if it is the
-    /// line their share announced and still the plain typed text, show the decorated body.
-    fn server_chat(&self, host: &mut dyn ServerHost, event: &mut ServerChatEvent<'_>) -> Flow {
-        let pending = PENDING
-            .lock()
-            .unwrap()
-            .as_mut()
-            .and_then(|m| m.remove(&event.player));
-        let Some((text, body)) = pending else {
-            return Flow::Continue;
-        };
-        if event.cancelled || text != event.raw_text {
-            return Flow::Continue;
-        }
-        // Another mod already changed the message: theirs stands.
-        let untouched = event.message.children.is_empty()
-            && matches!(&event.message.content, TextContent::Literal(s) if s == event.raw_text);
-        if !untouched {
-            return Flow::Continue;
-        }
-        if let Ok(Some(decorated)) = host.text_from_json(&body.to_string()) {
-            *event.message = decorated;
-        }
-        Flow::Continue
-    }
-
-    fn register(&self, registrar: &mut dyn Registrar, _: &RegistrationContext) {
-        // Optional: a server without this mod is still joined, and the window then sends the
-        // plain chat line (the send answers UnsupportedPeer).
-        let mut payloads = registrar.payload_handlers();
-        payloads
+    fn register(&self, r: &mut dyn Registrar, _: &RegistrationContext) {
+        let token = r
+            .payload_handlers()
             .registrar("1")
             .optional()
-            .play_to_server(PayloadId("smwyg:share".into()), Arc::new(Share));
+            .play_to_server_typed::<Share>(PayloadId(CHANNEL.into()), on_share);
+        let _ = TOKEN.set(token);
+    }
+
+    fn register_client_tooltip_component_factories(
+        &self,
+        _: &RegistrationContext,
+        event: &mut RegisterClientTooltipComponentFactoriesEvent<'_>,
+    ) {
+        event.factories.register::<Row, Row>(|row| Row {
+            stack: row.stack.clone(),
+            text: row.text.clone(),
+            argb: row.argb,
+        });
+    }
+
+    /// The original's tick: on the tick Left Ctrl and the chat key come down together in a
+    /// container screen, with nothing on the cursor, the hovered stack is shared.
+    fn client_tick_pre(&self, host: &mut dyn ClientHost, _: &mut ClientTickPreEvent) {
+        let view: &dyn ClientHost = &*host;
+        let in_container = view
+            .observed_screen_id()
+            .is_some_and(|screen| matches!(screen.id.as_str(), "inventory" | "creative"));
+        if !in_container {
+            return;
+        }
+        let chat = view
+            .vanilla_key_mapping("key.chat")
+            .ok()
+            .and_then(|mapping| mapping.binding(view).ok().map(|key| view.is_key_down(key)));
+        let down = view.is_key_down("key.keyboard.left.control") && chat == Some(true);
+        if !down || HELD.swap(true, Ordering::Relaxed) {
+            HELD.store(down, Ordering::Relaxed);
+            return;
+        }
+        let cursor_empty = view
+            .local_player()
+            .and_then(|player| player.container_menu(view))
+            .and_then(|menu| menu.carried(view))
+            .is_some_and(|carried| carried.is_none());
+        let Some(stack) = view.screen_hovered_stack().filter(|_| cursor_empty) else {
+            return;
+        };
+        let Some(name) = display_name(view, &stack).map(|text| view.text_string(&text)) else {
+            return;
+        };
+        host.close_screen();
+        if host.open_chat(&name).is_ok() {
+            *lock(&SHARING) = Some(Pending { name, stack });
+        }
+    }
+
+    /// Sending the line tells the server where the shared name sits; a command shares nothing.
+    fn client_chat(
+        &self,
+        host: &mut dyn ClientHost,
+        event: &mut ClientChatEvent<'_>,
+    ) -> mod_api::Flow {
+        let Some(pending) = lock(&SHARING).take() else {
+            return mod_api::Flow::Continue;
+        };
+        if event.message.starts_with('/') {
+            return mod_api::Flow::Continue;
+        }
+        let Some(start) = event.message.find(&pending.name) else {
+            return mod_api::Flow::Continue;
+        };
+        let (Some((id, count, components)), Some(token)) =
+            (hover_parts(&*host, &pending.stack), TOKEN.get())
+        else {
+            return mod_api::Flow::Continue;
+        };
+        let share = Share {
+            start: start as u32,
+            end: (start + pending.name.len()) as u32,
+            id,
+            count,
+            components,
+        };
+        let _ = token.send(host, &share);
+        mod_api::Flow::Continue
+    }
+
+    fn screen_closing(&self, _: &dyn ClientHost, event: &mut ScreenClosingEvent<'_>) {
+        if event.screen.id == "chat" {
+            lock(&SHARING).take();
+        }
+    }
+
+    /// Remember the item a chat hover is about to draw, for its tooltip.
+    fn component_hover(
+        &self,
+        _: &dyn ClientHost,
+        event: &mut ComponentHoverEvent<'_>,
+    ) -> mod_api::Flow {
+        *lock(&HOVERED) = match event.hover {
+            TextHover::Item {
+                id,
+                count,
+                components,
+            } if !hidden(components.as_ref()) => {
+                Some((id.clone(), *count, patch(components.clone())))
+            }
+            _ => None,
+        };
+        mod_api::Flow::Continue
+    }
+
+    /// The hovered item's tooltip gets the item drawn before its first line.
+    fn render_tooltip_gather_components(
+        &self,
+        host: &dyn ClientHost,
+        event: &mut RenderTooltipGatherComponentsEvent<'_>,
+    ) -> mod_api::Flow {
+        let mut hovered = lock(&HOVERED);
+        if hovered.is_none() || hover_parts(host, event.stack) != *hovered {
+            return mod_api::Flow::Continue;
+        }
+        hovered.take();
+        if let Some(TooltipElement::Text(text, color)) = event.elements.first() {
+            let argb = if *color == u32::MAX {
+                0xFFFF_FFFF
+            } else {
+                *color
+            };
+            let row = Row {
+                stack: event.stack.clone(),
+                text: text.clone(),
+                argb,
+            };
+            event.elements[0] = TooltipElement::Component(TooltipComponent::custom(row));
+        }
+        mod_api::Flow::Continue
+    }
+
+    fn server_started(&self, _: &mut dyn ServerHost, _: &mut ServerStartedEvent) {
+        lock(&SHARES).clear();
+    }
+
+    fn player_logged_out(&self, _: &mut dyn ServerHost, event: &mut PlayerLoggedOutEvent<'_>) {
+        lock(&SHARES).remove(&event.player);
+    }
+
+    /// The player's share replaces the name in their message with the hoverable stack.
+    fn server_chat(
+        &self,
+        host: &mut dyn ServerHost,
+        event: &mut ServerChatEvent<'_>,
+    ) -> mod_api::Flow {
+        let Some(share) = lock(&SHARES).remove(&event.player) else {
+            return mod_api::Flow::Continue;
+        };
+        let raw = event.raw_text;
+        let (start, end) = (share.start as usize, share.end as usize);
+        let (Some(before), Some(after)) = (raw.get(..start), raw.get(end..)) else {
+            return mod_api::Flow::Continue;
+        };
+        if start > end {
+            return mod_api::Flow::Continue;
+        }
+        let mut nbt = Compound::new();
+        nbt.insert("id".into(), Tag::String(share.id.as_str().into()));
+        nbt.insert("count".into(), Tag::Int(share.count as i32));
+        if let Some(components) = share.components {
+            nbt.insert("components".into(), components);
+        }
+        let host: &dyn Host = &*host;
+        let Some(name) = ItemStack::from_nbt(host, &nbt).and_then(|s| display_name(host, &s))
+        else {
+            return mod_api::Flow::Continue;
+        };
+        *event.message = Text::literal(before)
+            .append(name)
+            .append(Text::literal(after));
+        mod_api::Flow::Continue
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn hide_stack_reads_custom_data() {
+        let mut data = Compound::new();
+        data.insert(HIDE_STACK.into(), Tag::Byte(1));
+        let mut components = Compound::new();
+        components.insert("minecraft:custom_data".into(), Tag::Compound(data));
+        assert!(hidden(Some(&Tag::Compound(components))));
+        assert!(!hidden(Some(&Tag::Compound(Compound::new()))));
+        assert!(!hidden(None));
     }
 }

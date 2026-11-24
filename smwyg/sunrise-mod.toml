@@ -1,0 +1,14 @@
+# Show Me What You Got for Sunrise: native code in src/.
+id = "smwyg"
+name = "Show Me What You Got"
+version = "0.5.0"
+description = "Show the item under your cursor to everyone in chat, with its tooltip on hover."
+authors = ["Apace", "arismoko"]
+license = "MIT"
+credits = "Ported to Minecraft 26.3 by lavoide, and to Sunrise by arismoko."
+homepage = "https://github.com/arismoko/sunrise-ports"
+side = "both"
+
+[native]
+game = "26.3"
+sunrise = "f8aa80e4c40cf1a5d30e85d13937f3fcf06d8237"

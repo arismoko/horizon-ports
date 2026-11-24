@@ -1,7 +1,13 @@
-# Show Me What You Got for Horizon
+# Show Me What You Got for Sunrise
 
-Ctrl+T over an item puts it in chat, with its tooltip on hover.
+In an inventory, hold Left Ctrl and press the chat key over an item: the chat opens with the item's name in it. Send the line and everyone sees the name in its rarity's colour, with the item's tooltip on hover. An item tooltip in chat shows the item beside its name.
 
-A port of [Show Me What You Got](https://github.com/apace100/show-me-what-you-got) 1.1.1 by Apace to [Horizon](https://github.com/horizon-rust/horizon) 26.3, under the original's licence (MIT, in `LICENSE`; see `NOTICE`).
+- The cursor must be empty, as in the original.
+- Players without the mod see the shared item too; only the person sharing needs it on their client, and the server needs it to show the item.
 
-This folder is the package source: one native mod. Its code uses Horizon's mod API and engine mixins (listed in `horizon-mod.toml`). Release [`smwyg-v0.4.1`](https://github.com/lavoide/horizon-ports/releases/tag/smwyg-v0.4.1) holds `smwyg.hmod`, built from this folder with Horizon's exact-build SDK `dd67b76ff23e28c6d8e21859df600d31572f81a0` (Horizon Mixins `e59da9094f0c2fdda6c627fe9eff22dec6a906f0`). Earlier versions, if any, are in this folder's history.
+A port of [Show Me What You Got](https://github.com/apace100/show-me-what-you-got) 1.2.0 by Apace to [Sunrise](https://playsunrise.net) (Minecraft Java 26.3), written in Rust on Sunrise's mod API, under the original's licence (MIT, in `LICENSE`; see `NOTICE`).
+
+## Differences from the original
+
+- The item's name in the chat box is ordinary text: it can be edited like any other text, and the chat history recalls the line as text, not as the item (sunrise-org/sunrise#5353).
+- In a right-to-left language the item still comes before its name in the tooltip (sunrise-org/sunrise#5354).
