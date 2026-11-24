@@ -1,0 +1,14 @@
+# Accelerated Decay for Sunrise: native code in src/.
+id = "accelerateddecay"
+name = "Accelerated Decay"
+version = "0.5.0"
+description = "Unsupported leaves decay quickly after a tree is cut, five blocks per tick, persisted across reloads."
+authors = ["ErrorMikey", "lavoide", "arismoko"]
+license = "GPL-3.0-only"
+credits = "Ported to Minecraft 26.3 by lavoide, and to Sunrise by arismoko."
+homepage = "https://github.com/arismoko/sunrise-ports"
+side = "server"
+
+[native]
+game = "26.3"
+sunrise = "3d34bbe63d71bb24c098c1e4021ef866be12fe2d"

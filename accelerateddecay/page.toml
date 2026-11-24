@@ -1,0 +1,19 @@
+summary = "Unsupported leaves decay quickly after a tree is cut, five blocks per tick."
+description = """
+Leaves whose supporting logs are removed decay quickly instead of waiting for random ticks.
+
+- Watches leaf state updates on blocks in `#minecraft:leaves`: once an existing leaf becomes `distance=7` and `persistent=false`, it joins that dimension's decay queue.
+- Player-placed leaves (`persistent=true`) and newly grown or bone-mealed trees are untouched.
+- Each server tick removes up to 5 queued leaves with normal vanilla drops, preserves water in waterlogged leaves, emits `minecraft:block_destroy`, and plays break particles and sound at most once per tick to keep canopies smooth.
+- The decay queue is saved per dimension with the world, so remaining leaves continue decaying after a reload.
+
+Server-side only: works in single player and on servers without requiring clients to install it.
+
+Differences from the original:
+
+- Before breaking a queued leaf, the port also re-checks that it is still non-persistent at `distance=7`, sparing leaves re-supported by a placed log or replaced with a player-placed leaf.
+- Queued positions in unloaded chunks are skipped instead of force-loading chunks.
+
+A port of Accelerated Decay by ErrorMikey, under the GPL-3.0-only licence.
+"""
+categories = ["game-mechanics", "optimization", "utility"]
