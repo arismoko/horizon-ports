@@ -16,12 +16,12 @@ pub mod rules;
 
 use mod_api::{
     self, AnimateTickEvent, BlockKey, BlockPart, BlockSignalEvent, BlockState, BlockUpdateFlags,
-    ClientHost, Direction, Hand, Hooks, Host, InteractionResult, IsSignalSourceEvent, ItemKey,
-    ItemStack, LevelHost, LevelRef, LevelSide, LevelTicksHost, LevelWriteHost, LivingRef,
-    NeighborChangedEvent, NeighbourUpdate, OnDestroyedByPlayerEvent, ParticleKey, ParticleOptions,
-    PlacementSource, PlayerRef, Registrar, RegistrationContext, RotateEvent, ServerHost,
-    SoundSource, StateForPlacementEvent, UpdateShapeEvent, UseItemOnEvent, UseWithoutItemEvent,
-    WorldgenHost,
+    ClientHost, Direction, Hand, Hooks, Host, HostBlockStates, InteractionResult,
+    IsSignalSourceEvent, ItemKey, ItemStack, LevelHost, LevelRef, LevelSide, LevelTicksHost,
+    LevelWriteHost, LivingRef, NeighborChangedEvent, NeighbourUpdate, OnDestroyedByPlayerEvent,
+    ParticleKey, ParticleOptions, PlacementSource, PlayerRef, Registrar, RegistrationContext,
+    RotateEvent, ServerHost, SoundSource, StateForPlacementEvent, UpdateShapeEvent, UseItemOnEvent,
+    UseWithoutItemEvent, WorldgenHost,
 };
 use rules::{
     Horizontal, bridge_connection, bridge_cycle, is_full_cube, property, rope_connection,
@@ -207,8 +207,12 @@ impl BlockPart for BridgePart {
             let text = host.block_state_string(event.state)?;
             let current = property(&text, "connection")?;
             let next = bridge_cycle(current);
+            let new_state = event
+                .state
+                .with(&host.block_states(), "connection", next)
+                .ok()?;
             let flags = BlockUpdateFlags::CLIENTS | BlockUpdateFlags::KNOWN_SHAPE;
-            let _ = host.set_block_property_with(click.pos, "connection", next, flags.bits());
+            let _ = level.set_block(host, click.pos, new_state, flags);
             return Some(InteractionResult::Success);
         }
 
@@ -317,8 +321,12 @@ impl BlockPart for RopeBridgePart {
             let text = host.block_state_string(event.state)?;
             let current = property(&text, "connection")?;
             let next = rope_cycle(current);
+            let new_state = event
+                .state
+                .with(&host.block_states(), "connection", next)
+                .ok()?;
             let flags = BlockUpdateFlags::CLIENTS | BlockUpdateFlags::KNOWN_SHAPE;
-            let _ = host.set_block_property_with(click.pos, "connection", next, flags.bits());
+            let _ = level.set_block(host, click.pos, new_state, flags);
             return Some(InteractionResult::Success);
         }
 
@@ -564,9 +572,13 @@ impl BlockPart for RailBridgePart {
         match click.stack {
             None if powered => Some(InteractionResult::TryWithEmptyHand),
             Some(stack) if stack.item() == self.redstone_torch && !powered => {
-                let flags = BlockUpdateFlags::CLIENTS;
-                if host.set_block_property_with(click.pos, "powered", "true", flags.bits())
-                    && let Some(new_state) = level.block_state(&*host, click.pos)
+                let new_state = event
+                    .state
+                    .with(&host.block_states(), "powered", "true")
+                    .ok()?;
+                if level
+                    .set_block(host, click.pos, new_state, BlockUpdateFlags::CLIENTS)
+                    .unwrap_or(false)
                 {
                     let _ = level.update_neighbors(
                         host,
@@ -574,9 +586,9 @@ impl BlockPart for RailBridgePart {
                         new_state,
                         NeighbourUpdate::Neighbours,
                     );
-                }
-                if let Some(player) = host.player(click.player) {
-                    shrink_hand_if_survival(host, player, click.hand, stack);
+                    if let Some(player) = host.player(click.player) {
+                        shrink_hand_if_survival(host, player, click.hand, stack);
+                    }
                 }
                 Some(InteractionResult::Consume)
             }
@@ -595,13 +607,17 @@ impl BlockPart for RailBridgePart {
             return Some(InteractionResult::Pass);
         }
         let level = host.level(click.dimension.key().id())?;
-        let flags = BlockUpdateFlags::CLIENTS;
-        if host.set_block_property_with(click.pos, "powered", "false", flags.bits())
-            && let Some(new_state) = level.block_state(&*host, click.pos)
+        let new_state = event
+            .state
+            .with(&host.block_states(), "powered", "false")
+            .ok()?;
+        if level
+            .set_block(host, click.pos, new_state, BlockUpdateFlags::CLIENTS)
+            .unwrap_or(false)
         {
             let _ = level.update_neighbors(host, click.pos, new_state, NeighbourUpdate::Neighbours);
+            let _ = level.pop_resource(host, click.pos, ItemStack::of(self.redstone_torch));
         }
-        let _ = level.pop_resource(host, click.pos, ItemStack::of(self.redstone_torch));
         Some(InteractionResult::Consume)
     }
 
