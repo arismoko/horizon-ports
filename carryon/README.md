@@ -18,10 +18,11 @@ A port of [Carry On](https://github.com/Tschipp/CarryOn) by Tschipp, Purplicious
 
 ## Differences from the original
 
-- Players can't be picked up, the arms are not raised while carrying (nor turned by a script), Game Stages pickup conditions have no effect (as in the original without Game Stages), and there are no model overrides.
+- Players can't be picked up ([sunrise-org/sunrise#5276](https://github.com/sunrise-org/sunrise/issues/5276)), and the arms are not raised while carrying, nor turned by a script ([sunrise-org/sunrise#5078](https://github.com/sunrise-org/sunrise/issues/5078)).
+- Game Stages pickup conditions have no effect, as in the original without Game Stages, and there are no model overrides yet.
 - A script naming a mob type matches that type; the original's comparison never matched one.
-- A carried mob is shown over the hotbar in first person rather than in your arms, and as its spawn egg on other players.
-- Each side reads its own lists; the server's decide what can be picked up.
+- A carried mob is shown over the hotbar in first person rather than in your arms, and as its spawn egg on other players ([sunrise-org/sunrise#5275](https://github.com/sunrise-org/sunrise/issues/5275)).
+- Each side reads its own lists; the server's decide what can be picked up ([sunrise-org/sunrise#1216](https://github.com/sunrise-org/sunrise/issues/1216)).
 
 ## Building
 

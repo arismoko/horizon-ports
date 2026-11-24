@@ -18,7 +18,6 @@ A port of [Panda's Falling Trees](https://github.com/PandaMods-Dev/Pandas-Fallin
 
 - Options are Sunrise mod settings, and the block and tool lists are text files in `config/fallingtrees/` (`logs.txt`, `leaves.txt`, `vertical_blocks.txt`, `tools.txt`: ids with `*`, `#tags`, and `!id` to refuse one).
 - "One block's tiredness only" charges one block's exhaustion (0.005); the original's flat charge for this option is far larger, which looks like a slip in it.
-- The tree's blocks are drawn as plain block models rotated about the stump; the original draws its own baked model.
 
 ## Building
 

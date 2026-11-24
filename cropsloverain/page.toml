@@ -13,10 +13,11 @@ What it does:
 
 Differences from the original:
 
-- The extra growth is applied at the end of the server tick, not inside the random tick.
-- A stem's extra step is not conditioned on vanilla's own roll, and a sapling's tree stage is bone-meal's, which succeeds with bone meal's chance.
+- The extra growth is applied at the end of the server tick, not inside the random tick ([sunrise-org/sunrise#5317](https://github.com/sunrise-org/sunrise/issues/5317)).
+- A stem's extra step is rolled beside vanilla's own, where the original turns a failed vanilla roll into growth ([sunrise-org/sunrise#5318](https://github.com/sunrise-org/sunrise/issues/5318)).
+- A sapling's tree stage is bone meal's, which succeeds with bone meal's chance ([sunrise-org/sunrise#979](https://github.com/sunrise-org/sunrise/issues/979)).
 - The original's own list of crops is the `#minecraft:crops` tag here, so crops of other mods that are in the tag also grow faster.
-- The original syncs its config to players; here it is a server-side file. There is no in-game config screen.
+- The original syncs its config to players; here it is a server-side file ([sunrise-org/sunrise#1216](https://github.com/sunrise-org/sunrise/issues/1216)). There is no in-game config screen ([sunrise-org/sunrise#1174](https://github.com/sunrise-org/sunrise/issues/1174)).
 """
 categories = ["game-mechanics"]
 
