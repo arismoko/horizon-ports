@@ -1,6 +1,6 @@
 # Macaw's Bridges
 
-A Sunrise 26.3 port of Macaw's Bridges (3.1.2) by Sketch Macaw and Sketch Peachy.
+A Sunrise 26.3 port of [Macaw's Bridges](https://modrinth.com/mod/macaws-bridges) (3.1.2) by Sketch Macaw and Sketch Peachy.
 
 ## External original jar
 

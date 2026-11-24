@@ -8,6 +8,8 @@ Macaw's Bridges adds a wide collection of bridges, stairs, piers, and bridge lig
 - **Bridge stairs & piers**: 46 stair variants that connect sideways and climb upward on right-click, plus 34 waterloggable bridge piers that stack upward on right-click.
 - **Bridge torch & lantern**: light-level-15 handrail lights that orient to the bridge or stair below them (with torch flame and smoke particles).
 
+Original mod: [Macaw's Bridges](https://modrinth.com/mod/macaws-bridges) by Sketch Macaw and Sketch Peachy.
+
 **External jar note**: Macaw's Bridges is All Rights Reserved. No original assets or data are bundled in this package; Sunrise loads the textures, models, translations, recipes, loot tables, and tags from the player's own copy of the original 26.3 NeoForge jar.
 
 Needed on both the server and the client.
