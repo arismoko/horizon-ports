@@ -1,6 +1,0 @@
-{
-  "parent": "clutter:block/parent/window_sill_parent_empty",
-  "textures": {
-    "planks": "minecraft:block/jungle_planks"
-  }
-}

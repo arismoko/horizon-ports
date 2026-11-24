@@ -1,8 +1,0 @@
-{
-  "ingredient": "mythicupgrades:topaz_crystal_bricks",
-  "result": {
-    "count": 1,
-    "id": "mythicupgrades:topaz_crystal_bricks_stairs"
-  },
-  "type": "minecraft:stonecutting"
-}

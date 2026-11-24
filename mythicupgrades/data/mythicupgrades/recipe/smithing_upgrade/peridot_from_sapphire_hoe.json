@@ -1,9 +1,0 @@
-{
-  "addition": "mythicupgrades:peridot_ingot",
-  "base": "mythicupgrades:sapphire_hoe",
-  "result": {
-    "id": "mythicupgrades:peridot_hoe"
-  },
-  "template": "mythicupgrades:mythic_upgrade_smithing_template",
-  "type": "minecraft:smithing_transform"
-}

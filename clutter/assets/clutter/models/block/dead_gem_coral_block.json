@@ -1,6 +1,0 @@
-{
-  "parent": "minecraft:block/cube_all",
-  "textures": {
-    "all": "clutter:block/dead_gem_coral_block"
-  }
-}

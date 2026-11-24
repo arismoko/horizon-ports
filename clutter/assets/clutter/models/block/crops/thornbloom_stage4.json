@@ -1,6 +1,0 @@
-{
-  "parent": "block/cross",
-  "textures": {
-    "cross": "clutter:block/thornbloom_stage4"
-  }
-}

@@ -1,9 +1,0 @@
-{
-  "cookingtime": 200,
-  "experience": 0.1,
-  "ingredient": "tokimistoolshed:copper_bucket",
-  "result": {
-    "id": "minecraft:copper_ingot"
-  },
-  "type": "minecraft:smelting"
-}

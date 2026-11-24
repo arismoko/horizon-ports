@@ -1,6 +1,0 @@
-{
-	"parent": "clutter:block/lamps/lamp_parent",
-	"textures": {
-		"1": "block/redstone_lamp_on"
-	}
-}

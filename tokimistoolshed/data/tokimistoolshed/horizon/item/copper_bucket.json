@@ -1,7 +1,0 @@
-{
-  "template": "minecraft:bucket",
-  "max_stack_size": 1,
-  "components": {
-    "minecraft:max_damage": 16
-  }
-}

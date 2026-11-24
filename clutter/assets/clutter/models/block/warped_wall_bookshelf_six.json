@@ -1,6 +1,0 @@
-{
-  "parent": "clutter:block/parent/wall_bookshelf_parent_six",
-  "textures": {
-    "planks": "minecraft:block/warped_planks"
-  }
-}

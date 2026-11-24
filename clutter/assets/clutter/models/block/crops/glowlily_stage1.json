@@ -1,6 +1,0 @@
-{
-  "parent": "block/cross",
-  "textures": {
-    "cross": "clutter:block/glowlily_stage1"
-  }
-}

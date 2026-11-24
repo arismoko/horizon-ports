@@ -1,9 +1,0 @@
-{
-  "addition": "mythicupgrades:jade_ingot",
-  "base": "mythicupgrades:ruby_boots",
-  "result": {
-    "id": "mythicupgrades:jade_boots"
-  },
-  "template": "mythicupgrades:mythic_upgrade_smithing_template",
-  "type": "minecraft:smithing_transform"
-}

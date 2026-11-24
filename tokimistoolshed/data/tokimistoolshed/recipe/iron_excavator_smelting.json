@@ -1,9 +1,0 @@
-{
-  "cookingtime": 200,
-  "experience": 0.1,
-  "ingredient": "tokimistoolshed:iron_excavator",
-  "result": {
-    "id": "minecraft:iron_ingot"
-  },
-  "type": "minecraft:smelting"
-}

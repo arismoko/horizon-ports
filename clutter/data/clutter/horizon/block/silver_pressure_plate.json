@@ -1,9 +1,0 @@
-{
-  "template": "minecraft:heavy_weighted_pressure_plate",
-  "properties": {
-    "hardness": 0.5,
-    "explosion_resistance": 0.5,
-    "sounds": "minecraft:heavy_weighted_pressure_plate",
-    "requires_tool": true
-  }
-}

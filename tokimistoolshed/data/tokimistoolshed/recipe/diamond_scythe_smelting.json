@@ -1,9 +1,0 @@
-{
-  "cookingtime": 200,
-  "experience": 0.1,
-  "ingredient": "tokimistoolshed:diamond_scythe",
-  "result": {
-    "id": "minecraft:diamond"
-  },
-  "type": "minecraft:smelting"
-}

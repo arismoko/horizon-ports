@@ -1,7 +1,0 @@
-{
-	"parent": "clutter:block/trellises/horizontal_trellis_parent",
-	"textures": {
-		"0": "block/spruce_log",
-		"particle": "block/spruce_log"
-	}
-}

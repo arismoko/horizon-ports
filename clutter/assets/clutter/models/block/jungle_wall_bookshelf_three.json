@@ -1,6 +1,0 @@
-{
-  "parent": "clutter:block/parent/wall_bookshelf_parent_three",
-  "textures": {
-    "planks": "minecraft:block/jungle_planks"
-  }
-}

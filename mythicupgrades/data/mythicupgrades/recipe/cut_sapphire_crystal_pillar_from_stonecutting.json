@@ -1,8 +1,0 @@
-{
-  "ingredient": "mythicupgrades:sapphire_crystal_pillar",
-  "result": {
-    "count": 1,
-    "id": "mythicupgrades:cut_sapphire_crystal_pillar"
-  },
-  "type": "minecraft:stonecutting"
-}

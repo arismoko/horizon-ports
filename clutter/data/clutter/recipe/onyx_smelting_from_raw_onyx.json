@@ -1,9 +1,0 @@
-{
-  "type": "minecraft:smelting",
-  "ingredient": "clutter:raw_onyx",
-  "result": {
-    "id": "clutter:onyx"
-  },
-  "experience": 1.0,
-  "cookingtime": 200
-}

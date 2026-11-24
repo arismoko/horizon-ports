@@ -1,6 +1,0 @@
-{
-	"parent": "clutter:block/parent/armchair_parent",
-	"textures": {
-		"armchair": "clutter:block/lime_armchair"
-	}
-}

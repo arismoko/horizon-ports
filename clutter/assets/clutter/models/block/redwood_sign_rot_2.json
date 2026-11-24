@@ -1,7 +1,0 @@
-{
-  "parent": "minecraft:block/template_sign_rot_2",
-  "textures": {
-    "all": "clutter:block/redwood_sign",
-    "particle": "clutter:block/redwood_planks"
-  }
-}

@@ -1,6 +1,0 @@
-{
-  "model": {
-    "model": "toms_storage:item/ts.inventory_proxy",
-    "type": "minecraft:model"
-  }
-}

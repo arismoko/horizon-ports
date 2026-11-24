@@ -1,8 +1,0 @@
-{
-  "parent": "clutter:block/chandeliers/large_chandelier_side_parent",
-  "textures": {
-    "0": "clutter:block/large_silver_chandelier_side",
-    "1": "clutter:block/large_silver_chandelier_side_rod",
-    "particle": "clutter:block/silver_block"
-  }
-}

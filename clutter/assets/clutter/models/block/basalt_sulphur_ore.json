@@ -1,7 +1,0 @@
-{
-  "parent": "block/cube_column",
-  "textures": {
-    "end": "clutter:block/basalt_sulphur_ore_top",
-    "side": "clutter:block/basalt_sulphur_ore_side"
-  }
-}

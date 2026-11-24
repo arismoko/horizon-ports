@@ -1,9 +1,0 @@
-{
-  "template": "minecraft:basalt",
-  "properties": {
-    "hardness": 1.25,
-    "explosion_resistance": 4.2,
-    "sounds": "minecraft:basalt",
-    "requires_tool": true
-  }
-}
