@@ -9,11 +9,8 @@ A port of [YUNG's Bridges](https://github.com/YUNG-GANG/YUNGs-Bridges) by YUNGNI
 - Eleven bridge designs (stone and wooden, 15 to 31 blocks long, some broken), each north-south or east-west: 22 variants, as in the original.
 - Bridges only where a river crosses the chunk with solid banks at both ends and open water between, at the original's rarity.
 - Legs down to the river bed, mossy and cracked stone, missing slabs and stairs, and lanterns and torches that are sometimes gone, from the original's processors.
+- Wooden parts in the wood of the biome at the bridge: dark oak in badlands, spruce in taiga, jungle in jungles, acacia in savannas, oak elsewhere (the biome lists are tags other mods can add to).
 - Rivers from other mods count through the `c:river` biome tag, as in the original.
-
-## Differences from the original
-
-- Wooden parts are always oak: the original picks dark oak, spruce, jungle or acacia by the biome at the bank, and a world-generation feature cannot read the biome yet.
 
 ## Building
 

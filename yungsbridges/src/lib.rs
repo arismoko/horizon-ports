@@ -12,11 +12,14 @@ mod bridges;
 mod random;
 
 use std::collections::HashMap;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{PoisonError, RwLock};
 
 use bridges::{BRIDGES, TEMPLATES};
 use mod_api::{
-    self, BlockKey, BlockState, BlockUpdateFlags, FeatureContext, FeatureError, FeatureType,
-    HeightmapType, Hooks, Registrar, RegistrationContext,
+    self, BiomeKey, BlockKey, BlockState, BlockUpdateFlags, FeatureContext, FeatureError,
+    FeatureType, HeightmapType, Hooks, LevelLoadEvent, LevelRef, Registrar, RegistrationContext,
+    ReloadContext, ServerHost, ServerTickEvent, TagsUpdateCause, TagsUpdatedEvent,
 };
 use random::{Xoroshiro, position_seed};
 
@@ -53,10 +56,46 @@ pub(crate) struct Template {
 /// Level.getSeaLevel() of the overworld, where the rivers are; a feature can't read it.
 const SEA_LEVEL: i32 = 63;
 
-/// The wood of the biome variants (ITemplateFeatureProcessor's get<Kind>BiomeVariant): dark oak
-/// in badlands, spruce in taiga, jungle, acacia in savanna, else oak. A feature can't read the
-/// biome, so every bridge takes oak.
-const WOOD: &str = "oak";
+/// The wood of the biome variants (ITemplateFeatureProcessor's get<Kind>BiomeVariant), by the
+/// biome at the bridge's corner, the first of the original's collection tags it is in; oak
+/// otherwise.
+const WOODS: [(&str, &str); 4] = [
+    ("yungsbridges:collections/badlands", "dark_oak"),
+    ("yungsbridges:collections/taiga", "spruce"),
+    ("yungsbridges:collections/jungle", "jungle"),
+    ("yungsbridges:collections/savanna", "acacia"),
+];
+
+/// The wood of each biome that isn't oak's, by the world's current biome keys and tags. A feature
+/// runs without a host, so the tags are read here when a level opens and after `/reload`.
+static BIOME_WOOD: RwLock<Option<HashMap<BiomeKey, &'static str>>> = RwLock::new(None);
+
+/// `/reload` rebuilt the tags and the biome keys; the next server tick reads them again.
+static STALE: AtomicBool = AtomicBool::new(false);
+
+fn read_biome_woods(host: &dyn ServerHost, level: LevelRef) {
+    let mut woods = HashMap::new();
+    for id in host
+        .registry_entries("minecraft:worldgen/biome")
+        .unwrap_or_default()
+    {
+        let id = id.to_string();
+        let wood = WOODS
+            .iter()
+            .find(|(tag, _)| level.biome_in_tag(host, &id, tag) == Some(true));
+        if let (Some((_, wood)), Some(key)) = (wood, host.biome_key(&id)) {
+            woods.insert(key, *wood);
+        }
+    }
+    *BIOME_WOOD.write().unwrap_or_else(PoisonError::into_inner) = Some(woods);
+}
+
+fn wood_of(biome: Option<BiomeKey>) -> &'static str {
+    let woods = BIOME_WOOD.read().unwrap_or_else(PoisonError::into_inner);
+    biome
+        .and_then(|key| woods.as_ref()?.get(&key).copied())
+        .unwrap_or("oak")
+}
 
 /// Blocks that are not air, not in `#minecraft:leaves` or `#minecraft:replaceable`, and still
 /// don't occlude (BlockState.canOcclude false): the ones a river bank can hold.
@@ -113,6 +152,26 @@ const OUTPUTS: &[&str] = &[
     "minecraft:oak_slab",
     "minecraft:oak_stairs",
     "minecraft:oak_fence",
+    "minecraft:dark_oak_log",
+    "minecraft:dark_oak_planks",
+    "minecraft:dark_oak_slab",
+    "minecraft:dark_oak_stairs",
+    "minecraft:dark_oak_fence",
+    "minecraft:spruce_log",
+    "minecraft:spruce_planks",
+    "minecraft:spruce_slab",
+    "minecraft:spruce_stairs",
+    "minecraft:spruce_fence",
+    "minecraft:jungle_log",
+    "minecraft:jungle_planks",
+    "minecraft:jungle_slab",
+    "minecraft:jungle_stairs",
+    "minecraft:jungle_fence",
+    "minecraft:acacia_log",
+    "minecraft:acacia_planks",
+    "minecraft:acacia_slab",
+    "minecraft:acacia_stairs",
+    "minecraft:acacia_fence",
 ];
 
 #[derive(Default)]
@@ -131,6 +190,27 @@ impl Hooks for Mod {
                 .or_insert_with(|| registrar.block_key(name));
         }
         registrar.register_feature_type("bridge_list", Vec::new(), BridgeList { keys });
+    }
+
+    /// A world opened (its biome keys and tags are new): read the biome woods before its chunks.
+    fn level_load(&self, host: &mut dyn ServerHost, event: &mut LevelLoadEvent<'_>) {
+        if let Some(level) = host.level(event.dimension) {
+            read_biome_woods(host, level);
+        }
+    }
+
+    fn tags_updated(&self, _: &dyn ReloadContext, event: &mut TagsUpdatedEvent) {
+        if let TagsUpdateCause::ServerDataLoad { reload: true } = event.cause {
+            STALE.store(true, Ordering::Relaxed);
+        }
+    }
+
+    fn server_tick(&self, host: &mut dyn ServerHost, _: &mut ServerTickEvent<'_>) {
+        if STALE.swap(false, Ordering::Relaxed)
+            && let Some(level) = host.level("minecraft:overworld")
+        {
+            read_biome_woods(host, level);
+        }
     }
 }
 
@@ -354,7 +434,9 @@ impl Placer<'_> {
             }
             self.set(p, state);
         }
-        self.processors(&blocks)
+        // The processors' getBiome(cornerPos).
+        let wood = wood_of(self.context.biome(corner));
+        self.processors(&blocks, wood)
     }
 
     fn water_source(&mut self, p: [i32; 3]) -> bool {
@@ -414,7 +496,7 @@ impl Placer<'_> {
 
     /// The twelve processors of BridgeFeature, in its order, each over the template's blocks of
     /// one kind as placed (template.filterBlocks).
-    fn processors(&mut self, blocks: &[([i32; 3], State)]) -> Result<(), FeatureError> {
+    fn processors(&mut self, blocks: &[([i32; 3], State)], wood: &str) -> Result<(), FeatureError> {
         let of = |block: &str| -> Vec<([i32; 3], Props)> {
             blocks
                 .iter()
@@ -422,11 +504,11 @@ impl Placer<'_> {
                 .map(|(p, (_, props))| (*p, *props))
                 .collect()
         };
-        let log = format!("minecraft:{WOOD}_log");
-        let fence = format!("minecraft:{WOOD}_fence");
-        let planks = format!("minecraft:{WOOD}_planks");
-        let slab = format!("minecraft:{WOOD}_slab");
-        let stairs = format!("minecraft:{WOOD}_stairs");
+        let log = format!("minecraft:{wood}_log");
+        let fence = format!("minecraft:{wood}_fence");
+        let planks = format!("minecraft:{wood}_planks");
+        let slab = format!("minecraft:{wood}_slab");
+        let stairs = format!("minecraft:{wood}_stairs");
 
         // DynamicLegProcessor.
         for (p, s) in of("yellow_stained_glass") {
