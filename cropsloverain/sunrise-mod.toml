@@ -1,7 +1,7 @@
 # Crops Love Rain for Sunrise: native code in src/ with its data/ and assets/.
 id = "cropsloverain"
 name = "Crops Love Rain"
-version = "0.5.1"
+version = "0.5.2"
 description = "Crops, saplings, sugar cane, bamboo and berries grow faster while it rains."
 authors = ["ThePoultryMan", "lavoide", "arismoko"]
 license = "MIT"
