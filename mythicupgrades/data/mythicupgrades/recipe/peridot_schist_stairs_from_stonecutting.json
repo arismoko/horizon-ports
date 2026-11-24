@@ -1,8 +1,0 @@
-{
-  "ingredient": "mythicupgrades:peridot_schist",
-  "result": {
-    "count": 1,
-    "id": "mythicupgrades:peridot_schist_stairs"
-  },
-  "type": "minecraft:stonecutting"
-}

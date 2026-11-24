@@ -1,9 +1,0 @@
-{
-  "addition": "mythicupgrades:citrine_ingot",
-  "base": "mythicupgrades:ametrine_leggings",
-  "result": {
-    "id": "mythicupgrades:citrine_leggings"
-  },
-  "template": "mythicupgrades:mythic_upgrade_smithing_template",
-  "type": "minecraft:smithing_transform"
-}

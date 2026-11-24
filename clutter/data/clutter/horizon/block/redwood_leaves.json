@@ -1,9 +1,0 @@
-{
-  "template": "minecraft:spruce_leaves",
-  "properties": {
-    "hardness": 0.2,
-    "explosion_resistance": 0.2,
-    "sounds": "minecraft:spruce_leaves",
-    "requires_tool": false
-  }
-}

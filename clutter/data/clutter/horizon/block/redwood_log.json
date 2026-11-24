@@ -1,9 +1,0 @@
-{
-  "template": "minecraft:spruce_log",
-  "properties": {
-    "hardness": 2.0,
-    "explosion_resistance": 2.0,
-    "sounds": "minecraft:spruce_log",
-    "requires_tool": false
-  }
-}

@@ -1,8 +1,0 @@
-{
-  "ingredient": "mythicupgrades:ametrine_crystal_pillar",
-  "result": {
-    "count": 1,
-    "id": "mythicupgrades:cut_ametrine_crystal_pillar"
-  },
-  "type": "minecraft:stonecutting"
-}

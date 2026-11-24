@@ -1,9 +1,0 @@
-{
-  "template": "minecraft:emerald_ore",
-  "properties": {
-    "hardness": 3.0,
-    "explosion_resistance": 3.0,
-    "sounds": "minecraft:stone",
-    "requires_tool": true
-  }
-}

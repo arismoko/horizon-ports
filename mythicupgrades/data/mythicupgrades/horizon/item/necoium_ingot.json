@@ -1,6 +1,0 @@
-{
-  "template": "minecraft:stick",
-  "components": {
-    "minecraft:provides_trim_material": "mythicupgrades:necoium"
-  }
-}

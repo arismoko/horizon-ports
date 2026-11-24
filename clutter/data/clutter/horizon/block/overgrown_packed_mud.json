@@ -1,9 +1,0 @@
-{
-  "template": "minecraft:podzol",
-  "properties": {
-    "hardness": 1.0,
-    "explosion_resistance": 3.0,
-    "sounds": "minecraft:packed_mud",
-    "requires_tool": false
-  }
-}

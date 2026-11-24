@@ -1,9 +1,0 @@
-{
-  "addition": "mythicupgrades:ruby_ingot",
-  "base": "mythicupgrades:topaz_axe",
-  "result": {
-    "id": "mythicupgrades:ruby_axe"
-  },
-  "template": "mythicupgrades:mythic_upgrade_smithing_template",
-  "type": "minecraft:smithing_transform"
-}

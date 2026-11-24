@@ -1,8 +1,0 @@
-{
-  "ingredient": "spelunkery:rock_salt_block",
-  "result": {
-    "count": 1,
-    "id": "spelunkery:polished_rock_salt_wall"
-  },
-  "type": "minecraft:stonecutting"
-}

@@ -1,9 +1,0 @@
-{
-  "addition": "mythicupgrades:aquamarine_ingot",
-  "base": "mythicupgrades:ruby_hoe",
-  "result": {
-    "id": "mythicupgrades:aquamarine_hoe"
-  },
-  "template": "mythicupgrades:mythic_upgrade_smithing_template",
-  "type": "minecraft:smithing_transform"
-}

@@ -1,9 +1,0 @@
-{
-  "cookingtime": 200,
-  "experience": 1.0,
-  "ingredient": "#spelunkery:emerald_ores",
-  "result": {
-    "id": "minecraft:emerald"
-  },
-  "type": "minecraft:smelting"
-}

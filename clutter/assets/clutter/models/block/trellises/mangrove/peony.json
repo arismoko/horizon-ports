@@ -1,9 +1,0 @@
-{
-	"parent": "clutter:block/trellises/trellis_parent",
-	"textures": {
-		"0": "block/mangrove_log",
-		"1": "clutter:block/peony",
-		"2": "clutter:block/peony_flowers",
-		"particle": "block/mangrove_log"
-	}
-}

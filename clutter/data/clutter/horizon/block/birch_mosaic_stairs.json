@@ -1,9 +1,0 @@
-{
-  "template": "minecraft:birch_stairs",
-  "properties": {
-    "hardness": 2.0,
-    "explosion_resistance": 3.0,
-    "sounds": "minecraft:birch_stairs",
-    "requires_tool": false
-  }
-}

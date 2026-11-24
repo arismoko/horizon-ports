@@ -1,9 +1,0 @@
-{
-  "template": "minecraft:mangrove_planks",
-  "properties": {
-    "hardness": 2.0,
-    "explosion_resistance": 3.0,
-    "sounds": "minecraft:mangrove_planks",
-    "requires_tool": false
-  }
-}

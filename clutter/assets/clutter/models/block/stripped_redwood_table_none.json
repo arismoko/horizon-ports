@@ -1,6 +1,0 @@
-{
-  "parent": "clutter:block/parent/table_none_parent",
-  "textures": {
-    "planks": "clutter:block/redwood_planks"
-  }
-}

@@ -1,9 +1,0 @@
-{
-  "template": "minecraft:tube_coral_block",
-  "properties": {
-    "hardness": 1.5,
-    "explosion_resistance": 6.0,
-    "sounds": "minecraft:horn_coral_block",
-    "requires_tool": true
-  }
-}

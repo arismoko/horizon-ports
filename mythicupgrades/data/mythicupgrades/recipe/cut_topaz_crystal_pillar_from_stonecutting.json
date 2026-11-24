@@ -1,8 +1,0 @@
-{
-  "ingredient": "mythicupgrades:topaz_crystal_pillar",
-  "result": {
-    "count": 1,
-    "id": "mythicupgrades:cut_topaz_crystal_pillar"
-  },
-  "type": "minecraft:stonecutting"
-}

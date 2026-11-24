@@ -1,9 +1,0 @@
-{
-  "template": "minecraft:spruce_button",
-  "properties": {
-    "hardness": 0.5,
-    "explosion_resistance": 0.5,
-    "sounds": "minecraft:spruce_button",
-    "requires_tool": false
-  }
-}

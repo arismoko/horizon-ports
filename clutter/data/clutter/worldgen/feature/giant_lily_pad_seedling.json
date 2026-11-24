@@ -1,9 +1,0 @@
-{
-  "type": "minecraft:simple_block",
-  "to_place": {
-    "id": "clutter:giant_lily_pad_seedling",
-    "properties": {
-      "age": "0"
-    }
-  }
-}

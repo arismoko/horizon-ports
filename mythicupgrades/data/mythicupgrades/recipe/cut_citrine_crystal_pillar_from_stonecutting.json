@@ -1,8 +1,0 @@
-{
-  "ingredient": "mythicupgrades:citrine_crystal_pillar",
-  "result": {
-    "count": 1,
-    "id": "mythicupgrades:cut_citrine_crystal_pillar"
-  },
-  "type": "minecraft:stonecutting"
-}
