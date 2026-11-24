@@ -25,7 +25,7 @@ use mod_api::{
     MouseButtonPreEvent, MouseScrollingEvent, PlaySoundEvent, RegisterConfigsEvent,
     RegisterDebugEntriesEvent, Registrar, RegistrationContext, RenderFramePreEvent,
     RenderGuiPostEvent, ScreenOpening, ScreenOpeningEvent, SettingChangedEvent, Text,
-    ToastAddEvent, ToastIcon, ToastKind,
+    ToastAddEvent, ToastIcon,
 };
 use std::sync::{Mutex, MutexGuard};
 
@@ -151,17 +151,15 @@ impl Runtime {
         self.was_holding_disabled = holding_disabled;
     }
 
-    fn flush_battery_toast(&mut self, host: &mut dyn ClientHost) {
+    fn prepare_battery_toast(&mut self, host: &mut dyn ClientHost) -> Option<ModToast> {
         if let Some(notif) = self.battery.take_pending_notification() {
             self.pending_battery_toast = Some(notif);
         }
 
         if !self.config.state(self.state).show_toasts {
-            return;
+            return None;
         }
-        let Some((kind, _)) = self.pending_battery_toast.take() else {
-            return;
-        };
+        let (kind, _) = self.pending_battery_toast.take()?;
 
         if !self.toast_icons_registered {
             self.toast_icons_registered = ensure_toast_icons_registered(host);
@@ -185,7 +183,7 @@ impl Runtime {
         if let Ok(token) = Identifier::from_parts(MOD_ID, "battery") {
             toast.kind = Some(token);
         }
-        let _ = host.add_toast(toast);
+        Some(toast)
     }
 }
 
@@ -407,7 +405,12 @@ impl Hooks for DynamicFps {
         VOLUME_TABLE.store(rt.smooth_volume.snapshot());
         publish_debug_state(state, &rt.config);
 
-        rt.flush_battery_toast(host);
+        let battery_toast = rt.prepare_battery_toast(host);
+        drop(guard);
+
+        if let Some(toast) = battery_toast {
+            let _ = host.add_toast(toast);
+        }
     }
 
     fn play_sound(&self, _ctx: &dyn LoopContext, event: &mut PlaySoundEvent<'_>) {
@@ -429,12 +432,8 @@ impl Hooks for DynamicFps {
         }
     }
 
-    fn toast_add(&self, host: &dyn ClientHost, event: &mut ToastAddEvent) -> Flow {
+    fn toast_add(&self, host: &dyn ClientHost, _event: &mut ToastAddEvent) -> Flow {
         if !host.on(MOD_ID) {
-            return Flow::Continue;
-        }
-        // Always allow our own delayed battery notifications once flushed.
-        if event.kind == ToastKind::Mod {
             return Flow::Continue;
         }
         let rt = self.lock();
