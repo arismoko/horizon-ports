@@ -13,3 +13,7 @@ Differences from the original:
 A port of Better Than Mending by legobmw99, under the GPL-3.0 licence.
 """
 categories = ["game-mechanics"]
+
+[[screenshots]]
+path = "page/repair.png"
+caption = "A Mending pickaxe after a repair from the player's experience."

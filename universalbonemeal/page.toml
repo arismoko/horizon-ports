@@ -26,3 +26,7 @@ Differences from the original:
 A port of Universal Bone Meal by Fuzs, under the MPL-2.0 licence.
 """
 categories = ["game-mechanics"]
+
+[[screenshots]]
+path = "page/garden.png"
+caption = "Bone meal on a cactus, flowers and lily pads."

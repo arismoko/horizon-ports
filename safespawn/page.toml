@@ -14,3 +14,7 @@ Differences from the original:
 A port of SafeSpawn by Tokimi, CozyStudios, under the CC0 licence.
 """
 categories = ["utility", "game-mechanics"]
+
+[[screenshots]]
+path = "page/moved.png"
+caption = "A player spawned on safe ground by the sea."

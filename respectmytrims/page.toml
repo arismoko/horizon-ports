@@ -8,3 +8,7 @@ Armour with a gold trim, or any armour trimmed with the snout pattern, counts as
 A port of Respect My Trims by N (tnoctua), under the LGPL-2.1 licence.
 """
 categories = ["game-mechanics"]
+
+[[screenshots]]
+path = "page/calm.png"
+caption = "Piglins staying calm around a player in gold-trimmed armor."

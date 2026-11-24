@@ -19,3 +19,7 @@ Differences from the original:
 - There is no in-game config screen.
 """
 categories = ["game-mechanics"]
+
+[[screenshots]]
+path = "page/sleep.png"
+caption = "Sleeping through the night, with the bed clock in the corner."

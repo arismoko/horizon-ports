@@ -18,3 +18,7 @@ Differences from the original:
 A port of Block Runner by Fuzs, under the MPL-2.0 licence.
 """
 categories = ["game-mechanics"]
+
+[[screenshots]]
+path = "page/path.png"
+caption = "Running down a dirt path, faster than on the grass beside it."
