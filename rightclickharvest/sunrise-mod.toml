@@ -1,7 +1,7 @@
 # Right Click Harvest for Sunrise: native code in src/ with its data/ and assets/.
 id = "rightclickharvest"
 name = "Right Click Harvest"
-version = "0.5.0"
+version = "0.5.1"
 description = "Right-click a grown crop to harvest and replant it."
 authors = ["Jamalam", "lavoide", "arismoko"]
 license = "MIT"
