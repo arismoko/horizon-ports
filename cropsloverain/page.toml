@@ -19,3 +19,7 @@ Differences from the original:
 - The original syncs its config to players; here it is a server-side file. There is no in-game config screen.
 """
 categories = ["game-mechanics"]
+
+[[screenshots]]
+path = "page/rain.png"
+caption = "In the rain, the open field ripens while the same field under a roof is still green."
