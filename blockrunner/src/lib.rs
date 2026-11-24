@@ -31,8 +31,13 @@ const MODIFIER: &str = "blockrunner:block_speed";
 const MOVEMENT_SPEED: &str = "minecraft:movement_speed";
 const CHANNEL: &str = "blockrunner:block_speeds";
 const TOOLTIP: &str = "block.blockrunner.speedMultiplier";
-const SHOW_TOOLTIP: &str = "blockSpeedItemTooltip";
-const STEADY_FOV: &str = "disableFieldOfViewChanges";
+/// The settings' keys, and the original's config names their labels keep.
+const SHOW_TOOLTIP: &str = "block_speed_item_tooltip";
+const STEADY_FOV: &str = "disable_field_of_view_changes";
+const SETTINGS: [(&str, &str); 2] = [
+    (SHOW_TOOLTIP, "blockSpeedItemTooltip"),
+    (STEADY_FOV, "disableFieldOfViewChanges"),
+];
 
 /// The original's data: its six block tags and the data map giving each its speed, contributed
 /// to every data load below the world's data packs, which may change them.
@@ -325,8 +330,8 @@ struct Mod;
 #[mod_api::sunrise_mod]
 impl Hooks for Mod {
     fn register(&self, r: &mut dyn Registrar, _: &RegistrationContext) {
-        for key in [SHOW_TOOLTIP, STEADY_FOV] {
-            let label = format!("{MOD_ID}.config.{key}");
+        for (key, name) in SETTINGS {
+            let label = format!("{MOD_ID}.config.{name}");
             let spec = SettingSpec::toggle(key, &label, true).tooltip(format!("{label}.tooltip"));
             let _ = r.register_setting(spec);
         }
