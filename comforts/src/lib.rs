@@ -541,9 +541,8 @@ fn try_sleep_in_comforts_bed(
     if !within_bed_reach(player_pos, head, foot) {
         return Err(Some(kind.too_far_key()));
     }
-    if !dry_run
-        && (has_solid_collision(host, level, [head[0], head[1] + 1, head[2]])
-            || has_solid_collision(host, level, [foot[0], foot[1] + 1, foot[2]]))
+    if has_solid_collision(host, level, [head[0], head[1] + 1, head[2]])
+        || has_solid_collision(host, level, [foot[0], foot[1] + 1, foot[2]])
     {
         return Err(Some("block.minecraft.bed.obstructed"));
     }
@@ -803,7 +802,7 @@ fn handle_comforts_wake_up(host: &mut dyn ServerHost, player: PlayerRef, bed_pos
             }
 
             // Pick up auto-used sleeping bag if it did not break, preserving any custom name.
-            if !broke && data.auto_sleep_pos.is_some() {
+            if !broke && data.auto_sleep_pos == Some(bed_pos) {
                 let color_idx = keys().sleeping_bag_color(state.block());
                 remove_bed_halves(host, level, bed_pos, foot, state.block());
                 if player.is_creative(host) != Some(true)
@@ -1407,12 +1406,6 @@ impl ItemPart for SleepingBagItemPart {
             }
         }
 
-        // Record auto-sleep position & custom name so waking picks the sleeping bag back up.
-        let mut data = read_sleep_data(host, player.uuid());
-        data.auto_sleep_pos = Some(head_pos);
-        data.auto_sleep_custom_name = custom_name_tag(event.stack);
-        write_sleep_data(host, player.uuid(), data);
-
         // Explode if the dimension explodes beds, otherwise immediately sleep.
         if level
             .dimension_type(host)
@@ -1430,7 +1423,7 @@ impl ItemPart for SleepingBagItemPart {
             return Some(InteractionResult::SuccessServer);
         }
 
-        if let Err(Some(key)) = try_sleep_in_comforts_bed(
+        match try_sleep_in_comforts_bed(
             host,
             player,
             level,
@@ -1439,7 +1432,17 @@ impl ItemPart for SleepingBagItemPart {
             BedKind::SleepingBag,
             false,
         ) {
-            let _ = player.action_bar(host, Text::translate(key, vec![]));
+            Ok(()) => {
+                // Record auto-sleep position & custom name so waking picks the sleeping bag back up.
+                let mut data = read_sleep_data(host, player.uuid());
+                data.auto_sleep_pos = Some(head_pos);
+                data.auto_sleep_custom_name = custom_name_tag(event.stack);
+                write_sleep_data(host, player.uuid(), data);
+            }
+            Err(Some(key)) => {
+                let _ = player.action_bar(host, Text::translate(key, vec![]));
+            }
+            Err(None) => {}
         }
         Some(InteractionResult::SuccessServer)
     }
