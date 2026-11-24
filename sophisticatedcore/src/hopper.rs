@@ -279,7 +279,7 @@ fn pull(
             continue;
         }
         let got = host
-            .transaction(|host, tx| Ok::<u32, ()>(src.extract_at(host, tx, i, &res, fits)))
+            .transaction(|host, tx| src.extract_at(host, tx, i, &res, fits))
             .unwrap_or(0);
         if got > 0 {
             c.add(&*host, kind, &stack, got);

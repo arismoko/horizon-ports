@@ -13,7 +13,7 @@ use std::sync::{Arc, LazyLock, Mutex, OnceLock};
 use mod_api::{
     AttachmentCodec, AttachmentType, BlockEntityPart, BlockEntityPartState, BlockPart, Compound,
     Host, ItemResource, LevelRef, Overanswered, PlayerRef, ResourceHandler, ServerHost, Tag,
-    Transaction,
+    TransactionContext, TransactionError,
 };
 
 use mod_api::{BlockEntityDrawContext, ClientHost, HostTransaction};
@@ -622,35 +622,32 @@ impl ResourceHandler<ItemResource> for NetHandler {
     fn insert_at(
         &self,
         host: &mut dyn ServerHost,
-        tx: &Transaction,
+        tx: &TransactionContext,
         index: usize,
         resource: &ItemResource,
         amount: u32,
-    ) -> u32 {
-        if self.view == View::Output {
-            return 0;
+    ) -> Result<u32, TransactionError<Overanswered>> {
+        if self.view == View::Output || self.locate(host, index).is_none() {
+            return Ok(0);
         }
         // The controller's insert, whichever slot is asked: ControllerBlockEntityBase.insertSlot.
         self.insert(host, tx, resource, amount)
-            .ok()
-            .filter(|_| self.locate(host, index).is_some())
-            .unwrap_or(0)
     }
 
     fn extract_at(
         &self,
         host: &mut dyn ServerHost,
-        tx: &Transaction,
+        tx: &TransactionContext,
         index: usize,
         resource: &ItemResource,
         amount: u32,
-    ) -> u32 {
+    ) -> Result<u32, TransactionError<Overanswered>> {
         if self.view == View::Input {
-            return 0;
+            return Ok(0);
         }
         match self.locate(host, index) {
             Some((h, i)) => h.extract_at(host, tx, i, resource, amount),
-            None => 0,
+            None => Ok(0),
         }
     }
 
@@ -658,10 +655,10 @@ impl ResourceHandler<ItemResource> for NetHandler {
     fn insert(
         &self,
         host: &mut dyn ServerHost,
-        tx: &Transaction,
+        tx: &TransactionContext,
         resource: &ItemResource,
         amount: u32,
-    ) -> Result<u32, Overanswered> {
+    ) -> Result<u32, TransactionError<Overanswered>> {
         if self.view == View::Output {
             return Ok(0);
         }
@@ -698,10 +695,10 @@ impl ResourceHandler<ItemResource> for NetHandler {
     fn extract(
         &self,
         host: &mut dyn ServerHost,
-        tx: &Transaction,
+        tx: &TransactionContext,
         resource: &ItemResource,
         amount: u32,
-    ) -> Result<u32, Overanswered> {
+    ) -> Result<u32, TransactionError<Overanswered>> {
         if self.view == View::Input {
             return Ok(0);
         }

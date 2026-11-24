@@ -3,8 +3,8 @@
 //! Nothing can be put into it, and using it on a block does nothing.
 
 use mod_api::{
-    FluidKey, FluidResource, FluidStack, ItemKey, ItemPlace, ItemResource, ItemStack,
-    ResourceHandler, ServerHost, Transaction,
+    FluidKey, FluidResource, FluidStack, ItemKey, ItemPlace, ItemResource, ItemStack, Overanswered,
+    ResourceHandler, ServerHost, TransactionContext, TransactionError,
 };
 
 /// What a bucket holds.
@@ -41,31 +41,31 @@ impl ResourceHandler<FluidResource> for XpBucket {
     fn insert_at(
         &self,
         _: &mut dyn ServerHost,
-        _: &Transaction,
+        _: &TransactionContext,
         _: usize,
         _: &FluidResource,
         _: u32,
-    ) -> u32 {
-        0
+    ) -> Result<u32, TransactionError<Overanswered>> {
+        Ok(0)
     }
 
     fn extract_at(
         &self,
         host: &mut dyn ServerHost,
-        tx: &Transaction,
+        tx: &TransactionContext,
         index: usize,
         resource: &FluidResource,
         amount: u32,
-    ) -> u32 {
+    ) -> Result<u32, TransactionError<Overanswered>> {
         let same = index == 0 && resource.fluid().key() == Some(self.xp);
         if !drains(same, amount) {
-            return 0;
+            return Ok(0);
         }
         let empty = ItemResource::of(&ItemStack::of(self.empty));
-        match self.place.exchange(host, tx, &empty, 1) {
-            1 => BUCKET,
+        Ok(match self.place.exchange(host, tx, &empty, 1) {
+            Ok(1) => BUCKET,
             _ => 0,
-        }
+        })
     }
 }
 

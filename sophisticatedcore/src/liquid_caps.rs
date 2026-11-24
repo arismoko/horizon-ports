@@ -5,8 +5,8 @@
 //! the upgrade's own rate, as the original's wrappers limit them.
 
 use mod_api::{
-    EnergyHandler, FluidResource, ItemPlace, ItemResource, ItemStack, LevelRef, ResourceHandler,
-    ServerHost, Transaction,
+    EnergyHandler, FluidResource, ItemPlace, ItemResource, ItemStack, LevelRef, Overanswered,
+    ResourceHandler, ServerHost, TransactionContext, TransactionError,
 };
 
 use crate::contents::Contents;
@@ -54,7 +54,7 @@ impl Backed {
     fn save(
         &self,
         host: &mut dyn ServerHost,
-        tx: &Transaction,
+        tx: &TransactionContext,
         mut st: ItemStack,
         c: &Contents,
     ) -> bool {
@@ -64,7 +64,7 @@ impl Backed {
                 .block_entity(*level, *pos)
                 .and_then(|be| be.set_item_slot(host, tx, 0, Some(st)).ok())
                 .unwrap_or(false),
-            Src::Item(place) => place.exchange(host, tx, &ItemResource::of(&st), 1) == 1,
+            Src::Item(place) => place.exchange(host, tx, &ItemResource::of(&st), 1) == Ok(1),
         }
     }
 
@@ -72,7 +72,7 @@ impl Backed {
     fn with_upgrade<R: Default>(
         &self,
         host: &mut dyn ServerHost,
-        tx: Option<&Transaction>,
+        tx: Option<&TransactionContext>,
         kind: Kind,
         f: impl FnOnce(&mut ItemStack, &Limits) -> (R, bool),
     ) -> R {
@@ -129,46 +129,46 @@ impl ResourceHandler<FluidResource> for Backed {
     fn insert_at(
         &self,
         host: &mut dyn ServerHost,
-        tx: &Transaction,
+        tx: &TransactionContext,
         index: usize,
         resource: &FluidResource,
         amount: u32,
-    ) -> u32 {
+    ) -> Result<u32, TransactionError<Overanswered>> {
         if index != 0 {
-            return 0;
+            return Ok(0);
         }
         let Some(id) = resource
             .to_stack(1)
             .key()
             .and_then(|k| k.id(&*host).map(str::to_owned))
         else {
-            return 0;
+            return Ok(0);
         };
-        self.with_upgrade(host, Some(tx), Kind::Tank, |up, l| {
+        Ok(self.with_upgrade(host, Some(tx), Kind::Tank, |up, l| {
             let mut t = fluids::read_tank(up);
             let n = t.fill(&id, amount, l.tank_cap, Some(l.tank_io));
             if n > 0 {
                 fluids::write_tank(up, &t);
             }
             (n, n > 0)
-        })
+        }))
     }
     fn extract_at(
         &self,
         host: &mut dyn ServerHost,
-        tx: &Transaction,
+        tx: &TransactionContext,
         index: usize,
         resource: &FluidResource,
         amount: u32,
-    ) -> u32 {
+    ) -> Result<u32, TransactionError<Overanswered>> {
         if index != 0 {
-            return 0;
+            return Ok(0);
         }
         let id = resource
             .to_stack(1)
             .key()
             .and_then(|k| k.id(&*host).map(str::to_owned));
-        self.with_upgrade(host, Some(tx), Kind::Tank, |up, l| {
+        Ok(self.with_upgrade(host, Some(tx), Kind::Tank, |up, l| {
             let mut t = fluids::read_tank(up);
             if t.fluid != id {
                 return (0, false);
@@ -178,7 +178,7 @@ impl ResourceHandler<FluidResource> for Backed {
                 fluids::write_tank(up, &t);
             }
             (n, n > 0)
-        })
+        }))
     }
 }
 
@@ -191,8 +191,13 @@ impl EnergyHandler for Backed {
     fn capacity(&self, host: &mut dyn ServerHost) -> u32 {
         self.with_upgrade(host, None, Kind::Battery, |_, l| (l.battery_cap, false))
     }
-    fn insert(&self, host: &mut dyn ServerHost, tx: &Transaction, amount: u32) -> u32 {
-        self.with_upgrade(host, Some(tx), Kind::Battery, |up, l| {
+    fn insert(
+        &self,
+        host: &mut dyn ServerHost,
+        tx: &TransactionContext,
+        amount: u32,
+    ) -> Result<u32, TransactionError<Overanswered>> {
+        Ok(self.with_upgrade(host, Some(tx), Kind::Battery, |up, l| {
             let e = fluids::read_energy(up);
             let n = amount
                 .min(l.battery_cap.saturating_sub(e))
@@ -201,16 +206,21 @@ impl EnergyHandler for Backed {
                 fluids::write_energy(up, e + n);
             }
             (n, n > 0)
-        })
+        }))
     }
-    fn extract(&self, host: &mut dyn ServerHost, tx: &Transaction, amount: u32) -> u32 {
-        self.with_upgrade(host, Some(tx), Kind::Battery, |up, l| {
+    fn extract(
+        &self,
+        host: &mut dyn ServerHost,
+        tx: &TransactionContext,
+        amount: u32,
+    ) -> Result<u32, TransactionError<Overanswered>> {
+        Ok(self.with_upgrade(host, Some(tx), Kind::Battery, |up, l| {
             let e = fluids::read_energy(up);
             let n = amount.min(e).min(l.battery_io);
             if n > 0 {
                 fluids::write_energy(up, e - n);
             }
             (n, n > 0)
-        })
+        }))
     }
 }

@@ -71,7 +71,7 @@ use mod_api::{
     ItemPickedUpPostEvent, ItemResource, ItemStack, KeyAction, KeyRegistration,
     LeftClickBlockEvent, LevelSide, LivingDropsEvent, LivingRef, LoopContext, LootTableLoadEvent,
     MenuClickedEvent, MenuClosedEvent, MenuPart, MenuReplace, ModContainer, MouseButtonPostEvent,
-    OnBlockPlacedByEvent, PayloadBytes, PayloadHandleError, PayloadId, Registrar,
+    OnBlockPlacedByEvent, PayloadBytes, PayloadHandleError, PayloadId, PlacementSource, Registrar,
     RegistrationContext, ReloadContext, ResourceHandler, RightClickBlockEvent, RightClickItemEvent,
     ServerHost, ServerTickEvent, ServerTickPhase, SoundSource, SpawnReason, StateForPlacementEvent,
     TagsUpdatedEvent, TooltipEvent, UseItemOnEvent, UseOnEvent, UseWithoutItemEvent,
@@ -1306,7 +1306,12 @@ impl BlockPart for StorageBlock {
         let block = level.state_block(event.state)?.to_string();
         let kind = storage::kind_of_block(&block)?;
         let ctx = event.context;
-        let facing = storage::placement_facing(kind.family, ctx.yaw, ctx.pitch, ctx.face);
+        let look = match ctx.source {
+            PlacementSource::Directional { direction } => storage::Look::directional(direction),
+            PlacementSource::Player { yaw, pitch, .. } => storage::Look::player(yaw, pitch),
+            _ => storage::Look::player(0.0, 0.0),
+        };
+        let facing = storage::placement_facing(kind.family, look, ctx.face);
         let current = level.state_string(event.state)?;
         let rest = current
             .split_once('[')

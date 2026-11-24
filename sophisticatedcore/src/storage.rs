@@ -18,7 +18,7 @@ use std::sync::Mutex;
 use mod_api::{
     BlockEntityRef, BlockUpdateFlags, Compound, Direction, Host, HostTransaction, Identifier,
     ItemResource, ItemStack, LevelRef, Overanswered, PlayerRef, ResourceHandler, ServerHost,
-    SoundSource, Tag, Transaction,
+    SoundSource, Tag, TransactionContext, TransactionError,
 };
 
 use crate::contents::{
@@ -513,25 +513,69 @@ pub fn placed(
     Some((level, pos))
 }
 
-/// The state a storage is placed in (facing; the wood and a chest's type come in `placed`): a chest faces the
-/// player, a barrel or limited barrel looks at the player (vanilla's BarrelBlock), a shulker box faces away from the
-/// clicked face.
-pub fn placement_facing(family: Family, yaw: f32, pitch: f32, face: Direction) -> &'static str {
-    let horizontal = |yaw: f32| match ((yaw / 90.0 + 0.5).floor() as i32) & 3 {
-        0 => "south",
-        1 => "west",
-        2 => "north",
-        _ => "east",
-    };
-    // The player's look direction, flipped.
-    let toward = |yaw: f32| match horizontal(yaw) {
+/// Where a placement looks: `getHorizontalDirection` and `getNearestLookingDirection`.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Look {
+    pub horizontal: &'static str,
+    pub nearest: &'static str,
+}
+
+impl Look {
+    /// A player's view: `Direction.fromYRot(yaw)`, and straight up or down past 45 degrees of pitch.
+    pub fn player(yaw: f32, pitch: f32) -> Look {
+        let horizontal = match ((yaw / 90.0 + 0.5).floor() as i32) & 3 {
+            0 => "south",
+            1 => "west",
+            2 => "north",
+            _ => "east",
+        };
+        let nearest = if pitch > 45.0 {
+            "down"
+        } else if pitch < -45.0 {
+            "up"
+        } else {
+            horizontal
+        };
+        Look {
+            horizontal,
+            nearest,
+        }
+    }
+
+    /// A `DirectionalPlaceContext` (a dispenser): its direction, north when it points up or down, and always
+    /// down as the nearest looking direction.
+    pub fn directional(direction: Direction) -> Look {
+        let horizontal = match direction {
+            Direction::South => "south",
+            Direction::West => "west",
+            Direction::East => "east",
+            _ => "north",
+        };
+        Look {
+            horizontal,
+            nearest: "down",
+        }
+    }
+}
+
+fn opposite_name(d: &'static str) -> &'static str {
+    match d {
         "south" => "north",
         "west" => "east",
         "north" => "south",
-        _ => "west",
-    };
+        "east" => "west",
+        "up" => "down",
+        _ => "up",
+    }
+}
+
+/// The state a storage is placed in (facing; the wood and a chest's type come in `placed`): a chest faces the
+/// placer (`getHorizontalDirection().getOpposite()`), a barrel or limited barrel looks at it
+/// (`getNearestLookingDirection().getOpposite()`, vanilla's BarrelBlock), a shulker box faces away from the clicked
+/// face.
+pub fn placement_facing(family: Family, look: Look, face: Direction) -> &'static str {
     match family {
-        Family::Chest => toward(yaw),
+        Family::Chest => opposite_name(look.horizontal),
         Family::ShulkerBox => match face {
             Direction::Up => "up",
             Direction::Down => "down",
@@ -540,15 +584,7 @@ pub fn placement_facing(family: Family, yaw: f32, pitch: f32, face: Direction) -
             Direction::West => "west",
             Direction::East => "east",
         },
-        _ => {
-            if pitch > 45.0 {
-                "up"
-            } else if pitch < -45.0 {
-                "down"
-            } else {
-                toward(yaw)
-            }
-        }
+        _ => opposite_name(look.nearest),
     }
 }
 
@@ -1185,7 +1221,7 @@ impl Handler {
     fn store(
         &self,
         host: &mut dyn ServerHost,
-        tx: &Transaction,
+        tx: &TransactionContext,
         mut st: ItemStack,
         c: Contents,
     ) -> bool {
@@ -1292,11 +1328,11 @@ impl ResourceHandler<ItemResource> for Handler {
     fn insert_at(
         &self,
         host: &mut dyn ServerHost,
-        tx: &Transaction,
+        tx: &TransactionContext,
         index: usize,
         resource: &ItemResource,
         amount: u32,
-    ) -> u32 {
+    ) -> Result<u32, TransactionError<Overanswered>> {
         let h: &dyn Host = &*host;
         let Some((st, mut c, lim, void, open)) = self.with(h, |s, c| {
             (
@@ -1307,27 +1343,27 @@ impl ResourceHandler<ItemResource> for Handler {
                 self.passes(h, c, resource.as_stack(), true),
             )
         }) else {
-            return 0;
+            return Ok(0);
         };
         if !open || !crate::menu::may_store(&*host, self.kind, resource.as_stack()) {
-            return 0;
+            return Ok(0);
         }
         if void == Some(true) {
-            return amount;
+            return Ok(amount);
         }
         let banks = crate::compression::Banks::of(h, self.kind, &c);
         if banks.covers(index) {
             let put = banks.insert_at(&mut c, index, resource.as_stack(), amount);
             if put > 0 && !self.store(host, tx, st, c) {
-                return 0;
+                return Ok(0);
             }
-            return if void == Some(false) { amount } else { put };
+            return Ok(if void == Some(false) { amount } else { put });
         }
         let Some(slot) = c.slots.get_mut(index) else {
-            return 0;
+            return Ok(0);
         };
         let have = match slot {
-            Some(cur) if !resource.matches(cur) => return 0,
+            Some(cur) if !resource.matches(cur) => return Ok(0),
             Some(cur) => cur.count(),
             None => 0,
         };
@@ -1335,19 +1371,19 @@ impl ResourceHandler<ItemResource> for Handler {
         if put > 0 {
             *slot = resource.to_stack(have + put);
             if !self.store(host, tx, st, c) {
-                return 0;
+                return Ok(0);
             }
         }
-        if void == Some(false) { amount } else { put }
+        Ok(if void == Some(false) { amount } else { put })
     }
     fn extract_at(
         &self,
         host: &mut dyn ServerHost,
-        tx: &Transaction,
+        tx: &TransactionContext,
         index: usize,
         resource: &ItemResource,
         amount: u32,
-    ) -> u32 {
+    ) -> Result<u32, TransactionError<Overanswered>> {
         let h: &dyn Host = &*host;
         let Some((st, mut c, open)) = self.with(h, |s, c| {
             (
@@ -1356,42 +1392,44 @@ impl ResourceHandler<ItemResource> for Handler {
                 self.passes(h, c, resource.as_stack(), false),
             )
         }) else {
-            return 0;
+            return Ok(0);
         };
         let banks = crate::compression::Banks::of(h, self.kind, &c);
         if banks.covers(index) {
             let shown = banks.shown(&c, index);
             if !open || !shown.is_some_and(|s| resource.matches(&s)) {
-                return 0;
+                return Ok(0);
             }
             let take = banks.take_at(&mut c, index, amount);
             if take > 0 && !self.store(host, tx, st, c) {
-                return 0;
+                return Ok(0);
             }
-            return take;
+            return Ok(take);
         }
         let Some(slot) = c.slots.get_mut(index) else {
-            return 0;
+            return Ok(0);
         };
-        let Some(cur) = slot.clone() else { return 0 };
+        let Some(cur) = slot.clone() else {
+            return Ok(0);
+        };
         if !open || contents::is_unknown(&cur) || !resource.matches(&cur) {
-            return 0;
+            return Ok(0);
         }
         let take = cur.count().min(amount);
         *slot = contents::with_count(&cur, cur.count() - take);
         if take > 0 && !self.store(host, tx, st, c) {
-            return 0;
+            return Ok(0);
         }
-        take
+        Ok(take)
     }
     /// Any slot: stacks onto what matches first, then empty slots (`insertItem` over the whole inventory).
     fn insert(
         &self,
         host: &mut dyn ServerHost,
-        tx: &Transaction,
+        tx: &TransactionContext,
         resource: &ItemResource,
         amount: u32,
-    ) -> Result<u32, Overanswered> {
+    ) -> Result<u32, TransactionError<Overanswered>> {
         let h: &dyn Host = &*host;
         let Some((st, mut c, void, open)) = self.with(h, |s, c| {
             (

@@ -13,7 +13,7 @@ use std::sync::Mutex;
 
 use mod_api::{
     Compound, Direction, FluidResource, FluidStack, Hand, Host, HostTransaction, ItemPlace,
-    ItemStack, LevelRef, PlayerRef, ResourceHandler, ServerHost, Tag, Transaction,
+    ItemStack, LevelRef, PlayerRef, ResourceHandler, ServerHost, Tag, TransactionContext,
 };
 
 use crate::contents::{self, Contents, Nbt, custom_data, put, read_items, set_custom_data};
@@ -401,7 +401,7 @@ type Fluids = dyn ResourceHandler<FluidResource>;
 /// room bound it, and `allow` picks the fluids.
 fn pull(
     host: &mut dyn ServerHost,
-    tx: &Transaction,
+    tx: &TransactionContext,
     src: &Fluids,
     t: &mut Tank,
     (cap, io): (u32, u32),
@@ -423,7 +423,7 @@ fn pull(
         if want == 0 {
             continue;
         }
-        let got = src.extract_at(host, tx, i, &res, want);
+        let got = src.extract_at(host, tx, i, &res, want).unwrap_or(0);
         if got > 0 {
             return t.fill(&id, got, cap, None);
         }
@@ -434,7 +434,7 @@ fn pull(
 /// Puts up to `max` of the tank's fluid into `dst`, in `tx`: how much.
 fn push(
     host: &mut dyn ServerHost,
-    tx: &Transaction,
+    tx: &TransactionContext,
     dst: &Fluids,
     t: &mut Tank,
     io: u32,
@@ -468,11 +468,7 @@ fn tank_tick(host: &mut dyn ServerHost, up: &mut ItemStack, t: &mut Tank, l: &Li
             continue;
         };
         let before = t.clone();
-        let moved = host.transaction(|host, tx| {
-            let place = host
-                .scratch_slots(tx, st.clone())
-                .map_err(|_| ())?
-                .ok_or(())?;
+        let moved = host.scratch_slots(st.clone(), |host, tx, place| {
             let cap = place.capability(host, &mod_api::ITEM_FLUIDS).ok_or(())?;
             let n = if filling {
                 push(host, tx, &*cap, t, l.tank_io, BUCKET, &|_| true)
@@ -481,18 +477,14 @@ fn tank_tick(host: &mut dyn ServerHost, up: &mut ItemStack, t: &mut Tank, l: &Li
                     true
                 })
             };
-            if n == 0 {
-                return Err(());
-            }
-            let (a, b) = host.scratch_take_slots(tx, &place).ok_or(())?;
-            Ok::<_, ()>(a.or(b))
+            if n == 0 { Err(()) } else { Ok(()) }
         });
         match moved {
-            Ok(new) => {
-                slots[i] = new;
+            Ok(((), (a, b))) => {
+                slots[i] = a.or(b);
                 did = true;
             }
-            Err(()) => *t = before,
+            Err(_) => *t = before,
         }
     }
     if did {
@@ -508,24 +500,18 @@ fn item_energy(
     from_item: bool,
     max: u32,
 ) -> Option<(Option<ItemStack>, u32)> {
-    host.transaction(|host, tx| {
-        let place = host
-            .scratch_stack(tx, st.clone())
-            .map_err(|_| ())?
-            .ok_or(())?;
+    host.scratch_stack(st.clone(), |host, tx, place| {
         let cap = place.capability(host, &mod_api::ITEM_ENERGY).ok_or(())?;
         let n = if from_item {
             cap.extract(host, tx, max)
         } else {
             cap.insert(host, tx, max)
-        };
-        if n == 0 {
-            return Err(());
         }
-        let back = host.scratch_take(tx, &place);
-        Ok::<_, ()>((back, n))
+        .unwrap_or(0);
+        if n == 0 { Err(()) } else { Ok(n) }
     })
     .ok()
+    .map(|(n, back)| (back, n))
 }
 
 /// BatteryUpgradeWrapper.tick: the input slot charges the battery, the output slot and the neighbours drain it.
@@ -566,7 +552,7 @@ fn battery_tick(host: &mut dyn ServerHost, up: &mut ItemStack, site: &Site, l: &
             };
             let want = e.min(l.battery_io);
             let put = host
-                .transaction(|host, tx| Ok::<u32, ()>(h.insert(host, tx, want)))
+                .transaction(|host, tx| Ok::<u32, ()>(h.insert(host, tx, want).unwrap_or(0)))
                 .unwrap_or(0);
             e -= put.min(e);
         }
@@ -885,7 +871,7 @@ fn world_out(
         return false;
     }
     let placed = host.transaction(|host, tx| {
-        if site.level.place_fluid(host, at, key, None, false, tx) {
+        if site.level.place_fluid(host, at, key, None, false, tx) == Ok(true) {
             Ok(())
         } else {
             Err(())
@@ -919,7 +905,12 @@ fn world_in(
         {
             let before = tank.clone();
             let got = host.transaction(|host, tx| {
-                let st = site.level.pickup_fluid(host, p, None, tx).ok_or(())?;
+                let st = site
+                    .level
+                    .pickup_fluid(host, p, None, tx)
+                    .ok()
+                    .flatten()
+                    .ok_or(())?;
                 let id = st
                     .key()
                     .and_then(|k| k.id(&*host).map(str::to_owned))

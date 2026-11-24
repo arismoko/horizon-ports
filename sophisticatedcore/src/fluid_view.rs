@@ -6,7 +6,7 @@
 
 use mod_api::{
     FluidResource, Host, HostTransaction, ItemPlace, ItemStack, PlayerRef, ResourceHandler,
-    ServerHost, Transaction,
+    ServerHost,
 };
 
 use crate::contents::{self, Contents};
@@ -344,11 +344,7 @@ fn up_of_tank(host: &dyn Host, c: &Contents) -> ItemStack {
 /// The fluid a container in `place` holds, if any.
 fn held_fluid(host: &mut dyn ServerHost, st: &ItemStack) -> Option<String> {
     let mut found = None;
-    let _ = host.transaction(|host, tx: &Transaction| {
-        let place = host
-            .scratch_stack(tx, st.clone())
-            .map_err(|_| ())?
-            .ok_or(())?;
+    let _ = host.scratch_stack(st.clone(), |host, _, place| {
         let cap = place.capability(host, &mod_api::ITEM_FLUIDS).ok_or(())?;
         for i in 0..cap.size(host) {
             if cap.amount(host, i) > 0

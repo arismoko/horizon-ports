@@ -876,7 +876,7 @@ pub fn interact(
                 continue;
             }
             let got = host
-                .transaction(|host, tx| Ok::<u32, ()>(handler.extract_at(host, tx, i, &res, fits)))
+                .transaction(|host, tx| handler.extract_at(host, tx, i, &res, fits))
                 .unwrap_or(0);
             if got > 0 {
                 c.add(&*host, &stack, got);
