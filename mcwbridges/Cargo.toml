@@ -1,0 +1,10 @@
+[package]
+name = "mod-mcwbridges"
+version = "0.5.0"
+edition = "2024"
+license = "MIT"
+description = "Macaw's Bridges for Sunrise: declarations and behaviour on the typed mod API; original assets and data load from the player's own jar."
+publish = false
+
+[dependencies]
+sunrise-mod-api = { path = ".sunrise/sdk/api/crates/sunrise-mod-api" }

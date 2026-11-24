@@ -1,0 +1,12 @@
+{
+  "template": "minecraft:iron_ingot",
+  "components": {
+    "minecraft:lore": [
+      {
+        "translate": "mcwbridges.pliers.desc",
+        "color": "gray",
+        "italic": false
+      }
+    ]
+  }
+}
