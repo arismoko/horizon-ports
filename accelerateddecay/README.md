@@ -9,7 +9,7 @@ A port of [Accelerated Decay](https://github.com/ErrorMikey/AcceleratedDecay) (2
 - Watches server block state updates on leaves (`#minecraft:leaves`). When an existing leaf updates to `distance=7` and `persistent=false` (no longer supported by a log), its position is added to that dimension's decay queue.
 - Newly placed or bone-mealed tree leaves are left alone because the previous block was not already in `#minecraft:leaves`, and player-placed leaves (`persistent=true`) never decay.
 - At the end of each server level tick, up to 5 queued leaves are removed in order, dropping their normal vanilla loot (respecting `minecraft:block_drops`), keeping fluids for waterlogged leaves, and emitting `minecraft:block_destroy`.
-- Only the first leaf broken in a tick plays break sound and particles, keeping client sound and particle load low while a canopy clears.
+- Only the first queued position taken in a tick plays break sound and particles, keeping client sound and particle load low while a canopy clears.
 - Each dimension's remaining decay queue is saved with the level (`accelerateddecay:break_data`), so leaves finish decaying after a save and reload.
 - Works with any vanilla or modded tree using `#minecraft:leaves` and `#minecraft:logs`, and does not fire player block-break events.
 
@@ -17,7 +17,6 @@ Install it on the server (or in single player); clients do not need the mod to j
 
 ## Differences from the original
 
-- Before breaking a queued leaf, the port also re-checks that it is still non-persistent at `distance=7` (in addition to `#minecraft:leaves`), so a leaf re-supported by a placed log or replaced with a player-placed leaf before its tick arrives is spared.
 - A queued position whose chunk is currently unloaded is skipped rather than force-loading the chunk; vanilla random ticks handle it once the chunk is visited again.
 
 ## Building

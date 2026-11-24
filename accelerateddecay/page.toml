@@ -11,7 +11,6 @@ Server-side only: works in single player and on servers without requiring client
 
 Differences from the original:
 
-- Before breaking a queued leaf, the port also re-checks that it is still non-persistent at `distance=7`, sparing leaves re-supported by a placed log or replaced with a player-placed leaf.
 - Queued positions in unloaded chunks are skipped instead of force-loading chunks.
 
 A port of Accelerated Decay by ErrorMikey, under the GPL-3.0-only licence.

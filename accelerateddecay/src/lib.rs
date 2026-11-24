@@ -6,15 +6,15 @@
 //! are in `#minecraft:leaves` (preventing newly placed or bone-mealed trees from decaying) and
 //! `new` has `persistent=false` and `distance=7`. Positions are staged in memory until
 //! `level_tick_post`, which merges them into the level's persistent `accelerateddecay:break_data`
-//! attachment and breaks up to 5 still-decaying leaves per tick, playing break sound and
-//! particles only for the first leaf broken in that tick.
+//! attachment and breaks up to 5 queued leaves per tick, playing break sound and particles only
+//! for the first position taken in that tick.
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::sync::Mutex;
 
 use mod_api::{
     AttachmentCodec, AttachmentError, AttachmentType, BlockChangedEvent, Compound,
-    GameEventContext, Holder, Hooks, HostBlockStates, HostSide, JavaString, LevelHost, LevelRef,
-    LevelTickPostEvent, LevelUnloadEvent, Registrar, RegistrationContext, ServerHost, Tag,
+    GameEventContext, Holder, Hooks, HostSide, JavaString, LevelHost, LevelRef, LevelTickPostEvent,
+    LevelUnloadEvent, Registrar, RegistrationContext, ServerHost, Tag,
 };
 
 /// Block tag identifying leaves eligible for accelerated decay.
@@ -135,8 +135,9 @@ static BREAK_DATA: AttachmentType<BreakQueue> = AttachmentType {
     sync: false,
 };
 
-/// Break a queued leaf if it is loaded and still a non-persistent `distance=7` leaf in
-/// `#minecraft:leaves`. Returns `true` when the block was removed.
+/// Break a queued block if it is loaded and still in `#minecraft:leaves`, as the original's
+/// tick does (it checks only the tag: a leaf re-supported since it was queued still breaks).
+/// Returns `true` when the block was removed.
 fn break_decaying_leaf(
     host: &mut dyn ServerHost,
     level: LevelRef,
@@ -147,15 +148,6 @@ fn break_decaying_leaf(
         return false;
     };
     if host.block_in_tag(state.block(), LEAVES_TAG) != Some(true) {
-        return false;
-    }
-    let decaying = {
-        let states = host.block_states();
-        let persistent = state.property(&states, "persistent").ok().flatten();
-        let distance = state.property(&states, "distance").ok().flatten();
-        is_decayable_leaf(persistent, distance)
-    };
-    if !decaying {
         return false;
     }
 
@@ -266,14 +258,13 @@ impl Hooks for Mod {
             .unwrap_or_default();
         queue.extend(staged);
 
-        let mut played_effect = false;
-        for _ in 0..MAX_BREAKS_PER_TICK {
+        // As the original: only the first position taken each tick plays the break sound and
+        // particles, even when that one is skipped.
+        for i in 0..MAX_BREAKS_PER_TICK {
             let Some(pos) = queue.pop_front() else {
                 break;
             };
-            if break_decaying_leaf(host, level, pos, !played_effect) {
-                played_effect = true;
-            }
+            break_decaying_leaf(host, level, pos, i == 0);
         }
 
         // Fold any transitions triggered during this tick's breaks so they persist on save.
