@@ -4,10 +4,10 @@ use mod_api::{ClientHost, DrawContext};
 
 use crate::client::{
     SharedState, apply_alignment, apply_pose_now, clear_name_focus, click_sound, confirm_active,
-    draw_button_bg, draw_centered_str, draw_checkbox_bg, draw_slider_track, flush_dirty,
-    get_clamp_rotations, get_clipboard, get_first_pose_index, get_move_increment_index, lock,
-    send_edit, send_vt_trigger, set_clamp_rotations, set_clipboard, set_confirm,
-    set_first_pose_index, set_move_increment_index, switch_tab, tr,
+    draw_button_bg, draw_centered_str, draw_checkbox_bg, draw_slider_track, flush_and_send_edit,
+    flush_dirty, get_clamp_rotations, get_clipboard, get_first_pose_index,
+    get_move_increment_index, lock, send_edit, send_vt_trigger, set_clamp_rotations, set_clipboard,
+    set_confirm, set_first_pose_index, set_move_increment_index, switch_tab, tr,
 };
 use crate::commands::{
     VT_CHECK_TARGET, VT_LOCK, VT_SWAP_MAINHAND_HEAD, VT_SWAP_MAINHAND_OFFHAND, VT_TOOL_RACK,
@@ -1169,17 +1169,19 @@ impl ScreenWidget for StyleCheckboxWidget {
         }
         let mut s = lock(&self.state);
         clear_name_focus(&mut s);
-        flush_dirty(host, &mut s);
+        let prev = s.stand.clone();
         let next = !self.option.get(&s.stand);
         self.option.set(&mut s.stand, next);
-        send_edit(
+        if !flush_and_send_edit(
             host,
             &mut s,
-            &EditMessage::Style {
+            EditMessage::Style {
                 option: self.option,
                 value: next,
             },
-        );
+        ) {
+            s.stand = prev;
+        }
         click_sound(host);
         true
     }

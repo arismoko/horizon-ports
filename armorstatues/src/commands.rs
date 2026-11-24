@@ -3,16 +3,20 @@
 use std::collections::VecDeque;
 use std::sync::{LazyLock, Mutex, PoisonError};
 
+use mod_api::client::widgets::{filter_text, is_allowed_chat_character, utf16_len};
 use mod_api::text::TextStyle;
 use mod_api::{ClientHost, Text};
 
 use crate::model::{
-    ALL_SLOTS_DISABLED, Alignment, DEFAULT_POSE, DEFAULT_SCALE, EditMessage, POSES, SCALE_BONUS_ID,
-    StyleOption,
+    ALL_SLOTS_DISABLED, Alignment, DEFAULT_POSE, DEFAULT_SCALE, EditMessage, MAX_NAME_LEN, POSES,
+    SCALE_BONUS_ID, StyleOption,
 };
 
 pub const COMMAND_DELAY_TICKS: i32 = 5;
 pub const DEFAULT_VT_DELAY_TICKS: i32 = 20;
+/// Vanilla `ServerboundChatCommandPacket` / `SharedConstants.MAX_CHAT_LENGTH` limit in UTF-16
+/// code units (excluding the leading `/`).
+pub const MAX_CHAT_COMMAND_LEN: usize = 256;
 const MAX_INCREMENTAL_OPERATIONS: usize = 12;
 
 // Vanilla Tweaks Armor Statues datapack trigger IDs (`VanillaTweaksDataSyncHandler`).
@@ -71,6 +75,12 @@ struct CommandQueue {
     countdown: i32,
 }
 
+#[derive(Debug, PartialEq, Eq)]
+enum EnqueueError {
+    Busy,
+    InvalidCommand,
+}
+
 impl CommandQueue {
     const fn new() -> Self {
         Self {
@@ -81,6 +91,44 @@ impl CommandQueue {
             countdown: 0,
         }
     }
+
+    fn enqueue(
+        &mut self,
+        entity_id: u32,
+        vanilla_tweaks: bool,
+        delay_ticks: i32,
+        batches: Vec<Vec<String>>,
+    ) -> Result<(), EnqueueError> {
+        if batches.is_empty() {
+            return Ok(());
+        }
+        if !batches_are_valid(&batches) {
+            return Err(EnqueueError::InvalidCommand);
+        }
+        if self.batches.is_empty() {
+            self.target_entity_id = None;
+        } else if self.target_entity_id.is_some() {
+            return Err(EnqueueError::Busy);
+        }
+        self.batches.extend(batches);
+        self.target_entity_id = Some(entity_id);
+        self.vanilla_tweaks = vanilla_tweaks;
+        self.delay_ticks = delay_ticks;
+        Ok(())
+    }
+}
+
+/// Returns true if `cmd` (without the leading `/`) fits vanilla's 256-unit
+/// `ServerboundChatCommandPacket` limit and contains only allowed chat characters
+/// (no `§`, `0x00..=0x1f`, or `0x7f`).
+pub fn command_is_valid(cmd: &str) -> bool {
+    !cmd.is_empty()
+        && utf16_len(cmd) <= MAX_CHAT_COMMAND_LEN
+        && cmd.chars().all(is_allowed_chat_character)
+}
+
+pub fn batches_are_valid(batches: &[Vec<String>]) -> bool {
+    batches.iter().flatten().all(|cmd| command_is_valid(cmd))
 }
 
 static QUEUE: LazyLock<Mutex<CommandQueue>> = LazyLock::new(|| Mutex::new(CommandQueue::new()));
@@ -114,14 +162,31 @@ fn fmt_float(v: f32) -> String {
     format!("{}f", s.trim_end_matches('0').trim_end_matches('.'))
 }
 
+fn truncate_utf16(s: &str, max_units: usize) -> &str {
+    let mut units = 0;
+    for (idx, c) in s.char_indices() {
+        let next = units + c.len_utf16();
+        if next > max_units {
+            return &s[..idx];
+        }
+        units = next;
+    }
+    s
+}
+
+/// Filters disallowed chat characters (`StringUtil.filterText`: strips `§`, `0x00..=0x1f`, and
+/// `0x7f`), trims whitespace, and caps at `MAX_NAME_LEN` UTF-16 code units.
+fn sanitize_name(name: &str) -> String {
+    let filtered = filter_text(name, false);
+    truncate_utf16(filtered.trim(), MAX_NAME_LEN).to_owned()
+}
+
 fn escape_snbt_string(s: &str) -> String {
     let mut out = String::with_capacity(s.len());
     for c in s.chars() {
         match c {
             '\\' => out.push_str("\\\\"),
             '"' => out.push_str("\\\""),
-            '\n' => out.push_str("\\n"),
-            '\r' => out.push_str("\\r"),
             _ => out.push(c),
         }
     }
@@ -148,13 +213,13 @@ pub fn build_data_commands(
     let sel = stand_selector(pos);
     match msg {
         EditMessage::Name(name) => {
-            let trimmed = name.trim();
-            let snbt = if trimmed.is_empty() {
+            let sanitized = sanitize_name(name);
+            let snbt = if sanitized.is_empty() {
                 "{CustomName:\"\",CustomNameVisible:0b}".to_owned()
             } else {
                 format!(
                     "{{CustomName:\"{}\",CustomNameVisible:1b}}",
-                    escape_snbt_string(trimmed)
+                    escape_snbt_string(&sanitized)
                 )
             };
             vec![vec![format!("data merge entity {sel} {snbt}")]]
@@ -439,8 +504,50 @@ fn validate_target(host: &mut dyn ClientHost, entity_id: u32, vanilla_tweaks: bo
     true
 }
 
+pub struct BuiltEdits {
+    pub batches: Vec<Vec<String>>,
+    pub pos: [f64; 3],
+    pub yaw: f32,
+    pub pose: [[f32; 3]; 6],
+}
+
+/// Builds combined command batches for a sequence of `(EditMessage, is_mirrored)` edits,
+/// advancing simulated `(pos, yaw, pose)` between steps so multi-edit operations (alignments,
+/// multi-field dirty flushes) enqueue and finalize once.
+pub fn build_edits_batches(
+    vanilla_tweaks: bool,
+    mut pos: [f64; 3],
+    mut yaw: f32,
+    mut pose: [[f32; 3]; 6],
+    edits: &[(EditMessage, bool)],
+) -> BuiltEdits {
+    let mut batches = Vec::new();
+    for (msg, is_mirrored) in edits {
+        let step = if vanilla_tweaks {
+            build_vt_commands(pos, yaw, &pose, msg, *is_mirrored)
+        } else {
+            build_data_commands(pos, &pose, msg)
+        };
+        batches.extend(step);
+        match msg {
+            EditMessage::Position(next_pos) => pos = *next_pos,
+            EditMessage::Rotation(next_yaw) => yaw = *next_yaw,
+            EditMessage::Pose(next_pose) => pose = *next_pose,
+            EditMessage::Name(_) | EditMessage::Style { .. } | EditMessage::Scale(_) => {}
+        }
+    }
+    BuiltEdits {
+        batches,
+        pos,
+        yaw,
+        pose,
+    }
+}
+
 /// Enqueues command batches for one operation. Matches `CommandDataSyncHandler`:
-/// refuses with "Queue Not Empty" if an earlier operation is still draining.
+/// refuses with "Queue Not Empty" if an earlier operation is still draining, and refuses any
+/// command exceeding vanilla's 256-unit `ServerboundChatCommandPacket` limit or containing
+/// disallowed chat characters.
 pub fn enqueue_batches(
     host: &mut dyn ClientHost,
     entity_id: u32,
@@ -449,6 +556,9 @@ pub fn enqueue_batches(
 ) -> bool {
     if batches.is_empty() {
         return true;
+    }
+    if !batches_are_valid(&batches) {
+        return false;
     }
     if !validate_target(host, entity_id, vanilla_tweaks) {
         return false;
@@ -460,21 +570,15 @@ pub fn enqueue_batches(
     } else {
         COMMAND_DELAY_TICKS
     };
-    let mut q = lock_queue();
-    if q.batches.is_empty() {
-        q.target_entity_id = None;
-    } else if q.target_entity_id.is_some() {
-        drop(q);
-        chat_failure(host, "data_sync.armorstatues.failure.not_finished");
-        return false;
+    let res = lock_queue().enqueue(entity_id, vanilla_tweaks, delay, batches);
+    match res {
+        Ok(()) => true,
+        Err(EnqueueError::Busy) => {
+            chat_failure(host, "data_sync.armorstatues.failure.not_finished");
+            false
+        }
+        Err(EnqueueError::InvalidCommand) => false,
     }
-    for batch in batches {
-        q.batches.push_back(batch);
-    }
-    q.target_entity_id = Some(entity_id);
-    q.vanilla_tweaks = vanilla_tweaks;
-    q.delay_ticks = delay;
-    true
 }
 
 pub fn enqueue_single_trigger(host: &mut dyn ClientHost, entity_id: u32, trigger_id: i32) -> bool {
@@ -520,7 +624,9 @@ pub fn tick(host: &mut dyn ClientHost) {
     }
     if validate_target(host, entity_id, vt) {
         for cmd in batch {
-            let _ = host.send_chat(&format!("/{cmd}"));
+            if command_is_valid(&cmd) {
+                let _ = host.send_chat(&format!("/{cmd}"));
+            }
         }
     } else {
         let mut q = lock_queue();
@@ -632,6 +738,113 @@ mod tests {
                 vec!["trigger as_trigger set 121".to_owned()],
                 vec!["trigger as_trigger set 56".to_owned()],
             ]
+        );
+    }
+
+    #[test]
+    fn name_command_filters_disallowed_chars_and_caps_at_max_name_len() {
+        let dirty = "  \u{0000}\u{001f}§aHello\n\"World\"\\\u{007f}  ";
+        let cmds = build_data_commands(
+            [1.0, 64.0, 2.0],
+            &DEFAULT_POSE,
+            &EditMessage::Name(dirty.into()),
+        );
+        assert_eq!(cmds.len(), 1);
+        let cmd = &cmds[0][0];
+        assert!(command_is_valid(cmd));
+        assert!(cmd.contains(r#"{CustomName:"aHello\"World\"\\",CustomNameVisible:1b}"#));
+
+        // 60 ASCII chars capped to MAX_NAME_LEN (50).
+        let long_ascii = "a".repeat(MAX_NAME_LEN + 10);
+        let cmds = build_data_commands(
+            [0.0, 64.0, 0.0],
+            &DEFAULT_POSE,
+            &EditMessage::Name(long_ascii),
+        );
+        let expected = format!(
+            "{{CustomName:\"{}\",CustomNameVisible:1b}}",
+            "a".repeat(MAX_NAME_LEN)
+        );
+        assert!(cmds[0][0].contains(&expected));
+
+        // 30 surrogate-pair emoji (60 UTF-16 units) capped to 25 emoji (50 UTF-16 units).
+        let long_emoji = "😀".repeat(30);
+        let cmds = build_data_commands(
+            [0.0, 64.0, 0.0],
+            &DEFAULT_POSE,
+            &EditMessage::Name(long_emoji),
+        );
+        let expected = format!(
+            "{{CustomName:\"{}\",CustomNameVisible:1b}}",
+            "😀".repeat(MAX_NAME_LEN / 2)
+        );
+        assert!(cmds[0][0].contains(&expected));
+
+        // Only forbidden chars and whitespace clears CustomName.
+        let cleared = build_data_commands(
+            [0.0, 64.0, 0.0],
+            &DEFAULT_POSE,
+            &EditMessage::Name("§\u{0007}\u{007f}   ".into()),
+        );
+        assert!(cleared[0][0].contains("{CustomName:\"\",CustomNameVisible:0b}"));
+    }
+
+    #[test]
+    fn queue_refuses_commands_over_256_units_and_enqueues_multi_edit_alignment_atomically() {
+        let mut q = CommandQueue::new();
+        let exact = "a".repeat(MAX_CHAT_COMMAND_LEN);
+        assert!(command_is_valid(&exact));
+        let over = "a".repeat(MAX_CHAT_COMMAND_LEN + 1);
+        assert!(!command_is_valid(&over));
+        assert_eq!(
+            q.enqueue(1, false, COMMAND_DELAY_TICKS, vec![vec![over]]),
+            Err(EnqueueError::InvalidCommand)
+        );
+        assert!(q.batches.is_empty());
+
+        // Over-limit Name command assembled at huge coordinates with escaped quotes is refused.
+        let huge_pos = [1e25, 1e25, -1e25];
+        let quotes = "\"".repeat(MAX_NAME_LEN);
+        let name_batches = build_data_commands(huge_pos, &DEFAULT_POSE, &EditMessage::Name(quotes));
+        assert!(utf16_len(&name_batches[0][0]) > MAX_CHAT_COMMAND_LEN);
+        assert_eq!(
+            q.enqueue(1, false, COMMAND_DELAY_TICKS, name_batches),
+            Err(EnqueueError::InvalidCommand)
+        );
+        assert!(q.batches.is_empty());
+
+        // Alignment produces 4 edits batched into one enqueue without hitting Busy.
+        let edits = vec![
+            (
+                EditMessage::Style {
+                    option: StyleOption::Invisible,
+                    value: true,
+                },
+                false,
+            ),
+            (
+                EditMessage::Style {
+                    option: StyleOption::Immovable,
+                    value: true,
+                },
+                false,
+            ),
+            (EditMessage::Pose(Alignment::Block.pose()), false),
+            (EditMessage::Position([1.5, 64.5, 2.5]), false),
+        ];
+        let built = build_edits_batches(false, [1.0, 64.0, 2.0], 0.0, DEFAULT_POSE, &edits);
+        assert_eq!(built.batches.len(), 4);
+        assert_eq!(built.pos, [1.5, 64.5, 2.5]);
+        assert_eq!(built.pose, Alignment::Block.pose());
+        assert_eq!(
+            q.enqueue(7, false, COMMAND_DELAY_TICKS, built.batches),
+            Ok(())
+        );
+        assert_eq!(q.batches.len(), 4);
+        // Subsequent separate operation while still draining is refused as Busy.
+        assert_eq!(
+            q.enqueue(7, false, COMMAND_DELAY_TICKS, vec![vec![exact]]),
+            Err(EnqueueError::Busy)
         );
     }
 }

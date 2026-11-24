@@ -58,9 +58,9 @@ impl Hooks for Mod {
                 "client_command_delay",
                 "setting.armorstatues.client_command_delay",
                 f64::from(DEFAULT_VT_DELAY_TICKS),
-                f64::from(DEFAULT_VT_DELAY_TICKS),
                 200.0,
                 1.0,
+                f64::from(DEFAULT_VT_DELAY_TICKS),
             )
             .tooltip("setting.armorstatues.client_command_delay.tooltip"),
         );

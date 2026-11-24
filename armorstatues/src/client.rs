@@ -6,11 +6,11 @@ use std::sync::{Arc, LazyLock, Mutex, MutexGuard, OnceLock, PoisonError};
 use mod_api::client::widgets::TextEdit;
 use mod_api::text::{TextContent, TextStyle};
 use mod_api::{
-    ClientHost, DrawContext, Flow, GuiEntity, GuiEntityLook, GuiEntityView, IPayloadContext,
-    Identifier, ItemTooltipEvent, MenuScreen, MenuScreenLayout, MenuScreenOpen, ScreenClosingEvent,
-    ScreenInitPostEvent, ScreenKeyPressedPreEvent, ScreenMouseButtonReleasedPreEvent,
-    ScreenMouseScrolledPreEvent, ScreenRenderBackgroundEvent, ScreenRenderPostEvent, ScreenSlot,
-    ScreenView, SoundPlay, Text, ToServer, decode_payload,
+    ClientHost, DrawContext, EntityRef, Flow, GuiEntity, GuiEntityError, GuiEntityLook,
+    GuiEntityView, IPayloadContext, Identifier, ItemTooltipEvent, MenuScreen, MenuScreenLayout,
+    MenuScreenOpen, ScreenClosingEvent, ScreenInitPostEvent, ScreenKeyPressedPreEvent,
+    ScreenMouseButtonReleasedPreEvent, ScreenMouseScrolledPreEvent, ScreenRenderBackgroundEvent,
+    ScreenRenderPostEvent, ScreenSlot, ScreenView, SoundPlay, Text, ToServer, decode_payload,
 };
 
 use crate::commands;
@@ -57,6 +57,8 @@ static CLIENT_CACHE: LazyLock<Mutex<HashMap<u32, StandSnapshot>>> =
 static EDIT_TOKEN: OnceLock<ToServer<EditMessage>> = OnceLock::new();
 static ACTIVE: LazyLock<Mutex<Option<SharedState>>> = LazyLock::new(|| Mutex::new(None));
 static PENDING_EDITS: LazyLock<Mutex<Vec<PendingEdit>>> = LazyLock::new(|| Mutex::new(Vec::new()));
+static LOGGED_PREVIEW_ERRORS: LazyLock<Mutex<Vec<(&'static str, GuiEntityError)>>> =
+    LazyLock::new(|| Mutex::new(Vec::new()));
 
 pub fn set_edit_token(token: ToServer<EditMessage>) {
     let _ = EDIT_TOKEN.set(token);
@@ -107,38 +109,97 @@ pub fn current_disabled_slots() -> i32 {
         .map_or(0, |st| lock(st).stand.disabled_slots)
 }
 
-struct EditDispatch<'a> {
-    mode: SyncMode,
-    entity_id: u32,
-    prev_pos: [f64; 3],
-    prev_yaw: f32,
-    prev_pose: &'a [[f32; 3]; 6],
-    msg: &'a EditMessage,
-    is_mirrored: bool,
-}
-
-fn dispatch_edit(host: &mut dyn ClientHost, req: EditDispatch<'_>) -> bool {
-    match req.mode {
+/// Dispatches one or more edits as a single atomic operation so multi-edit actions (alignments,
+/// multi-field dirty flushes, pending edit batches) finalize once instead of hitting "Queue Not
+/// Empty" in client-only command modes.
+fn send_edits(
+    host: &mut dyn ClientHost,
+    state: &mut ClientState,
+    edits: &[(EditMessage, bool)],
+) -> bool {
+    if edits.is_empty() {
+        return true;
+    }
+    match state.mode {
         SyncMode::Network => {
             if let Some(token) = EDIT_TOKEN.get() {
-                let _ = token.send(host, req.msg);
+                for (msg, _) in edits {
+                    let _ = token.send(host, msg);
+                }
+            }
+            for (msg, _) in edits {
+                apply_synced_tracking(state, msg);
             }
             true
         }
-        SyncMode::Commands => {
-            let batches = commands::build_data_commands(req.prev_pos, req.prev_pose, req.msg);
-            commands::enqueue_batches(host, req.entity_id, false, batches)
-        }
-        SyncMode::VanillaTweaks => {
-            let batches = commands::build_vt_commands(
-                req.prev_pos,
-                req.prev_yaw,
-                req.prev_pose,
-                req.msg,
-                req.is_mirrored,
+        SyncMode::Commands | SyncMode::VanillaTweaks => {
+            let vanilla_tweaks = state.mode == SyncMode::VanillaTweaks;
+            let built = commands::build_edits_batches(
+                vanilla_tweaks,
+                state.synced_pos,
+                state.synced_yaw,
+                state.synced_pose,
+                edits,
             );
-            commands::enqueue_batches(host, req.entity_id, true, batches)
+            let ok = commands::enqueue_batches(
+                host,
+                state.stand.entity_id,
+                vanilla_tweaks,
+                built.batches,
+            );
+            if ok {
+                state.synced_pos = built.pos;
+                state.synced_yaw = built.yaw;
+                state.synced_pose = built.pose;
+                lock(&CLIENT_CACHE).insert(state.stand.entity_id, state.stand.clone());
+            }
+            ok
         }
+    }
+}
+
+fn dispatch_pending_edits(host: &mut dyn ClientHost, pending: Vec<PendingEdit>) {
+    let mut i = 0;
+    while i < pending.len() {
+        let mode = pending[i].mode;
+        let entity_id = pending[i].entity_id;
+        let mut end = i + 1;
+        while end < pending.len()
+            && pending[end].mode == mode
+            && pending[end].entity_id == entity_id
+        {
+            end += 1;
+        }
+        let group = &pending[i..end];
+        match mode {
+            SyncMode::Network => {
+                if let Some(token) = EDIT_TOKEN.get() {
+                    for edit in group {
+                        let _ = token.send(host, &edit.msg);
+                    }
+                }
+            }
+            SyncMode::Commands | SyncMode::VanillaTweaks => {
+                let vanilla_tweaks = mode == SyncMode::VanillaTweaks;
+                let mut batches = Vec::new();
+                for edit in group {
+                    let step = if vanilla_tweaks {
+                        commands::build_vt_commands(
+                            edit.prev_pos,
+                            edit.prev_yaw,
+                            &edit.prev_pose,
+                            &edit.msg,
+                            false,
+                        )
+                    } else {
+                        commands::build_data_commands(edit.prev_pos, &edit.prev_pose, &edit.msg)
+                    };
+                    batches.extend(step);
+                }
+                let _ = commands::enqueue_batches(host, entity_id, vanilla_tweaks, batches);
+            }
+        }
+        i = end;
     }
 }
 
@@ -152,24 +213,20 @@ fn send_edit_with_hint(
     msg: &EditMessage,
     is_mirrored: bool,
 ) {
-    let ok = dispatch_edit(
-        host,
-        EditDispatch {
-            mode: state.mode,
-            entity_id: state.stand.entity_id,
-            prev_pos: state.synced_pos,
-            prev_yaw: state.synced_yaw,
-            prev_pose: &state.synced_pose,
-            msg,
-            is_mirrored,
-        },
-    );
-    if ok {
-        apply_synced_tracking(state, msg);
-        if state.mode != SyncMode::Network {
-            lock(&CLIENT_CACHE).insert(state.stand.entity_id, state.stand.clone());
-        }
-    }
+    let _ = send_edits(host, state, &[(msg.clone(), is_mirrored)]);
+}
+
+pub fn flush_and_send_edit(
+    host: &mut dyn ClientHost,
+    state: &mut ClientState,
+    msg: EditMessage,
+) -> bool {
+    let mut edits: Vec<(EditMessage, bool)> = take_dirty_edits(state)
+        .into_iter()
+        .map(|m| (m, false))
+        .collect();
+    edits.push((msg, false));
+    send_edits(host, state, &edits)
 }
 
 fn apply_synced_tracking(state: &mut ClientState, msg: &EditMessage) {
@@ -250,56 +307,68 @@ pub fn apply_pose_now(
 }
 
 pub fn apply_alignment(host: &mut dyn ClientHost, state: &mut ClientState, alignment: Alignment) {
+    let pose = alignment.pose();
+    let offset = alignment.offset(state.stand.small);
+    let next_pos = local_position(state.stand.pos, state.stand.yaw, state.stand.pitch, offset);
     if state.mode == SyncMode::VanillaTweaks {
-        state.stand.invisible = true;
-        state.stand.no_gravity = true;
-        state.stand.pose = alignment.pose();
-        state.synced_pose = state.stand.pose;
-        state.dirty_pose = false;
-        let offset = alignment.offset(state.stand.small);
-        let next_pos = local_position(state.stand.pos, state.stand.yaw, state.stand.pitch, offset);
-        state.stand.pos = next_pos;
-        state.synced_pos = next_pos;
-        send_vt_trigger(host, state, commands::vt_alignment_trigger(alignment));
-        lock(&CLIENT_CACHE).insert(state.stand.entity_id, state.stand.clone());
+        if commands::enqueue_single_trigger(
+            host,
+            state.stand.entity_id,
+            commands::vt_alignment_trigger(alignment),
+        ) {
+            state.stand.invisible = true;
+            state.stand.no_gravity = true;
+            state.stand.pose = pose;
+            state.synced_pose = pose;
+            state.dirty_pose = false;
+            state.stand.pos = next_pos;
+            state.synced_pos = next_pos;
+            lock(&CLIENT_CACHE).insert(state.stand.entity_id, state.stand.clone());
+        }
         return;
     }
+
+    let mut edits = Vec::with_capacity(4);
     if !state.stand.invisible {
-        state.stand.invisible = true;
-        send_edit(
-            host,
-            state,
-            &EditMessage::Style {
+        edits.push((
+            EditMessage::Style {
                 option: StyleOption::Invisible,
                 value: true,
             },
-        );
+            false,
+        ));
     }
     if !state.stand.no_gravity {
-        state.stand.no_gravity = true;
-        send_edit(
-            host,
-            state,
-            &EditMessage::Style {
+        edits.push((
+            EditMessage::Style {
                 option: StyleOption::Immovable,
                 value: true,
             },
-        );
+            false,
+        ));
     }
-    let pose = alignment.pose();
-    state.stand.pose = pose;
-    state.dirty_pose = false;
-    send_edit(host, state, &EditMessage::Pose(pose));
+    edits.push((EditMessage::Pose(pose), false));
+    edits.push((EditMessage::Position(next_pos), false));
 
-    let offset = alignment.offset(state.stand.small);
-    let next_pos = local_position(state.stand.pos, state.stand.yaw, state.stand.pitch, offset);
+    let prev_stand = state.stand.clone();
+    state.stand.invisible = true;
+    state.stand.no_gravity = true;
+    state.stand.pose = pose;
     state.stand.pos = next_pos;
-    send_edit(host, state, &EditMessage::Position(next_pos));
+    if send_edits(host, state, &edits) {
+        state.dirty_pose = false;
+    } else {
+        state.stand = prev_stand;
+    }
 }
 
 pub fn flush_dirty(host: &mut dyn ClientHost, state: &mut ClientState) {
-    for msg in take_dirty_edits(state) {
-        send_edit(host, state, &msg);
+    let edits: Vec<(EditMessage, bool)> = take_dirty_edits(state)
+        .into_iter()
+        .map(|msg| (msg, false))
+        .collect();
+    if !edits.is_empty() {
+        let _ = send_edits(host, state, &edits);
     }
 }
 
@@ -442,6 +511,25 @@ fn initial_tab_for(mode: SyncMode) -> Tab {
     }
 }
 
+fn filter_client_custom_name(raw: Option<String>, translated_type: Option<&str>) -> Option<String> {
+    let name = raw?;
+    if name.is_empty() || name == "entity.minecraft.armor_stand" {
+        return None;
+    }
+    if translated_type == Some(name.as_str()) {
+        return None;
+    }
+    Some(name)
+}
+
+/// Reads an armor stand's synced custom name on the client.
+/// `EntityRef::custom_name` (`sunrise-org/sunrise#5380`) is not in the pinned `3d34bbe` SDK, so
+/// filter out the default translated type name that `EntityRef::name` returns for unnamed stands.
+fn read_client_custom_name(host: &dyn ClientHost, entity: EntityRef) -> Option<String> {
+    let default_type = host.translate("entity.minecraft.armor_stand");
+    filter_client_custom_name(entity.name(host), default_type.as_deref())
+}
+
 /// Opens the client-only Armor Statues screen on a server that does not have `armorstatues`.
 pub fn open_client_only_screen(host: &mut dyn ClientHost, entity_id: u32) -> bool {
     let Some(player) = host.local_player() else {
@@ -455,7 +543,7 @@ pub fn open_client_only_screen(host: &mut dyn ClientHost, entity_id: u32) -> boo
     };
     let pos = entity.position(host).unwrap_or([0.0, 0.0, 0.0]);
     let [yaw, pitch] = entity.rotation(host).unwrap_or([0.0, 0.0]);
-    let live_name = entity.name(host).unwrap_or_default();
+    let live_name = read_client_custom_name(host, entity);
     let creative = player.is_creative(host).unwrap_or(false);
 
     let mode = if host.setting_bool("use_vanilla_tweaks_triggers") == Some(true) {
@@ -470,8 +558,8 @@ pub fn open_client_only_screen(host: &mut dyn ClientHost, entity_id: u32) -> boo
         .unwrap_or(StandSnapshot {
             entity_id,
             creative,
-            custom_name: live_name.clone(),
-            custom_name_visible: !live_name.is_empty(),
+            custom_name: live_name.clone().unwrap_or_default(),
+            custom_name_visible: live_name.is_some(),
             show_arms: false,
             small: false,
             invisible: false,
@@ -491,8 +579,8 @@ pub fn open_client_only_screen(host: &mut dyn ClientHost, entity_id: u32) -> boo
     stand.pos = pos;
     stand.yaw = yaw;
     stand.pitch = pitch;
-    if !live_name.is_empty() {
-        stand.custom_name = live_name;
+    if let Some(name) = live_name {
+        stand.custom_name = name;
     }
 
     let initial_tab = initial_tab_for(mode);
@@ -643,6 +731,39 @@ pub fn on_screen_render_background(
     draw_screen_content(host, &shared, origin, event.screen.mouse, event.draw);
 }
 
+/// Draws an armor stand preview via `DrawContext::entity`. Records any `GuiEntityError` once per
+/// `(call_kind, error)` instead of silently discarding it, and falls back to the armor stand item
+/// icon when the engine refuses to draw `minecraft:armor_stand` in a GUI.
+fn draw_stand_preview(
+    host: &dyn ClientHost,
+    draw: &mut dyn DrawContext,
+    entity: &GuiEntity,
+    view: GuiEntityView,
+) {
+    if let Err(err) = draw.entity(entity, view) {
+        let label = match entity {
+            GuiEntity::Existing(_) => "GuiEntity::Existing(armor_stand)",
+            GuiEntity::Kind { .. } => "GuiEntity::Kind(minecraft:armor_stand)",
+            _ => "GuiEntity",
+        };
+        let mut logged = lock(&LOGGED_PREVIEW_ERRORS);
+        if !logged.contains(&(label, err)) {
+            logged.push((label, err));
+            eprintln!("armorstatues: DrawContext::entity({label}) failed: {err:?}");
+        }
+        drop(logged);
+        if let Ok(id) = Identifier::parse("minecraft:armor_stand")
+            && let Some(key) = host.item_key(&id)
+        {
+            let [x0, y0, x1, y1] = view.rect;
+            let icon = 32.0_f32.min((x1 - x0) - 4.0).min((y1 - y0) - 4.0);
+            let ix = ((x0 + x1 - icon) * 0.5).floor();
+            let iy = ((y0 + y1 - icon) * 0.5).floor();
+            draw.item(key, [ix, iy], icon);
+        }
+    }
+}
+
 fn draw_screen_content(
     host: &dyn ClientHost,
     shared: &SharedState,
@@ -684,7 +805,7 @@ fn draw_screen_content(
                     .unwrap_or_else(|| {
                         GuiEntity::with_data("minecraft:armor_stand", stand.preview_nbt(None))
                     });
-                let _ = draw.entity(&entity, view);
+                draw_stand_preview(host, draw, &entity, view);
             }
             Tab::Style => {
                 // Name box background at (14, 30, 76, 12).
@@ -699,7 +820,7 @@ fn draw_screen_content(
                 let center = [left + 52.0, top + 104.0];
                 let view = GuiEntityView::new(rect, 45.0, 0.0625, GuiEntityLook::At(center));
                 let entity = GuiEntity::with_data("minecraft:armor_stand", stand.preview_nbt(None));
-                let _ = draw.entity(&entity, view);
+                draw_stand_preview(host, draw, &entity, view);
             }
             Tab::Poses => {
                 // Main large preview at (5, 40): 76x108 frame, 74x106 scissor, scale 45.
@@ -708,7 +829,7 @@ fn draw_screen_content(
                 let center = [left + 43.0, top + 94.0];
                 let view = GuiEntityView::new(rect, 45.0, 0.0625, GuiEntityLook::At(center));
                 let entity = GuiEntity::with_data("minecraft:armor_stand", stand.preview_nbt(None));
-                let _ = draw.entity(&entity, view);
+                draw_stand_preview(host, draw, &entity, view);
 
                 // 4 pose preset preview cards at (83 + col*62, 9 + row*88), 60x82 frame, 48x70 scissor.
                 let first = get_first_pose_index();
@@ -742,7 +863,7 @@ fn draw_screen_content(
                         "minecraft:armor_stand",
                         stand.preview_nbt(Some(&preset.pose)),
                     );
-                    let _ = draw.entity(&entity, view);
+                    draw_stand_preview(host, draw, &entity, view);
                 }
             }
             Tab::Rotations => {
@@ -752,7 +873,7 @@ fn draw_screen_content(
                 let center = [left + 105.0, top + 94.0];
                 let view = GuiEntityView::new(rect, 30.0, 0.0625, GuiEntityLook::At(center));
                 let entity = GuiEntity::with_data("minecraft:armor_stand", stand.preview_nbt(None));
-                let _ = draw.entity(&entity, view);
+                draw_stand_preview(host, draw, &entity, view);
             }
             Tab::Position => {
                 draw_position_labels(host, draw, origin, None);
@@ -1189,23 +1310,20 @@ pub fn on_screen_closing(_host: &dyn ClientHost, event: &mut ScreenClosingEvent<
 /// Ticks debounced name sync, queued edits, client command queue, confirmation timers, Alt state,
 /// and live position refresh.
 pub fn on_client_tick_post(host: &mut dyn ClientHost) {
-    let pending: Vec<PendingEdit> = std::mem::take(&mut *lock(&PENDING_EDITS));
-    for edit in pending {
-        dispatch_edit(
-            host,
-            EditDispatch {
-                mode: edit.mode,
-                entity_id: edit.entity_id,
-                prev_pos: edit.prev_pos,
-                prev_yaw: edit.prev_yaw,
-                prev_pose: &edit.prev_pose,
-                msg: &edit.msg,
-                is_mirrored: false,
-            },
-        );
+    let active = lock(&ACTIVE).as_ref().cloned();
+    if let Some(shared) = active.as_ref() {
+        let mut s = lock(shared);
+        if s.name_dirty_ticks > 0 {
+            s.name_dirty_ticks -= 1;
+            if s.name_dirty_ticks == 0 {
+                queue_dirty(&mut s);
+            }
+        }
     }
+    let pending: Vec<PendingEdit> = std::mem::take(&mut *lock(&PENDING_EDITS));
+    dispatch_pending_edits(host, pending);
     commands::tick(host);
-    let Some(shared) = lock(&ACTIVE).as_ref().cloned() else {
+    let Some(shared) = active else {
         return;
     };
     let close_now = {
@@ -1215,12 +1333,6 @@ pub fn on_client_tick_post(host: &mut dyn ClientHost) {
             true
         } else {
             s.alt_held = host.modifiers().alt();
-            if s.name_dirty_ticks > 0 {
-                s.name_dirty_ticks -= 1;
-                if s.name_dirty_ticks == 0 {
-                    flush_dirty(host, &mut s);
-                }
-            }
             s.confirm_ticks.retain(|_, ticks| {
                 if *ticks > 0 {
                     *ticks -= 1;
@@ -1701,4 +1813,31 @@ pub fn on_item_tooltip(host: &dyn ClientHost, event: &mut ItemTooltipEvent<'_>) 
     )
     .with_style(gray);
     let _ = event.lines.push(line, u32::MAX);
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn filter_client_custom_name_ignores_default_type_name() {
+        assert_eq!(
+            filter_client_custom_name(Some("Armor Stand".into()), Some("Armor Stand")),
+            None
+        );
+        assert_eq!(
+            filter_client_custom_name(Some("Rüstungsständer".into()), Some("Rüstungsständer")),
+            None
+        );
+        assert_eq!(
+            filter_client_custom_name(Some("entity.minecraft.armor_stand".into()), None),
+            None
+        );
+        assert_eq!(filter_client_custom_name(Some(String::new()), None), None);
+        assert_eq!(filter_client_custom_name(None, Some("Armor Stand")), None);
+        assert_eq!(
+            filter_client_custom_name(Some("Guard".into()), Some("Armor Stand")),
+            Some("Guard".into())
+        );
+    }
 }
