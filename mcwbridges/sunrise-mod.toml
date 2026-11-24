@@ -1,0 +1,19 @@
+# Macaw's Bridges for Sunrise: declarations and behaviour only; assets and data come from the original jar.
+id = "mcwbridges"
+name = "Macaw's Bridges"
+version = "0.5.0"
+description = "Bridges, rail bridges, rope bridges, bridge stairs, piers, torches, lanterns, and pliers."
+authors = ["Sketch Macaw", "Sketch Peachy", "arismoko"]
+license = "MIT"
+credits = "Original mod by Sketch Macaw and Sketch Peachy (All Rights Reserved; assets and data loaded from the player's own jar); Sunrise port by arismoko."
+homepage = "https://github.com/arismoko/sunrise-ports"
+side = "both"
+
+[native]
+game = "26.3"
+sunrise = "3d34bbe63d71bb24c098c1e4021ef866be12fe2d"
+
+[[jar]]
+id = "mcwbridges"
+version = "3.1.2"
+sha512 = "e2ffde5f64a09d85ef0b3a80998c41ae672968dd70ba55add2d4efcdb5ef89f4ec8611e450d52b9b15a77f4d51fb7faf770d73ef9480248f34cb7f76442a9ea9"
