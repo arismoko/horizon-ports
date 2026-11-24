@@ -8,18 +8,20 @@
 //! | `sleep_finished_time` | this module | the morning notice |
 //! | `player_bed_enter`, `player_bed_leave` | this module | the "is now sleeping" and "has left their bed" notices |
 //! | `screen_render_post` | this module | the clock drawn on the in-bed screen |
+//! | `register` | this module | notes whether SleepWarp or Sleep Tight is loaded, which turns sleep off |
 //! | `register_configs`, `config_loading`, `config_reloading` | this module | `config/betterdays-common.toml` and `config/betterdays-client.toml` |
 
 pub mod rules;
 
 use std::ops::ControlFlow;
 use std::sync::Mutex;
+use std::sync::atomic::{AtomicBool, Ordering};
 
 use mod_api::{
     Config as ModConfig, ConfigContext, ConfigKind, ConfigLoadingEvent, ConfigReloadingEvent, Flow,
     GameRuleValue, Hooks, HostSide, Identifier, LevelRef, LevelTickPostEvent, PlayerBedEnterEvent,
-    PlayerBedLeaveEvent, PlayerRef, RegisterConfigsEvent, ScreenRenderPostEvent, ServerHost,
-    SleepFinishedTimeEvent, Text,
+    PlayerBedLeaveEvent, PlayerRef, RegisterConfigsEvent, Registrar, RegistrationContext,
+    ScreenRenderPostEvent, ServerHost, SleepFinishedTimeEvent, Text,
 };
 use rules::{Client, Common, Interpolator, Message, Target};
 
@@ -51,6 +53,15 @@ fn with_common<R>(f: impl FnOnce(&Common, Option<&Interpolator>) -> R) -> R {
         Loaded { common, spline }
     });
     f(&loaded.common, loaded.spline.as_ref())
+}
+
+/// Whether SleepWarp or Sleep Tight is loaded, read at startup: either one turns the sleep
+/// feature off (`ConfigHandler.Common.enableSleepFeature`).
+static SLEEP_MOD_LOADED: AtomicBool = AtomicBool::new(false);
+
+/// `ConfigHandler.Common.enableSleepFeature`: the setting, unless another sleep mod is loaded.
+fn sleep_feature(common: &Common) -> bool {
+    common.sleep_feature && !SLEEP_MOD_LOADED.load(Ordering::Relaxed)
 }
 
 fn client() -> Client {
@@ -178,7 +189,7 @@ fn tick_overworld(host: &mut dyn ServerHost, level: LevelRef) {
     };
     let (active, sleeping) = sleep_counts(&*host, level);
     let rate = with_common(|common, spline| {
-        let sleep = if common.sleep_feature {
+        let sleep = if sleep_feature(common) {
             common.sleep_speed(sleeping, active)
         } else {
             None
@@ -223,7 +234,7 @@ fn enter_notice(host: &mut dyn ServerHost, event: &PlayerBedEnterEvent<'_>) {
         return;
     }
     let (active, sleeping) = sleep_counts(&*host, level);
-    let message = with_common(|common, _| common.sleep_feature.then(|| common.enter_bed.clone()));
+    let message = with_common(|common, _| sleep_feature(common).then(|| common.enter_bed.clone()));
     if let Some(message) = message.filter(|_| active > 1) {
         let variables = notice_variables(event.name, active, sleeping + 1);
         send(host, &message, level, &variables);
@@ -261,7 +272,7 @@ impl Hooks for Mod {
             && let Some(level) = host.level(OVERWORLD)
         {
             let message =
-                with_common(|common, _| common.sleep_feature.then(|| common.morning.clone()));
+                with_common(|common, _| sleep_feature(common).then(|| common.morning.clone()));
             if let Some(message) = message {
                 let (active, sleeping) = sleep_counts(&*host, level);
                 send(
@@ -290,7 +301,7 @@ impl Hooks for Mod {
         }
         let (active, sleeping) = sleep_counts(&*host, level);
         let message =
-            with_common(|common, _| common.sleep_feature.then(|| common.leave_bed.clone()));
+            with_common(|common, _| sleep_feature(common).then(|| common.leave_bed.clone()));
         let others = sleeping.saturating_sub(1);
         if let Some(message) = message.filter(|_| active > 1 && others > 0) {
             let variables = notice_variables(event.name, active, others);
@@ -306,7 +317,7 @@ impl Hooks for Mod {
         if event.screen.id != "chat" {
             return;
         }
-        let shown = with_common(|common, _| common.sleep_feature && common.display_bed_clock);
+        let shown = with_common(|common, _| sleep_feature(common) && common.display_bed_clock);
         let sleeping = host
             .local_player()
             .is_some_and(|player| asleep(host, player));
@@ -326,6 +337,14 @@ impl Hooks for Mod {
             client.clock_origin(width, height),
             client.scale as f32,
         );
+    }
+
+    fn register(&self, _: &mut dyn Registrar, context: &RegistrationContext) {
+        let other = context
+            .mods()
+            .ids()
+            .any(|id| id == "sleepwarp" || id == "sleep_tight");
+        SLEEP_MOD_LOADED.store(other, Ordering::Relaxed);
     }
 
     fn register_configs(&self, _: &dyn ConfigContext, event: &mut RegisterConfigsEvent<'_>) {
