@@ -23,3 +23,11 @@ Differences from the original:
 A port of Armor Statues and Statue Menus by Fuzs, under the MPL-2.0 licence.
 """
 categories = ["decoration", "utility"]
+
+[[screenshots]]
+path = "page/rotations.png"
+caption = "The Rotations tab: square and vertical sliders for each body part around the stand preview."
+
+[[screenshots]]
+path = "page/equipment.png"
+caption = "The Equipment tab: the stand's armour and hands beside your inventory."
