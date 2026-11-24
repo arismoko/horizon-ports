@@ -1,7 +1,7 @@
 # Macaw's Bridges for Sunrise: declarations and behaviour only; assets and data come from the original jar.
 id = "mcwbridges"
 name = "Macaw's Bridges"
-version = "0.5.0"
+version = "0.5.1"
 description = "Bridges, rail bridges, rope bridges, bridge stairs, piers, torches, lanterns, and pliers."
 authors = ["Sketch Macaw", "Sketch Peachy", "arismoko"]
 license = "MIT"

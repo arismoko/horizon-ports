@@ -1,6 +1,6 @@
 [package]
 name = "mod-mcwbridges"
-version = "0.5.0"
+version = "0.5.1"
 edition = "2024"
 license = "MIT"
 description = "Macaw's Bridges for Sunrise: declarations and behaviour on the typed mod API; original assets and data load from the player's own jar."
