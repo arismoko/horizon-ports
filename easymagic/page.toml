@@ -21,3 +21,11 @@ Differences from the original:
 A port of Easy Magic by Fuzs, under the MPL-2.0 licence.
 """
 categories = ["game-mechanics", "utility"]
+
+[[screenshots]]
+path = "page/offers.png"
+caption = "The enchanting table keeps its sword and lapis, with the reroll button beside the offers."
+
+[[screenshots]]
+path = "page/tooltip.png"
+caption = "The tooltip of a book in a chiseled bookshelf, shown while looking at it."
