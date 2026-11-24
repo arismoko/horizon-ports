@@ -1,0 +1,15 @@
+Dynamic FPS for Sunrise 26.3 (version 0.5.0)
+
+A port of Dynamic FPS (3.11.10) by juliand665 and LostLuma.
+Original source: https://github.com/juliand665/Dynamic-FPS
+Original licence: MIT
+
+Ported to Sunrise by arismoko: the rules and client hooks are implemented in Rust on
+Sunrise's typed mod API (no Java code is included). Jorungandr's MIT-licensed Horizon
+native port (https://github.com/Jorungandr/horizon-rust-mods) was read for orientation.
+This port is distributed under the same licence as the original (MIT); the licence text
+is in LICENSE.
+
+None of the original project's All-Rights-Reserved battery textures are included: the
+mod icon, HUD battery indicator graphics, and battery toast icons are original work for
+this port.
