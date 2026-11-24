@@ -6,13 +6,17 @@ use crate::client::{
     SharedState, apply_alignment, apply_pose_now, clear_name_focus, click_sound, confirm_active,
     draw_button_bg, draw_centered_str, draw_checkbox_bg, draw_slider_track, flush_dirty,
     get_clamp_rotations, get_clipboard, get_first_pose_index, get_move_increment_index, lock,
-    send_edit, set_clamp_rotations, set_clipboard, set_confirm, set_first_pose_index,
-    set_move_increment_index, switch_tab, tr,
+    send_edit, send_vt_trigger, set_clamp_rotations, set_clipboard, set_confirm,
+    set_first_pose_index, set_move_increment_index, switch_tab, tr,
+};
+use crate::commands::{
+    VT_CHECK_TARGET, VT_LOCK, VT_SWAP_MAINHAND_HEAD, VT_SWAP_MAINHAND_OFFHAND, VT_TOOL_RACK,
+    VT_UNLOCK,
 };
 use crate::model::{
     Alignment, DEFAULT_POSE, DEFAULT_SCALE, DEGREES_SNAP_INTERVAL, EditMessage, MAX_SCALE,
-    MIN_SCALE, MOVE_INCREMENTS, MUTATORS, POSES, SQUARE_SLIDER_KEY_STEP, StyleOption, Tab,
-    format_four_decimals, from_log_scale, from_wrapped_degrees, mirror_pose, random_pose,
+    MIN_SCALE, MOVE_INCREMENTS, MUTATORS, POSES, SQUARE_SLIDER_KEY_STEP, StyleOption, SyncMode,
+    Tab, format_four_decimals, from_log_scale, from_wrapped_degrees, mirror_pose, random_pose,
     round_sixteenth, snap_value, to_log_scale, to_wrapped_degrees,
 };
 
@@ -35,25 +39,26 @@ pub const CONFIRM_SCALE_RESET: u32 = 6;
 pub const CONFIRM_CENTERED: u32 = 7;
 pub const CONFIRM_CORNERED: u32 = 8;
 pub const CONFIRM_ALIGN_BASE: u32 = 10;
+pub const CONFIRM_VT_BASE: u32 = 20;
 
-pub fn tabs_start_y() -> f32 {
-    let n = Tab::ALL.len() as f32;
+pub fn tabs_start_y(count: usize) -> f32 {
+    let n = count as f32;
     let total = n * TAB_H + (n - 1.0);
     ((PANEL_H - total) / 2.0).floor()
 }
 
-pub fn tab_rect(origin: [f32; 2], index: usize) -> [f32; 4] {
+pub fn tab_rect(origin: [f32; 2], count: usize, index: usize) -> [f32; 4] {
     [
         origin[0] - 32.0,
-        origin[1] + tabs_start_y() + TAB_STRIDE * index as f32,
+        origin[1] + tabs_start_y(count) + TAB_STRIDE * index as f32,
         32.0,
         TAB_H,
     ]
 }
 
-pub fn hovered_tab(origin: [f32; 2], mouse: [f32; 2]) -> Option<Tab> {
-    for (i, &tab) in Tab::ALL.iter().enumerate() {
-        let [x, y, w, h] = tab_rect(origin, i);
+pub fn hovered_tab(origin: [f32; 2], tabs: &[Tab], mouse: [f32; 2]) -> Option<Tab> {
+    for (i, &tab) in tabs.iter().enumerate() {
+        let [x, y, w, h] = tab_rect(origin, tabs.len(), i);
         if mouse[0] > x && mouse[0] <= x + w && mouse[1] > y && mouse[1] <= y + h {
             return Some(tab);
         }
@@ -99,8 +104,9 @@ pub struct TabBarWidget {
 impl ScreenWidget for TabBarWidget {
     fn bounds(&self) -> [f32; 4] {
         let s = lock(&self.state);
-        let top = s.origin[1] + tabs_start_y();
-        let h = Tab::ALL.len() as f32 * TAB_STRIDE;
+        let n = s.tabs().len();
+        let top = s.origin[1] + tabs_start_y(n);
+        let h = n as f32 * TAB_STRIDE;
         [s.origin[0] - 32.0, top, 32.0, h]
     }
 
@@ -124,7 +130,7 @@ impl ScreenWidget for TabBarWidget {
             if s.focus_row.is_some() {
                 return false;
             }
-            hovered_tab(s.origin, mouse)
+            hovered_tab(s.origin, s.tabs(), mouse)
         };
         if let Some(tab) = target {
             let mut s = lock(&self.state);
@@ -206,7 +212,7 @@ impl ScreenWidget for CreditsButtonWidget {
 
     fn visible(&self) -> bool {
         let s = lock(&self.state);
-        s.focus_row.is_none() && matches!(s.tab, Tab::Poses | Tab::Alignments)
+        s.focus_row.is_none() && matches!(s.tab, Tab::Poses | Tab::Alignments | Tab::VanillaTweaks)
     }
 
     fn render(
@@ -369,16 +375,16 @@ impl ScreenWidget for RotActionButton {
             }
             RotAction::Randomize => {
                 let pose = random_pose(get_clamp_rotations());
-                apply_pose_now(host, &mut s, pose);
+                apply_pose_now(host, &mut s, pose, false);
                 set_confirm(&mut s, CONFIRM_RANDOMIZE, CONFIRM_IMG_TICKS);
             }
             RotAction::Reset => {
-                apply_pose_now(host, &mut s, DEFAULT_POSE);
+                apply_pose_now(host, &mut s, DEFAULT_POSE, false);
                 set_confirm(&mut s, CONFIRM_RESET, CONFIRM_IMG_TICKS);
             }
             RotAction::Mirror => {
                 let pose = mirror_pose(&s.stand.pose);
-                apply_pose_now(host, &mut s, pose);
+                apply_pose_now(host, &mut s, pose, true);
                 set_confirm(&mut s, CONFIRM_MIRROR, CONFIRM_IMG_TICKS);
             }
             RotAction::Copy => {
@@ -387,7 +393,7 @@ impl ScreenWidget for RotActionButton {
             }
             RotAction::Paste => {
                 if let Some(pose) = get_clipboard() {
-                    apply_pose_now(host, &mut s, pose);
+                    apply_pose_now(host, &mut s, pose, false);
                     set_confirm(&mut s, CONFIRM_PASTE, CONFIRM_IMG_TICKS);
                 }
             }
@@ -461,7 +467,8 @@ impl ScreenWidget for SquareSliderWidget {
 
     fn active(&self) -> bool {
         let m = MUTATORS[self.mutator_idx];
-        !m.is_arm || lock(&self.state).stand.show_arms
+        let s = lock(&self.state);
+        !m.is_arm || s.stand.show_arms || s.mode != SyncMode::Network
     }
 
     fn render(
@@ -607,7 +614,7 @@ impl ScreenWidget for SquareSliderWidget {
         };
         if handled {
             let pose = s.stand.pose;
-            apply_pose_now(host, &mut s, pose);
+            apply_pose_now(host, &mut s, pose, false);
         }
         handled
     }
@@ -668,7 +675,8 @@ impl ScreenWidget for ZSliderWidget {
 
     fn active(&self) -> bool {
         let m = MUTATORS[self.mutator_idx];
-        !m.is_arm || lock(&self.state).stand.show_arms
+        let s = lock(&self.state);
+        !m.is_arm || s.stand.show_arms || s.mode != SyncMode::Network
     }
 
     fn render(
@@ -773,7 +781,7 @@ impl ScreenWidget for ZSliderWidget {
         let v = (m.normalized_axis(&s.stand.pose, 2, clamp) + delta).clamp(0.0, 1.0);
         m.set_normalized_axis(&mut s.stand.pose, 2, v, clamp);
         let pose = s.stand.pose;
-        apply_pose_now(host, &mut s, pose);
+        apply_pose_now(host, &mut s, pose, false);
         true
     }
 
@@ -916,7 +924,7 @@ impl ScreenWidget for PoseCardButton {
         let pose_idx = get_first_pose_index() + self.card_idx;
         if let Some(preset) = POSES.get(pose_idx) {
             let mut s = lock(&self.state);
-            apply_pose_now(host, &mut s, preset.pose);
+            apply_pose_now(host, &mut s, preset.pose, false);
             click_sound(host);
             return true;
         }
@@ -1166,6 +1174,7 @@ impl ScreenWidget for StyleCheckboxWidget {
         self.option.set(&mut s.stand, next);
         send_edit(
             host,
+            &mut s,
             &EditMessage::Style {
                 option: self.option,
                 value: next,
@@ -1489,7 +1498,7 @@ impl ScreenWidget for ScaleResetButton {
         let mut s = lock(&self.state);
         s.stand.scale = DEFAULT_SCALE;
         s.dirty_scale = false;
-        send_edit(host, &EditMessage::Scale(DEFAULT_SCALE));
+        send_edit(host, &mut s, &EditMessage::Scale(DEFAULT_SCALE));
         set_confirm(&mut s, CONFIRM_SCALE_RESET, CONFIRM_IMG_TICKS);
         click_sound(host);
         true
@@ -1670,7 +1679,7 @@ impl ScreenWidget for PositionNudgeButton {
         if (next - current).abs() > 1e-9 {
             s.stand.pos[self.axis] = next;
             let pos = s.stand.pos;
-            send_edit(host, &EditMessage::Position(pos));
+            send_edit(host, &mut s, &EditMessage::Position(pos));
         }
         click_sound(host);
         true
@@ -1774,7 +1783,7 @@ impl ScreenWidget for AlignmentButton {
                     s.stand.pos[2].floor() + 0.5,
                 ];
                 s.stand.pos = pos;
-                send_edit(host, &EditMessage::Position(pos));
+                send_edit(host, &mut s, &EditMessage::Position(pos));
             }
             AlignAction::Cornered => {
                 let pos = [
@@ -1783,7 +1792,7 @@ impl ScreenWidget for AlignmentButton {
                     s.stand.pos[2].floor(),
                 ];
                 s.stand.pos = pos;
-                send_edit(host, &EditMessage::Position(pos));
+                send_edit(host, &mut s, &EditMessage::Position(pos));
             }
             AlignAction::Surface(a) => {
                 apply_alignment(host, &mut s, a);
@@ -1791,6 +1800,153 @@ impl ScreenWidget for AlignmentButton {
         }
         set_confirm(&mut s, self.confirm_id(), CONFIRM_TXT_TICKS);
         click_sound(host);
+        true
+    }
+}
+
+/// Vanilla Tweaks tab buttons (`ArmorStandVanillaTweaksScreen`).
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub enum VanillaTweaksAction {
+    CheckTarget,
+    Lock,
+    Unlock,
+    ToolRack,
+    SwapHands,
+    SwapHead,
+}
+
+impl VanillaTweaksAction {
+    pub const ALL: [Self; 6] = [
+        Self::CheckTarget,
+        Self::Lock,
+        Self::Unlock,
+        Self::ToolRack,
+        Self::SwapHands,
+        Self::SwapHead,
+    ];
+
+    pub fn trigger_id(self) -> i32 {
+        match self {
+            Self::CheckTarget => VT_CHECK_TARGET,
+            Self::Lock => VT_LOCK,
+            Self::Unlock => VT_UNLOCK,
+            Self::ToolRack => VT_TOOL_RACK,
+            Self::SwapHands => VT_SWAP_MAINHAND_OFFHAND,
+            Self::SwapHead => VT_SWAP_MAINHAND_HEAD,
+        }
+    }
+
+    pub fn label_key(self) -> &'static str {
+        match self {
+            Self::CheckTarget => "screen.armorstatues.vanilla_tweaks.check_target",
+            Self::Lock => "screen.armorstatues.vanilla_tweaks.lock",
+            Self::Unlock => "screen.armorstatues.vanilla_tweaks.unlock",
+            Self::ToolRack => "screen.armorstatues.vanilla_tweaks.tool_rack",
+            Self::SwapHands => "screen.armorstatues.vanilla_tweaks.swap_hands",
+            Self::SwapHead => "screen.armorstatues.vanilla_tweaks.swap_head",
+        }
+    }
+
+    pub fn description_key(self) -> &'static str {
+        match self {
+            Self::CheckTarget => "screen.armorstatues.vanilla_tweaks.check_target.description",
+            Self::Lock => "screen.armorstatues.vanilla_tweaks.lock.description",
+            Self::Unlock => "screen.armorstatues.vanilla_tweaks.unlock.description",
+            Self::ToolRack => "screen.armorstatues.vanilla_tweaks.tool_rack.description",
+            Self::SwapHands => "screen.armorstatues.vanilla_tweaks.swap_hands.description",
+            Self::SwapHead => "screen.armorstatues.vanilla_tweaks.swap_head.description",
+        }
+    }
+
+    pub fn rect(self, o: [f32; 2]) -> [f32; 4] {
+        match self {
+            Self::CheckTarget => [o[0] + 8.0, alignment_row_y(o, 0) + 1.0, 194.0, 20.0],
+            Self::Lock => [o[0] + 8.0, alignment_row_y(o, 1) + 1.0, 94.0, 20.0],
+            Self::Unlock => [o[0] + 8.0 + 100.0, alignment_row_y(o, 1) + 1.0, 94.0, 20.0],
+            Self::ToolRack => [o[0] + 8.0, alignment_row_y(o, 2) + 1.0, 194.0, 20.0],
+            Self::SwapHands => [o[0] + 8.0, alignment_row_y(o, 3) + 1.0, 194.0, 20.0],
+            Self::SwapHead => [o[0] + 8.0, alignment_row_y(o, 4) + 1.0, 194.0, 20.0],
+        }
+    }
+}
+
+pub struct VanillaTweaksButton {
+    pub state: SharedState,
+    pub action: VanillaTweaksAction,
+}
+
+impl VanillaTweaksButton {
+    fn confirm_id(&self) -> u32 {
+        CONFIRM_VT_BASE
+            + VanillaTweaksAction::ALL
+                .iter()
+                .position(|&a| a == self.action)
+                .unwrap_or(0) as u32
+    }
+}
+
+impl ScreenWidget for VanillaTweaksButton {
+    fn bounds(&self) -> [f32; 4] {
+        self.action.rect(lock(&self.state).origin)
+    }
+
+    fn visible(&self) -> bool {
+        let s = lock(&self.state);
+        s.mode == SyncMode::VanillaTweaks && s.tab == Tab::VanillaTweaks
+    }
+
+    fn render(
+        &mut self,
+        host: &dyn ClientHost,
+        draw: &mut dyn DrawContext,
+        _mouse: [f32; 2],
+        hovered: bool,
+        focused: bool,
+        _partial_tick: f32,
+    ) {
+        let r = self.bounds();
+        let confirmed = confirm_active(&lock(&self.state), self.confirm_id());
+        draw_button_bg(draw, r, true, hovered || focused);
+        let label = if confirmed {
+            tr(
+                host,
+                "screen.armorstatues.vanilla_tweaks.trigger_sent",
+                "Sent!",
+            )
+        } else {
+            tr(host, self.action.label_key(), "")
+        };
+        let color = if confirmed {
+            0xFF55FF55
+        } else if hovered || focused {
+            0xFFFFFFA0
+        } else {
+            0xFFFFFFFF
+        };
+        draw_centered_str(draw, &label, r[0] + r[2] * 0.5, r[1] + 6.0, color, true);
+    }
+
+    fn mouse_clicked(
+        &mut self,
+        host: &mut dyn ClientHost,
+        _mouse: [f32; 2],
+        button: i32,
+        _modifiers: u32,
+        _double_click: bool,
+    ) -> bool {
+        if button != 0 {
+            return false;
+        }
+        let close_after = self.action == VanillaTweaksAction::CheckTarget;
+        {
+            let mut s = lock(&self.state);
+            send_vt_trigger(host, &s, self.action.trigger_id());
+            set_confirm(&mut s, self.confirm_id(), CONFIRM_TXT_TICKS);
+        }
+        click_sound(host);
+        if close_after {
+            host.close_screen();
+        }
         true
     }
 }

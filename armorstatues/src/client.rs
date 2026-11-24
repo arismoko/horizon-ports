@@ -7,28 +7,42 @@ use mod_api::client::widgets::TextEdit;
 use mod_api::text::{TextContent, TextStyle};
 use mod_api::{
     ClientHost, DrawContext, Flow, GuiEntity, GuiEntityLook, GuiEntityView, IPayloadContext,
-    Identifier, ItemTooltipEvent, MenuScreen, MenuScreenFrame, MenuScreenLayout, MenuScreenOpen,
-    ScreenClosingEvent, ScreenInitPostEvent, ScreenKeyPressedPreEvent,
-    ScreenMouseButtonReleasedPreEvent, ScreenMouseScrolledPreEvent, ScreenRenderPostEvent,
-    ScreenSlot, SoundPlay, Text, ToServer, decode_payload,
+    Identifier, ItemTooltipEvent, MenuScreen, MenuScreenLayout, MenuScreenOpen, ScreenClosingEvent,
+    ScreenInitPostEvent, ScreenKeyPressedPreEvent, ScreenMouseButtonReleasedPreEvent,
+    ScreenMouseScrolledPreEvent, ScreenRenderBackgroundEvent, ScreenRenderPostEvent, ScreenSlot,
+    ScreenView, SoundPlay, Text, ToServer, decode_payload,
 };
 
+use crate::commands;
 use crate::model::{
-    Alignment, DEGREES_SNAP_INTERVAL, EQUIPMENT_EMPTY_ICONS, EQUIPMENT_SLOT_POSITIONS, EditMessage,
-    MAX_SCALE, MENU_EQUIPMENT_SLOTS, MENU_ID, MIN_SCALE, MOVE_INCREMENTS, MUTATORS, POSES,
-    StandSnapshot, StyleOption, SyncMessage, Tab, format_four_decimals, format_two_decimals,
-    is_slot_restricted, local_position, snap_value, to_log_scale, to_wrapped_degrees,
+    Alignment, DEFAULT_POSE, DEFAULT_SCALE, DEGREES_SNAP_INTERVAL, EQUIPMENT_EMPTY_ICONS,
+    EQUIPMENT_SLOT_POSITIONS, EditMessage, MAX_SCALE, MENU_EQUIPMENT_SLOTS, MENU_ID, MIN_SCALE,
+    MOVE_INCREMENTS, MUTATORS, POSES, StandSnapshot, StyleOption, SyncMessage, SyncMode, Tab,
+    format_four_decimals, format_two_decimals, is_slot_restricted, local_position, snap_value,
+    to_log_scale, to_wrapped_degrees,
 };
 use crate::widgets::{
     AlignAction, AlignmentButton, CloseButtonWidget, CreditsButtonWidget, FocusRowButton,
     IncrementButton, NameBoxWidget, PANEL_H, PANEL_W, PosSliderKind, PoseCardButton,
     PosePageButton, PositionNudgeButton, PositionReadoutWidget, PositionSliderWidget, RotAction,
     RotActionButton, ScaleResetButton, SquareSliderWidget, StyleCheckboxWidget, TAB_H, TAB_STRIDE,
-    TAB_W, TabBarWidget, ZSliderWidget, alignment_row_y, hovered_tab, make_name_edit,
-    position_row_visible, position_row_y, style_checkbox_y, tabs_start_y,
+    TAB_W, TabBarWidget, VanillaTweaksAction, VanillaTweaksButton, ZSliderWidget, alignment_row_y,
+    hovered_tab, make_name_edit, position_row_visible, position_row_y, style_checkbox_y,
+    tabs_start_y,
 };
 
+pub const MOD_SCREEN_ID: &str = "armorstatues";
+
 pub type SharedState = Arc<Mutex<ClientState>>;
+
+struct PendingEdit {
+    mode: SyncMode,
+    entity_id: u32,
+    prev_pos: [f64; 3],
+    prev_yaw: f32,
+    prev_pose: [[f32; 3]; 6],
+    msg: EditMessage,
+}
 
 /// Persistent UI choices that survive closing and reopening the statue screen.
 static LAST_TAB: LazyLock<Mutex<Tab>> = LazyLock::new(|| Mutex::new(Tab::Rotations));
@@ -36,10 +50,13 @@ static CLAMP_ROTATIONS: AtomicBool = AtomicBool::new(true);
 static CLIPBOARD: LazyLock<Mutex<Option<[[f32; 3]; 6]>>> = LazyLock::new(|| Mutex::new(None));
 static FIRST_POSE_INDEX: AtomicUsize = AtomicUsize::new(0);
 static MOVE_INCREMENT_INDEX: AtomicUsize = AtomicUsize::new(0);
+/// Session cache of client-side edits per entity id for servers without `armorstatues`.
+static CLIENT_CACHE: LazyLock<Mutex<HashMap<u32, StandSnapshot>>> =
+    LazyLock::new(|| Mutex::new(HashMap::new()));
 
 static EDIT_TOKEN: OnceLock<ToServer<EditMessage>> = OnceLock::new();
 static ACTIVE: LazyLock<Mutex<Option<SharedState>>> = LazyLock::new(|| Mutex::new(None));
-static PENDING_EDITS: LazyLock<Mutex<Vec<EditMessage>>> = LazyLock::new(|| Mutex::new(Vec::new()));
+static PENDING_EDITS: LazyLock<Mutex<Vec<PendingEdit>>> = LazyLock::new(|| Mutex::new(Vec::new()));
 
 pub fn set_edit_token(token: ToServer<EditMessage>) {
     let _ = EDIT_TOKEN.set(token);
@@ -90,10 +107,82 @@ pub fn current_disabled_slots() -> i32 {
         .map_or(0, |st| lock(st).stand.disabled_slots)
 }
 
-pub fn send_edit(host: &mut dyn ClientHost, msg: &EditMessage) {
-    if let Some(token) = EDIT_TOKEN.get() {
-        let _ = token.send(host, msg);
+struct EditDispatch<'a> {
+    mode: SyncMode,
+    entity_id: u32,
+    prev_pos: [f64; 3],
+    prev_yaw: f32,
+    prev_pose: &'a [[f32; 3]; 6],
+    msg: &'a EditMessage,
+    is_mirrored: bool,
+}
+
+fn dispatch_edit(host: &mut dyn ClientHost, req: EditDispatch<'_>) -> bool {
+    match req.mode {
+        SyncMode::Network => {
+            if let Some(token) = EDIT_TOKEN.get() {
+                let _ = token.send(host, req.msg);
+            }
+            true
+        }
+        SyncMode::Commands => {
+            let batches = commands::build_data_commands(req.prev_pos, req.prev_pose, req.msg);
+            commands::enqueue_batches(host, req.entity_id, false, batches)
+        }
+        SyncMode::VanillaTweaks => {
+            let batches = commands::build_vt_commands(
+                req.prev_pos,
+                req.prev_yaw,
+                req.prev_pose,
+                req.msg,
+                req.is_mirrored,
+            );
+            commands::enqueue_batches(host, req.entity_id, true, batches)
+        }
     }
+}
+
+pub fn send_edit(host: &mut dyn ClientHost, state: &mut ClientState, msg: &EditMessage) {
+    send_edit_with_hint(host, state, msg, false);
+}
+
+fn send_edit_with_hint(
+    host: &mut dyn ClientHost,
+    state: &mut ClientState,
+    msg: &EditMessage,
+    is_mirrored: bool,
+) {
+    let ok = dispatch_edit(
+        host,
+        EditDispatch {
+            mode: state.mode,
+            entity_id: state.stand.entity_id,
+            prev_pos: state.synced_pos,
+            prev_yaw: state.synced_yaw,
+            prev_pose: &state.synced_pose,
+            msg,
+            is_mirrored,
+        },
+    );
+    if ok {
+        apply_synced_tracking(state, msg);
+        if state.mode != SyncMode::Network {
+            lock(&CLIENT_CACHE).insert(state.stand.entity_id, state.stand.clone());
+        }
+    }
+}
+
+fn apply_synced_tracking(state: &mut ClientState, msg: &EditMessage) {
+    match msg {
+        EditMessage::Position(pos) => state.synced_pos = *pos,
+        EditMessage::Rotation(yaw) => state.synced_yaw = *yaw,
+        EditMessage::Pose(pose) => state.synced_pose = *pose,
+        EditMessage::Name(_) | EditMessage::Style { .. } | EditMessage::Scale(_) => {}
+    }
+}
+
+pub fn send_vt_trigger(host: &mut dyn ClientHost, state: &ClientState, trigger_id: i32) {
+    let _ = commands::enqueue_single_trigger(host, state.stand.entity_id, trigger_id);
 }
 
 pub fn click_sound(host: &dyn ClientHost) {
@@ -105,7 +194,11 @@ pub fn tr(host: &dyn ClientHost, key: &str, fallback: &str) -> String {
 }
 
 pub struct ClientState {
+    pub mode: SyncMode,
     pub stand: StandSnapshot,
+    pub synced_pos: [f64; 3],
+    pub synced_yaw: f32,
+    pub synced_pose: [[f32; 3]; 6],
     pub tab: Tab,
     pub origin: [f32; 2],
     pub focus_row: Option<usize>,
@@ -120,6 +213,17 @@ pub struct ClientState {
     pub tip_index: u8,
     pub pos_refresh_ticks: u32,
     pub slots_shown: bool,
+    pub close_requested: bool,
+}
+
+impl ClientState {
+    pub fn tabs(&self) -> &'static [Tab] {
+        Tab::tabs_for(self.mode)
+    }
+}
+
+fn is_our_screen(screen: &ScreenView<'_>) -> bool {
+    screen.menu == Some(MENU_ID) || screen.mod_screen == Some(MOD_SCREEN_ID)
 }
 
 pub fn set_confirm(state: &mut ClientState, id: u32, ticks: u32) {
@@ -134,17 +238,37 @@ pub fn clear_name_focus(state: &mut ClientState) {
     state.name_focused = false;
 }
 
-pub fn apply_pose_now(host: &mut dyn ClientHost, state: &mut ClientState, pose: [[f32; 3]; 6]) {
+pub fn apply_pose_now(
+    host: &mut dyn ClientHost,
+    state: &mut ClientState,
+    pose: [[f32; 3]; 6],
+    is_mirrored: bool,
+) {
     state.stand.pose = pose;
     state.dirty_pose = false;
-    send_edit(host, &EditMessage::Pose(pose));
+    send_edit_with_hint(host, state, &EditMessage::Pose(pose), is_mirrored);
 }
 
 pub fn apply_alignment(host: &mut dyn ClientHost, state: &mut ClientState, alignment: Alignment) {
+    if state.mode == SyncMode::VanillaTweaks {
+        state.stand.invisible = true;
+        state.stand.no_gravity = true;
+        state.stand.pose = alignment.pose();
+        state.synced_pose = state.stand.pose;
+        state.dirty_pose = false;
+        let offset = alignment.offset(state.stand.small);
+        let next_pos = local_position(state.stand.pos, state.stand.yaw, state.stand.pitch, offset);
+        state.stand.pos = next_pos;
+        state.synced_pos = next_pos;
+        send_vt_trigger(host, state, commands::vt_alignment_trigger(alignment));
+        lock(&CLIENT_CACHE).insert(state.stand.entity_id, state.stand.clone());
+        return;
+    }
     if !state.stand.invisible {
         state.stand.invisible = true;
         send_edit(
             host,
+            state,
             &EditMessage::Style {
                 option: StyleOption::Invisible,
                 value: true,
@@ -155,6 +279,7 @@ pub fn apply_alignment(host: &mut dyn ClientHost, state: &mut ClientState, align
         state.stand.no_gravity = true;
         send_edit(
             host,
+            state,
             &EditMessage::Style {
                 option: StyleOption::Immovable,
                 value: true,
@@ -164,25 +289,43 @@ pub fn apply_alignment(host: &mut dyn ClientHost, state: &mut ClientState, align
     let pose = alignment.pose();
     state.stand.pose = pose;
     state.dirty_pose = false;
-    send_edit(host, &EditMessage::Pose(pose));
+    send_edit(host, state, &EditMessage::Pose(pose));
 
     let offset = alignment.offset(state.stand.small);
     let next_pos = local_position(state.stand.pos, state.stand.yaw, state.stand.pitch, offset);
     state.stand.pos = next_pos;
-    send_edit(host, &EditMessage::Position(next_pos));
+    send_edit(host, state, &EditMessage::Position(next_pos));
 }
 
 pub fn flush_dirty(host: &mut dyn ClientHost, state: &mut ClientState) {
     for msg in take_dirty_edits(state) {
-        send_edit(host, &msg);
+        send_edit(host, state, &msg);
     }
 }
 
 /// Queues dirty edits when only `&dyn ClientHost` is available; `client_tick_post` sends them.
 pub fn queue_dirty(state: &mut ClientState) {
     let msgs = take_dirty_edits(state);
-    if !msgs.is_empty() {
-        lock(&PENDING_EDITS).extend(msgs);
+    if msgs.is_empty() {
+        return;
+    }
+    let mut pending = lock(&PENDING_EDITS);
+    for msg in msgs {
+        let prev_pos = state.synced_pos;
+        let prev_yaw = state.synced_yaw;
+        let prev_pose = state.synced_pose;
+        apply_synced_tracking(state, &msg);
+        pending.push(PendingEdit {
+            mode: state.mode,
+            entity_id: state.stand.entity_id,
+            prev_pos,
+            prev_yaw,
+            prev_pose,
+            msg,
+        });
+    }
+    if state.mode != SyncMode::Network {
+        lock(&CLIENT_CACHE).insert(state.stand.entity_id, state.stand.clone());
     }
 }
 
@@ -270,6 +413,9 @@ pub fn slot_position(slot: usize) -> [f32; 2] {
 }
 
 fn sync_slots(host: &dyn ClientHost, state: &mut ClientState) {
+    if state.mode != SyncMode::Network {
+        return;
+    }
     let want_visible = state.tab == Tab::Equipment && state.focus_row.is_none();
     if state.slots_shown == want_visible {
         return;
@@ -284,6 +430,106 @@ fn sync_slots(host: &dyn ClientHost, state: &mut ClientState) {
     if all_ok {
         state.slots_shown = want_visible;
     }
+}
+
+fn initial_tab_for(mode: SyncMode) -> Tab {
+    let last = *lock(&LAST_TAB);
+    let tabs = Tab::tabs_for(mode);
+    if tabs.contains(&last) {
+        last
+    } else {
+        Tab::Rotations
+    }
+}
+
+/// Opens the client-only Armor Statues screen on a server that does not have `armorstatues`.
+pub fn open_client_only_screen(host: &mut dyn ClientHost, entity_id: u32) -> bool {
+    let Some(player) = host.local_player() else {
+        return false;
+    };
+    if player.may_build(host) != Some(true) {
+        return false;
+    }
+    let Some(entity) = host.entity(entity_id) else {
+        return false;
+    };
+    let pos = entity.position(host).unwrap_or([0.0, 0.0, 0.0]);
+    let [yaw, pitch] = entity.rotation(host).unwrap_or([0.0, 0.0]);
+    let live_name = entity.name(host).unwrap_or_default();
+    let creative = player.is_creative(host).unwrap_or(false);
+
+    let mode = if host.setting_bool("use_vanilla_tweaks_triggers") == Some(true) {
+        SyncMode::VanillaTweaks
+    } else {
+        SyncMode::Commands
+    };
+
+    let mut stand = lock(&CLIENT_CACHE)
+        .get(&entity_id)
+        .cloned()
+        .unwrap_or(StandSnapshot {
+            entity_id,
+            creative,
+            custom_name: live_name.clone(),
+            custom_name_visible: !live_name.is_empty(),
+            show_arms: false,
+            small: false,
+            invisible: false,
+            no_base_plate: false,
+            no_gravity: false,
+            invulnerable: false,
+            disabled_slots: 0,
+            scale: DEFAULT_SCALE,
+            yaw,
+            pitch,
+            pos,
+            pose: DEFAULT_POSE,
+            equipment: None,
+        });
+    stand.entity_id = entity_id;
+    stand.creative = creative;
+    stand.pos = pos;
+    stand.yaw = yaw;
+    stand.pitch = pitch;
+    if !live_name.is_empty() {
+        stand.custom_name = live_name;
+    }
+
+    let initial_tab = initial_tab_for(mode);
+    let tip_index = if host.millis().is_multiple_of(2) {
+        1
+    } else {
+        2
+    };
+    let name_edit = make_name_edit(&stand.custom_name);
+    let synced_pos = stand.pos;
+    let synced_yaw = stand.yaw;
+    let synced_pose = stand.pose;
+
+    let shared = Arc::new(Mutex::new(ClientState {
+        mode,
+        stand,
+        synced_pos,
+        synced_yaw,
+        synced_pose,
+        tab: initial_tab,
+        origin: [0.0, 0.0],
+        focus_row: None,
+        alt_held: host.modifiers().alt(),
+        name_edit,
+        name_focused: false,
+        name_dirty_ticks: -1,
+        dirty_pose: false,
+        dirty_scale: false,
+        dirty_rotation: false,
+        confirm_ticks: HashMap::new(),
+        tip_index,
+        pos_refresh_ticks: 10,
+        slots_shown: false,
+        close_requested: false,
+    }));
+    *lock(&ACTIVE) = Some(shared);
+    host.mod_screen_open(MOD_SCREEN_ID)
 }
 
 /// Receives server-pushed `ShowArms` / `Equipment` updates while the screen is open.
@@ -301,7 +547,7 @@ pub fn handle_sync(msg: SyncMessage, _ctx: &mut dyn IPayloadContext) -> Result<(
 /// Constructs the `MenuScreen` when the server opens `armorstatues:armor_stand`.
 pub fn create_menu_screen(host: &dyn ClientHost, open: MenuScreenOpen<'_>) -> Option<MenuScreen> {
     let stand = decode_payload::<StandSnapshot>(open.extra).ok()?;
-    let initial_tab = *lock(&LAST_TAB);
+    let initial_tab = initial_tab_for(SyncMode::Network);
     let show_slots = initial_tab == Tab::Equipment;
 
     // Always declare all 42 slots with their empty-slot icons so `set_screen_slot` preserves
@@ -328,8 +574,15 @@ pub fn create_menu_screen(host: &dyn ClientHost, open: MenuScreenOpen<'_>) -> Op
         2
     };
     let name_edit = make_name_edit(&stand.custom_name);
+    let synced_pos = stand.pos;
+    let synced_yaw = stand.yaw;
+    let synced_pose = stand.pose;
     let shared = Arc::new(Mutex::new(ClientState {
+        mode: SyncMode::Network,
         stand,
+        synced_pos,
+        synced_yaw,
+        synced_pose,
         tab: initial_tab,
         origin: [0.0, 0.0],
         focus_row: None,
@@ -345,6 +598,7 @@ pub fn create_menu_screen(host: &dyn ClientHost, open: MenuScreenOpen<'_>) -> Op
         pos_refresh_ticks: 10,
         // All 42 slots begin declared as active so `sync_slots` hides them immediately if needed.
         slots_shown: true,
+        close_requested: false,
     }));
     *lock(&ACTIVE) = Some(Arc::clone(&shared));
 
@@ -360,29 +614,54 @@ pub fn create_menu_screen(host: &dyn ClientHost, open: MenuScreenOpen<'_>) -> Op
     };
 
     Some(MenuScreen::new(layout).with_draw(move |host, frame, draw| {
-        draw_screen(host, &shared, frame, draw);
+        draw_screen_content(
+            host,
+            &shared,
+            frame.origin,
+            [frame.pointer[0] as f32, frame.pointer[1] as f32],
+            draw,
+        );
     }))
 }
 
-fn draw_screen(
+/// Draws the client-only mod screen panel and entity previews before mounted widgets.
+pub fn on_screen_render_background(
+    host: &dyn ClientHost,
+    event: &mut ScreenRenderBackgroundEvent<'_>,
+) {
+    if event.screen.mod_screen != Some(MOD_SCREEN_ID) {
+        return;
+    }
+    let Some(shared) = lock(&ACTIVE).as_ref().cloned() else {
+        return;
+    };
+    let r = event.screen.rect;
+    let origin = [
+        ((r[2] - PANEL_W) * 0.5).floor(),
+        ((r[3] - PANEL_H) * 0.5).floor(),
+    ];
+    draw_screen_content(host, &shared, origin, event.screen.mouse, event.draw);
+}
+
+fn draw_screen_content(
     host: &dyn ClientHost,
     shared: &SharedState,
-    frame: MenuScreenFrame<'_>,
+    origin: [f32; 2],
+    mouse: [f32; 2],
     draw: &mut dyn DrawContext,
 ) {
-    let (tab, focus_row, stand) = {
+    let (mode, tab, focus_row, stand) = {
         let mut s = lock(shared);
-        s.origin = frame.origin;
+        s.origin = origin;
         s.alt_held = host.modifiers().alt();
         sync_slots(host, &mut s);
-        (s.tab, s.focus_row, s.stand.clone())
+        (s.mode, s.tab, s.focus_row, s.stand.clone())
     };
-    let [left, top] = frame.origin;
-    let mouse = [frame.pointer[0] as f32, frame.pointer[1] as f32];
+    let [left, top] = origin;
 
     if focus_row.is_none() {
         draw_panel(draw, [left, top, PANEL_W, PANEL_H]);
-        draw_tabs(host, draw, frame.origin, tab);
+        draw_tabs(host, draw, origin, Tab::tabs_for(mode), tab);
 
         match tab {
             Tab::Equipment => {
@@ -476,12 +755,12 @@ fn draw_screen(
                 let _ = draw.entity(&entity, view);
             }
             Tab::Position => {
-                draw_position_labels(host, draw, frame.origin, None);
+                draw_position_labels(host, draw, origin, None);
             }
-            Tab::Alignments => {}
+            Tab::Alignments | Tab::VanillaTweaks => {}
         }
     } else if tab == Tab::Position {
-        draw_position_labels(host, draw, frame.origin, focus_row);
+        draw_position_labels(host, draw, origin, focus_row);
     }
 }
 
@@ -517,9 +796,15 @@ fn draw_position_labels(
     }
 }
 
-fn draw_tabs(host: &dyn ClientHost, draw: &mut dyn DrawContext, origin: [f32; 2], current: Tab) {
-    let start_y = tabs_start_y();
-    for (i, &tab) in Tab::ALL.iter().enumerate() {
+fn draw_tabs(
+    host: &dyn ClientHost,
+    draw: &mut dyn DrawContext,
+    origin: [f32; 2],
+    tabs: &[Tab],
+    current: Tab,
+) {
+    let start_y = tabs_start_y(tabs.len());
+    for (i, &tab) in tabs.iter().enumerate() {
         let tx = origin[0] - 32.0;
         let ty = origin[1] + start_y + TAB_STRIDE * i as f32;
         let selected = tab == current;
@@ -628,7 +913,7 @@ fn point_in_rect(p: [f32; 2], r: [f32; 4]) -> bool {
 
 /// Mounts all custom widgets on our screen during `screen_init_post`.
 pub fn on_screen_init_post(host: &dyn ClientHost, event: &mut ScreenInitPostEvent<'_>) {
-    if event.screen.menu != Some(MENU_ID) {
+    if !is_our_screen(event.screen) {
         return;
     }
     let Some(shared) = lock(&ACTIVE).as_ref().cloned() else {
@@ -636,7 +921,15 @@ pub fn on_screen_init_post(host: &dyn ClientHost, event: &mut ScreenInitPostEven
     };
     {
         let mut s = lock(&shared);
-        s.origin = [event.screen.rect[0], event.screen.rect[1]];
+        s.origin = if event.screen.menu == Some(MENU_ID) {
+            [event.screen.rect[0], event.screen.rect[1]]
+        } else {
+            let r = event.screen.rect;
+            [
+                ((r[2] - PANEL_W) * 0.5).floor(),
+                ((r[3] - PANEL_H) * 0.5).floor(),
+            ]
+        };
         sync_slots(host, &mut s);
     }
 
@@ -757,25 +1050,46 @@ pub fn on_screen_init_post(host: &dyn ClientHost, event: &mut ScreenInitPostEven
             action: AlignAction::Surface(alignment),
         }));
     }
+    // Vanilla Tweaks tab buttons (visible only in VanillaTweaks client-only mode)
+    for action in VanillaTweaksAction::ALL {
+        w.add_widget(Box::new(VanillaTweaksButton {
+            state: Arc::clone(&shared),
+            action,
+        }));
+    }
 }
 
-/// Hotbar number keys `1..=6` switch tabs (when not typing in Name box and not dragging/hovering an item).
+/// Hotbar number keys `1..=N` switch tabs (when not typing in Name box and not dragging/hovering an item).
+/// Also closes the client-only mod screen when the inventory key is pressed.
 pub fn on_screen_key_pressed_pre(
     host: &dyn ClientHost,
     event: &mut ScreenKeyPressedPreEvent<'_>,
 ) -> Flow {
-    if event.screen.menu != Some(MENU_ID) {
+    if !is_our_screen(event.screen) {
         return Flow::Continue;
     }
     let Some(shared) = lock(&ACTIVE).as_ref().cloned() else {
         return Flow::Continue;
     };
-    let (tab, name_focused, focus_row) = {
+    let (mode, tab, name_focused, focus_row) = {
         let s = lock(&shared);
-        (s.tab, s.name_focused, s.focus_row)
+        (s.mode, s.tab, s.name_focused, s.focus_row)
     };
     if name_focused || focus_row.is_some() {
         return Flow::Continue;
+    }
+    if mode != SyncMode::Network {
+        let is_inv_key = host
+            .vanilla_key_mapping("key.inventory")
+            .ok()
+            .and_then(|m| m.binding(host).ok())
+            .map_or_else(|| event.key == "key.keyboard.e", |b| b == event.key);
+        if is_inv_key {
+            let mut s = lock(&shared);
+            queue_dirty(&mut s);
+            s.close_requested = true;
+            return Flow::Cancel;
+        }
     }
     if tab == Tab::Equipment {
         let carrying = host
@@ -788,7 +1102,7 @@ pub fn on_screen_key_pressed_pre(
             return Flow::Continue;
         }
     }
-    for (i, &target_tab) in Tab::ALL.iter().enumerate() {
+    for (i, &target_tab) in Tab::tabs_for(mode).iter().enumerate() {
         let map_name = format!("key.hotbar.{}", i + 1);
         let fallback = format!("key.keyboard.{}", i + 1);
         let matched = host
@@ -812,7 +1126,7 @@ pub fn on_screen_mouse_scrolled_pre(
     host: &dyn ClientHost,
     event: &mut ScreenMouseScrolledPreEvent<'_>,
 ) -> Flow {
-    if event.screen.menu != Some(MENU_ID) {
+    if !is_our_screen(event.screen) {
         return Flow::Continue;
     }
     let Some(shared) = lock(&ACTIVE).as_ref().cloned() else {
@@ -823,8 +1137,8 @@ pub fn on_screen_mouse_scrolled_pre(
         return Flow::Continue;
     }
     let mut s = lock(&shared);
-    if s.focus_row.is_none() && hovered_tab(s.origin, event.screen.mouse).is_some() {
-        let next = s.tab.cycle(delta > 0.0);
+    if s.focus_row.is_none() && hovered_tab(s.origin, s.tabs(), event.screen.mouse).is_some() {
+        let next = s.tab.cycle_in(s.tabs(), delta > 0.0);
         switch_tab_readonly(host, &mut s, next, false);
         return Flow::Cancel;
     }
@@ -850,7 +1164,7 @@ pub fn on_screen_mouse_button_released_pre(
     _host: &dyn ClientHost,
     event: &mut ScreenMouseButtonReleasedPreEvent<'_>,
 ) -> Flow {
-    if event.screen.menu != Some(MENU_ID) {
+    if !is_our_screen(event.screen) {
         return Flow::Continue;
     }
     if let Some(shared) = lock(&ACTIVE).as_ref().cloned() {
@@ -863,7 +1177,7 @@ pub fn on_screen_mouse_button_released_pre(
 }
 
 pub fn on_screen_closing(_host: &dyn ClientHost, event: &mut ScreenClosingEvent<'_>) {
-    if event.screen.menu != Some(MENU_ID) {
+    if !is_our_screen(event.screen) {
         return;
     }
     if let Some(shared) = lock(&ACTIVE).take() {
@@ -872,55 +1186,80 @@ pub fn on_screen_closing(_host: &dyn ClientHost, event: &mut ScreenClosingEvent<
     }
 }
 
-/// Ticks debounced name sync, queued edits, confirmation timers, Alt state, and live position refresh.
+/// Ticks debounced name sync, queued edits, client command queue, confirmation timers, Alt state,
+/// and live position refresh.
 pub fn on_client_tick_post(host: &mut dyn ClientHost) {
-    let pending: Vec<EditMessage> = std::mem::take(&mut *lock(&PENDING_EDITS));
-    for msg in pending {
-        send_edit(host, &msg);
+    let pending: Vec<PendingEdit> = std::mem::take(&mut *lock(&PENDING_EDITS));
+    for edit in pending {
+        dispatch_edit(
+            host,
+            EditDispatch {
+                mode: edit.mode,
+                entity_id: edit.entity_id,
+                prev_pos: edit.prev_pos,
+                prev_yaw: edit.prev_yaw,
+                prev_pose: &edit.prev_pose,
+                msg: &edit.msg,
+                is_mirrored: false,
+            },
+        );
     }
+    commands::tick(host);
     let Some(shared) = lock(&ACTIVE).as_ref().cloned() else {
         return;
     };
-    let mut s = lock(&shared);
-    s.alt_held = host.modifiers().alt();
-    if s.name_dirty_ticks > 0 {
-        s.name_dirty_ticks -= 1;
-        if s.name_dirty_ticks == 0 {
-            flush_dirty(host, &mut s);
-        }
-    }
-    s.confirm_ticks.retain(|_, ticks| {
-        if *ticks > 0 {
-            *ticks -= 1;
-        }
-        *ticks > 0
-    });
-    if s.tab == Tab::Position {
-        if s.pos_refresh_ticks > 0 {
-            s.pos_refresh_ticks -= 1;
+    let close_now = {
+        let mut s = lock(&shared);
+        if s.close_requested {
+            s.close_requested = false;
+            true
         } else {
-            s.pos_refresh_ticks = 10;
-            if let Some(pos) = host
-                .entity(s.stand.entity_id)
-                .and_then(|e| e.position(host))
-            {
-                s.stand.pos = pos;
+            s.alt_held = host.modifiers().alt();
+            if s.name_dirty_ticks > 0 {
+                s.name_dirty_ticks -= 1;
+                if s.name_dirty_ticks == 0 {
+                    flush_dirty(host, &mut s);
+                }
             }
+            s.confirm_ticks.retain(|_, ticks| {
+                if *ticks > 0 {
+                    *ticks -= 1;
+                }
+                *ticks > 0
+            });
+            if s.tab == Tab::Position {
+                if s.pos_refresh_ticks > 0 {
+                    s.pos_refresh_ticks -= 1;
+                } else {
+                    s.pos_refresh_ticks = 10;
+                    if let Some(pos) = host
+                        .entity(s.stand.entity_id)
+                        .and_then(|e| e.position(host))
+                    {
+                        s.stand.pos = pos;
+                    }
+                }
+            }
+            false
         }
+    };
+    if close_now {
+        host.close_screen();
     }
 }
 
 /// Draws hover tooltips for tabs and custom widgets above mounted widgets.
 pub fn on_screen_render_post(host: &dyn ClientHost, event: &mut ScreenRenderPostEvent<'_>) {
-    if event.screen.menu != Some(MENU_ID) {
+    if !is_our_screen(event.screen) {
         return;
     }
     let Some(shared) = lock(&ACTIVE).as_ref().cloned() else {
         return;
     };
-    let (tab, focus_row, origin, stand, tip_index, alt_held) = {
+    let (mode, tab, focus_row, origin, stand, tip_index, alt_held) = {
         let s = lock(&shared);
         (
+            s.mode,
             s.tab,
             s.focus_row,
             s.origin,
@@ -941,7 +1280,7 @@ pub fn on_screen_render_post(host: &dyn ClientHost, event: &mut ScreenRenderPost
             .is_some();
     if focus_row.is_none()
         && !carrying
-        && let Some(htab) = hovered_tab(origin, mouse)
+        && let Some(htab) = hovered_tab(origin, Tab::tabs_for(mode), mouse)
     {
         let _ = event
             .draw
@@ -969,7 +1308,7 @@ fn widget_tooltip(
     alt_held: bool,
 ) -> Option<(Vec<Text>, [f32; 2])> {
     if focus_row.is_none()
-        && matches!(tab, Tab::Poses | Tab::Alignments)
+        && matches!(tab, Tab::Poses | Tab::Alignments | Tab::VanillaTweaks)
         && point_in_rect(mouse, [o[0] + 6.0, o[1] + 6.0, 20.0, 20.0])
     {
         return Some((
@@ -1307,6 +1646,17 @@ fn widget_tooltip(
                 let ry = alignment_row_y(o, 1 + i);
                 if point_in_rect(mouse, [o[0] + 8.0, ry + 1.0, 194.0, 20.0]) {
                     return Some((vec![Text::translate(a.description_key(), vec![])], mouse));
+                }
+            }
+            None
+        }
+        Tab::VanillaTweaks => {
+            for action in VanillaTweaksAction::ALL {
+                if point_in_rect(mouse, action.rect(o)) {
+                    return Some((
+                        vec![Text::translate(action.description_key(), vec![])],
+                        mouse,
+                    ));
                 }
             }
             None

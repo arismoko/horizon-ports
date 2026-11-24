@@ -1,8 +1,10 @@
 //! Armor Statues (Fuzs, MPL-2.0) and Statue Menus for Sunrise.
 //!
-//! Sneak and use an armor stand with an empty hand to open a six-tab configuration screen
-//! (Rotations, Poses, Style, Position, Alignments, Equipment) built on Sunrise's typed mod API.
+//! Sneak and use an armor stand with an empty hand to open a tabbed configuration screen
+//! (Rotations, Poses, Style, Position, Alignments, Equipment, plus Vanilla Tweaks triggers in
+//! client-only mode) built on Sunrise's typed mod API.
 mod client;
+mod commands;
 mod model;
 mod server;
 mod widgets;
@@ -13,10 +15,11 @@ use mod_api::{
     ClientHost, ClientTickPostEvent, EntityInteractEvent, Flow, Hooks, HostSide, InteractionResult,
     ItemTooltipEvent, MenuClosedEvent, PayloadId, Registrar, RegistrationContext,
     ScreenClosingEvent, ScreenInitPostEvent, ScreenKeyPressedPreEvent,
-    ScreenMouseButtonReleasedPreEvent, ScreenMouseScrolledPreEvent, ScreenRenderPostEvent,
-    ServerHost, ServerTickEvent,
+    ScreenMouseButtonReleasedPreEvent, ScreenMouseScrolledPreEvent, ScreenRenderBackgroundEvent,
+    ScreenRenderPostEvent, ServerHost, ServerTickEvent, SettingSpec,
 };
 
+use crate::commands::DEFAULT_VT_DELAY_TICKS;
 use crate::model::{EDIT_CHANNEL, EditMessage, MENU_ID, SYNC_CHANNEL, SyncMessage};
 use crate::server::ArmorStandMenuPart;
 
@@ -30,7 +33,7 @@ impl Hooks for Mod {
         let _ = r.register_menu_screen(MENU_ID, Arc::new(client::create_menu_screen));
 
         let mut payloads = r.payload_handlers();
-        let mut net = payloads.registrar("1");
+        let mut net = payloads.registrar("1").optional();
         let edit_token = net.play_to_server_typed::<EditMessage>(
             PayloadId(EDIT_CHANNEL.into()),
             server::handle_edit,
@@ -41,6 +44,26 @@ impl Hooks for Mod {
         );
         client::set_edit_token(edit_token);
         server::set_sync_token(sync_token);
+
+        let _ = r.register_setting(
+            SettingSpec::toggle(
+                "use_vanilla_tweaks_triggers",
+                "setting.armorstatues.use_vanilla_tweaks_triggers",
+                false,
+            )
+            .tooltip("setting.armorstatues.use_vanilla_tweaks_triggers.tooltip"),
+        );
+        let _ = r.register_setting(
+            SettingSpec::range(
+                "client_command_delay",
+                "setting.armorstatues.client_command_delay",
+                f64::from(DEFAULT_VT_DELAY_TICKS),
+                f64::from(DEFAULT_VT_DELAY_TICKS),
+                200.0,
+                1.0,
+            )
+            .tooltip("setting.armorstatues.client_command_delay.tooltip"),
+        );
     }
 
     fn entity_interact(
@@ -93,6 +116,14 @@ impl Hooks for Mod {
 
     fn client_tick_post(&self, host: &mut dyn ClientHost, _event: &mut ClientTickPostEvent) {
         client::on_client_tick_post(host);
+    }
+
+    fn screen_render_background(
+        &self,
+        host: &dyn ClientHost,
+        event: &mut ScreenRenderBackgroundEvent<'_>,
+    ) {
+        client::on_screen_render_background(host, event);
     }
 
     fn screen_render_post(&self, host: &dyn ClientHost, event: &mut ScreenRenderPostEvent<'_>) {

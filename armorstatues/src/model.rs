@@ -108,6 +108,17 @@ pub fn is_slot_restricted(disabled_slots: i32, slot: EquipmentSlot) -> bool {
         || is_slot_disabled(disabled_slots, slot, DISABLE_PUTTING_OFFSET)
 }
 
+/// How the client screen syncs edits to the server.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum SyncMode {
+    /// Server has `armorstatues`: uses the 42-slot menu and `armorstatues:edit` payloads.
+    Network,
+    /// Server lacks `armorstatues`: queues `/data merge` & `/attribute` commands via `send_chat`.
+    Commands,
+    /// Server lacks `armorstatues` and `use_vanilla_tweaks_triggers` is enabled: queues `/trigger as_trigger set N`.
+    VanillaTweaks,
+}
+
 /// Screen tabs in Armor Statues' order (`ArmorStandScreenTypes.TYPES`).
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
 pub enum Tab {
@@ -118,6 +129,7 @@ pub enum Tab {
     Position,
     Alignments,
     Equipment,
+    VanillaTweaks,
 }
 
 impl Tab {
@@ -130,6 +142,31 @@ impl Tab {
         Self::Equipment,
     ];
 
+    pub const COMMANDS: [Self; 5] = [
+        Self::Rotations,
+        Self::Poses,
+        Self::Style,
+        Self::Position,
+        Self::Alignments,
+    ];
+
+    pub const VANILLA_TWEAKS: [Self; 6] = [
+        Self::Rotations,
+        Self::Poses,
+        Self::Style,
+        Self::Position,
+        Self::Alignments,
+        Self::VanillaTweaks,
+    ];
+
+    pub fn tabs_for(mode: SyncMode) -> &'static [Self] {
+        match mode {
+            SyncMode::Network => &Self::ALL,
+            SyncMode::Commands => &Self::COMMANDS,
+            SyncMode::VanillaTweaks => &Self::VANILLA_TWEAKS,
+        }
+    }
+
     pub fn translation_key(self) -> &'static str {
         match self {
             Self::Rotations => "screen.statuemenus.type.statuemenus.rotations",
@@ -138,6 +175,7 @@ impl Tab {
             Self::Position => "screen.statuemenus.type.armorstatues.position",
             Self::Alignments => "screen.statuemenus.type.armorstatues.alignments",
             Self::Equipment => "screen.statuemenus.type.statuemenus.equipment",
+            Self::VanillaTweaks => "screen.statuemenus.type.armorstatues.vanilla_tweaks",
         }
     }
 
@@ -149,22 +187,31 @@ impl Tab {
             Self::Position => "minecraft:grass_block",
             Self::Alignments => "minecraft:diamond_pickaxe",
             Self::Equipment => "minecraft:chest",
+            Self::VanillaTweaks => "minecraft:writable_book",
         }
     }
 
     pub fn has_close_button(self) -> bool {
-        matches!(self, Self::Equipment | Self::Style | Self::Alignments)
+        matches!(
+            self,
+            Self::Equipment | Self::Style | Self::Alignments | Self::VanillaTweaks
+        )
     }
 
-    pub fn cycle(self, backwards: bool) -> Self {
-        let idx = Self::ALL.iter().position(|&t| t == self).unwrap_or(0);
-        let len = Self::ALL.len();
+    pub fn cycle_in(self, tabs: &[Self], backwards: bool) -> Self {
+        let idx = tabs.iter().position(|&t| t == self).unwrap_or(0);
+        let len = tabs.len();
         let next = if backwards {
             (idx + len - 1) % len
         } else {
             (idx + 1) % len
         };
-        Self::ALL[next]
+        tabs[next]
+    }
+
+    #[cfg(test)]
+    pub fn cycle(self, backwards: bool) -> Self {
+        self.cycle_in(&Self::ALL, backwards)
     }
 }
 

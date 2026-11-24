@@ -10,15 +10,16 @@ use mod_api::{
     InteractionResult, ItemPlace, ItemResource, ItemStack, MenuClickedEvent, MenuClosedEvent,
     MenuContainer, MenuKey, MenuPart, MenuReplace, MenuSlotChangedEvent, MenuSlotPlace,
     MenuSlotRulesEvent, ModMenuOpen, ModifierLifetime, PAYLOAD_DECODE_BUDGET, PREVENT_ARMOR_CHANGE,
-    PlayerRef, ServerHost, ServerTickEvent, ServerTickPhase, Tag, Text, ToClient, encode_payload,
+    PayloadId, PlayerRef, ServerHost, ServerTickEvent, ServerTickPhase, Tag, Text, ToClient,
+    encode_payload,
 };
 
 use crate::client;
 use crate::model::{
     ALL_SLOTS_DISABLED, DEFAULT_SCALE, DISABLE_ALL_OFFSET, DISABLE_PUTTING_OFFSET,
-    DISABLE_TAKING_OFFSET, EditMessage, MAX_NAME_LEN, MAX_SCALE, MENU_EQUIPMENT_ENTITY_INDICES,
-    MENU_EQUIPMENT_SLOTS, MENU_ID, MIN_SCALE, SCALE_BONUS_ID, StandSnapshot, StyleOption,
-    SyncMessage, is_slot_disabled, pose_nbt,
+    DISABLE_TAKING_OFFSET, EDIT_CHANNEL, EditMessage, MAX_NAME_LEN, MAX_SCALE,
+    MENU_EQUIPMENT_ENTITY_INDICES, MENU_EQUIPMENT_SLOTS, MENU_ID, MIN_SCALE, SCALE_BONUS_ID,
+    StandSnapshot, StyleOption, SyncMessage, is_slot_disabled, pose_nbt,
 };
 
 #[derive(Clone, Debug)]
@@ -164,6 +165,13 @@ pub fn on_entity_interact(
                 && player.is_spectator(client_host) == Some(false)
                 && player.may_build(client_host) == Some(true)
             {
+                if !client_host.has_channel(&PayloadId(EDIT_CHANNEL.into())) {
+                    let entity_id = u32::try_from(event.entity).ok()?;
+                    if client::open_client_only_screen(client_host, entity_id) {
+                        return Some(InteractionResult::Consume);
+                    }
+                    return None;
+                }
                 return Some(InteractionResult::Success);
             }
             None
