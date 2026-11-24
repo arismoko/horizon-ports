@@ -1,0 +1,12 @@
+Comforts for Sunrise (version 0.5.0)
+
+A port of Comforts 26.x by Illusive Soulworks.
+Original source: https://github.com/illusivesoulworks/comforts
+Original licence: LGPL-3.0-or-later
+
+Block models for sleeping bags and hammocks are adapted from the initial port
+assets by lavoide; the gameplay rules, recipes, config, and Sunrise integration are
+implemented for Sunrise's native mod API by arismoko.
+
+This port is distributed under the same licence as the original (LGPL-3.0-or-later);
+the full licence texts are in COPYING and COPYING.LESSER (copied as LICENSE).

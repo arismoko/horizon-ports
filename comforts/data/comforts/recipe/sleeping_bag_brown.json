@@ -1,0 +1,18 @@
+{
+  "type": "comforts:conditional_shaped",
+  "category": "misc",
+  "group": "comforts:sleeping_bag",
+  "key": {
+    "#": "minecraft:brown_wool"
+  },
+  "pattern": [
+    " # ",
+    " # ",
+    " # "
+  ],
+  "result": {
+    "count": 1,
+    "id": "comforts:sleeping_bag_brown"
+  },
+  "condition": "sleeping_bag"
+}
