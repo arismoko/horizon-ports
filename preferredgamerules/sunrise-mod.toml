@@ -1,0 +1,14 @@
+# Preferred Gamerules for Sunrise: native code in src/.
+id = "preferredgamerules"
+name = "Preferred Gamerules"
+version = "0.5.0"
+description = "New worlds start with the game rules you prefer, set once in a config file."
+authors = ["Estecka", "arismoko"]
+license = "MIT"
+credits = "Ported to Minecraft 26.3 by lavoide, and to Sunrise by arismoko."
+homepage = "https://github.com/arismoko/sunrise-ports"
+side = "server"
+
+[native]
+game = "26.3"
+sunrise = "f8aa80e4c40cf1a5d30e85d13937f3fcf06d8237"

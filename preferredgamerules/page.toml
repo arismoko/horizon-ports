@@ -1,0 +1,24 @@
+summary = "New worlds start with the game rules you prefer, set once in a config file."
+description = """
+New worlds start with the game rules you prefer.
+
+Write your preferences in `config/preferredgamerules.properties`, one rule per line:
+
+    gamerule.minecraft:fire_damage=false
+    gamerule.minecraft:keep_inventory=true
+
+Every world created afterwards starts with those values; worlds that already exist keep their own rules. Rules from other mods work the same way.
+
+Differences from the original:
+
+- The file is named after this port's mod id (`preferredgamerules.properties`).
+- The values are set on a new world as it first opens, not as the rules' defaults, so the create-world screen doesn't show them and a value picked there for a rule in the file is replaced.
+- The original's in-game editor needs Mod Menu, a Fabric mod; preferences are edited in the file only.
+
+A port of Preferred Gamerules by Estecka, under the MIT licence.
+"""
+categories = ["utility", "game-mechanics"]
+
+[[screenshots]]
+path = "page/rules.png"
+caption = "A new world starting with the preferred rules."
