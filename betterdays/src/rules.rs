@@ -625,9 +625,9 @@ pub fn past_sunrise(clock: i64) -> bool {
     clock.rem_euclid(DAY_TICKS) > SUNRISE
 }
 
-/// The text of a `/time rate` line for `rate`, rounded as Java prints a float.
-pub fn rate_command(rate: f64) -> String {
-    format!("time rate {}", (rate as f32))
+/// `Time.crossedMorning(SUNRISE_END, time)`: the clock is past the day's first tick.
+pub fn past_day_start(clock: i64) -> bool {
+    clock.rem_euclid(DAY_TICKS) > 0
 }
 
 #[cfg(test)]
@@ -816,8 +816,9 @@ mod tests {
     }
 
     #[test]
-    fn the_rate_line_prints_a_float() {
-        assert_eq!(rate_command(1.0), "time rate 1");
-        assert_eq!(rate_command(0.4), "time rate 0.4");
+    fn the_day_starts_after_its_first_tick() {
+        assert!(!past_day_start(24_000 * 2));
+        assert!(past_day_start(24_000 * 2 + 1));
+        assert!(past_day_start(23_999));
     }
 }

@@ -4,8 +4,9 @@
 //!
 //! | Moment | Where | What it does |
 //! |---|---|---|
-//! | `level_tick_post` | [`tick_overworld`] | sets the clock's rate: day, night or sleep speed |
-//! | `sleep_finished_time` | this module | the morning notice |
+//! | `level_load`, `level_unload` | this module | the overworld's sleep state (`TimeServiceManager`) |
+//! | `level_tick_post` | [`tick_overworld`] | sets the clock's rate: day, night or sleep speed; the morning at sunrise |
+//! | `sleep_skip_night` | this module | holds vanilla's night skip back until the morning (`SleepStatus`) |
 //! | `player_bed_enter`, `player_bed_leave` | this module | the "is now sleeping" and "has left their bed" notices |
 //! | `screen_render_post` | this module | the clock drawn on the in-bed screen |
 //! | `register` | this module | notes whether SleepWarp or Sleep Tight is loaded, which turns sleep off |
@@ -19,17 +20,16 @@ use std::sync::atomic::{AtomicBool, Ordering};
 
 use mod_api::{
     Config as ModConfig, ConfigContext, ConfigKind, ConfigLoadingEvent, ConfigReloadingEvent, Flow,
-    GameRuleValue, Hooks, HostSide, Identifier, LevelRef, LevelTickPostEvent, PlayerBedEnterEvent,
-    PlayerBedLeaveEvent, PlayerRef, RegisterConfigsEvent, Registrar, RegistrationContext,
-    ScreenRenderPostEvent, ServerHost, SleepFinishedTimeEvent, Text,
+    GameRuleValue, Hooks, HostSide, Identifier, LevelLoadEvent, LevelRef, LevelTickPostEvent,
+    LevelUnloadEvent, PlayerBedEnterEvent, PlayerBedLeaveEvent, PlayerRef, RegisterConfigsEvent,
+    Registrar, RegistrationContext, ScreenRenderPostEvent, ServerHost, SleepSkipNightEvent, Text,
 };
 use rules::{Client, Common, Interpolator, Message, Target};
 
 const MOD: &str = "betterdays";
 const OVERWORLD: &str = "minecraft:overworld";
 const ADVANCE_TIME: &str = "minecraft:advance_time";
-/// Ticks between two sends of the rate line while it has not changed.
-const RATE_REFRESH: u32 = 200;
+const SLEEPING_PERCENTAGE: &str = "minecraft:players_sleeping_percentage";
 
 struct Loaded {
     common: Common,
@@ -72,8 +72,26 @@ fn client() -> Client {
         .clone()
 }
 
-/// The rate last sent, as float bits, and the ticks since.
-static RATE: Mutex<Option<(u32, u32)>> = Mutex::new(None);
+/// The overworld's sleep state while it is open (`TimeService`): the `players_sleeping_percentage`
+/// rule when the level opened, and whether this night's morning was handled.
+struct Service {
+    default_percentage: i32,
+    morning_handled: bool,
+}
+
+static SERVICE: Mutex<Option<Service>> = Mutex::new(None);
+
+fn with_service<R>(f: impl FnOnce(&mut Service) -> R) -> Option<R> {
+    SERVICE
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .as_mut()
+        .map(f)
+}
+
+fn set_sleeping_percentage(host: &mut dyn ServerHost, level: LevelRef, percentage: i32) {
+    level.set_game_rule(host, SLEEPING_PERCENTAGE, GameRuleValue::Int(percentage));
+}
 
 fn rule_on(host: &dyn mod_api::Host, level: LevelRef, rule: &str) -> bool {
     matches!(
@@ -179,39 +197,57 @@ fn notice_variables(name: &str, active: usize, sleeping: usize) -> Vec<(&'static
     ]
 }
 
-/// `TimeService.tick`: the clock's rate for this tick.
+/// `TimeService.tick`: the clock's rate for this tick, then, while players sleep, the morning
+/// once the clock is past sunrise; once everyone is awake after it, vanilla's sleep rule again.
 fn tick_overworld(host: &mut dyn ServerHost, level: LevelRef) {
     if !rule_on(&*host, level, ADVANCE_TIME) {
         return;
     }
-    let Some(clock) = level.clock_time(&*host) else {
+    let (Some(clock), Some(world_clock)) = (level.clock_time(&*host), level.clock(&*host)) else {
         return;
     };
     let (active, sleeping) = sleep_counts(&*host, level);
-    let rate = with_common(|common, spline| {
-        let sleep = if sleep_feature(common) {
+    let (feature, rate) = with_common(|common, spline| {
+        let feature = sleep_feature(common);
+        let sleep = if feature {
             common.sleep_speed(sleeping, active)
         } else {
             None
         };
-        sleep.unwrap_or_else(|| common.time_speed(clock as f64, spline))
+        let rate = sleep.unwrap_or_else(|| common.time_speed(clock as f64, spline));
+        (feature, rate)
     });
-    send_rate(host, rate);
+    world_clock.set_rate(host, rate as f32);
+    if !feature {
+        return;
+    }
+    if sleeping > 0 {
+        if rules::past_sunrise(clock)
+            && with_service(|service| !service.morning_handled) == Some(true)
+        {
+            morning(host, level, active, sleeping);
+        }
+    } else if rules::past_day_start(clock)
+        && let Some(Some(default)) = with_service(|service| {
+            std::mem::take(&mut service.morning_handled).then_some(service.default_percentage)
+        })
+    {
+        set_sleeping_percentage(host, level, default);
+    }
 }
 
-fn send_rate(host: &mut dyn ServerHost, rate: f64) {
-    let bits = (rate as f32).to_bits();
-    {
-        let mut last = RATE.lock().unwrap_or_else(|e| e.into_inner());
-        match &mut *last {
-            Some((sent, since)) if *sent == bits && *since < RATE_REFRESH => {
-                *since += 1;
-                return;
-            }
-            slot => *slot = Some((bits, 0)),
-        }
-    }
-    host.commands().run_command(&rules::rate_command(rate));
+/// `TimeService.handleMorning`: the morning notice, and vanilla's night skip let through with
+/// the sleeping percentage at 0, so it wakes everyone on the next tick.
+fn morning(host: &mut dyn ServerHost, level: LevelRef, active: usize, sleeping: usize) {
+    let message = with_common(|common, _| common.morning.clone());
+    send(
+        host,
+        &message,
+        level,
+        &notice_variables("", active, sleeping),
+    );
+    set_sleeping_percentage(host, level, 0);
+    with_service(|service| service.morning_handled = true);
 }
 
 fn level_of(host: &mut dyn ServerHost, uuid: u128) -> Option<LevelRef> {
@@ -243,6 +279,44 @@ fn enter_notice(host: &mut dyn ServerHost, event: &PlayerBedEnterEvent<'_>) {
 
 #[mod_api::sunrise_mod]
 impl Hooks for Mod {
+    fn level_load(&self, host: &mut dyn ServerHost, event: &mut LevelLoadEvent<'_>) {
+        if event.dimension != OVERWORLD {
+            return;
+        }
+        let rule = host
+            .level(OVERWORLD)
+            .and_then(|level| level.game_rule(&*host, SLEEPING_PERCENTAGE).ok().flatten());
+        let Some(GameRuleValue::Int(default_percentage)) = rule else {
+            return;
+        };
+        *SERVICE.lock().unwrap_or_else(|e| e.into_inner()) = Some(Service {
+            default_percentage,
+            morning_handled: false,
+        });
+    }
+
+    fn level_unload(&self, _: &mut dyn ServerHost, event: &mut LevelUnloadEvent<'_>) {
+        if event.dimension == OVERWORLD {
+            *SERVICE.lock().unwrap_or_else(|e| e.into_inner()) = None;
+        }
+    }
+
+    /// `SleepStatus.areEnoughSleeping` answering false: with the sleep feature on, the night is
+    /// slept through at the sleep speed and only skipped once the morning is handled.
+    fn sleep_skip_night(
+        &self,
+        _: &mut dyn ServerHost,
+        event: &mut SleepSkipNightEvent<'_>,
+    ) -> Flow {
+        if event.dimension == OVERWORLD
+            && with_common(|common, _| sleep_feature(common))
+            && with_service(|service| !service.morning_handled) == Some(true)
+        {
+            event.cancelled = true;
+        }
+        Flow::Continue
+    }
+
     fn level_tick_post(&self, host: HostSide<'_>, event: &mut LevelTickPostEvent) {
         if let HostSide::Server(host) = host
             && is_overworld(&*host, event.level)
@@ -260,29 +334,6 @@ impl Hooks for Mod {
             return Flow::Continue;
         }
         enter_notice(host, event);
-        Flow::Continue
-    }
-
-    fn sleep_finished_time(
-        &self,
-        host: &mut dyn ServerHost,
-        event: &mut SleepFinishedTimeEvent<'_>,
-    ) -> Flow {
-        if event.dimension == OVERWORLD
-            && let Some(level) = host.level(OVERWORLD)
-        {
-            let message =
-                with_common(|common, _| sleep_feature(common).then(|| common.morning.clone()));
-            if let Some(message) = message {
-                let (active, sleeping) = sleep_counts(&*host, level);
-                send(
-                    host,
-                    &message,
-                    level,
-                    &notice_variables("", active, sleeping),
-                );
-            }
-        }
         Flow::Continue
     }
 
