@@ -1,7 +1,7 @@
 # Comforts for Sunrise: sleeping bags, hammocks, and rope & nail.
 id = "comforts"
 name = "Comforts"
-version = "0.5.0"
+version = "0.5.1"
 description = "Adds sleeping bags and hammocks for portability and daytime napping without resetting your spawn point."
 authors = ["Illusive Soulworks", "arismoko"]
 license = "LGPL-3.0-or-later"
