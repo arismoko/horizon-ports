@@ -6,7 +6,7 @@ description = "Crops, saplings, sugar cane, bamboo and berries grow faster while
 authors = ["ThePoultryMan", "lavoide", "arismoko"]
 license = "MIT"
 credits = "Ported to Minecraft 26.3 by lavoide, and to Sunrise by arismoko."
-homepage = "https://github.com/arismoko/horizon-ports"
+homepage = "https://github.com/arismoko/sunrise-ports"
 side = "server"
 
 [native]

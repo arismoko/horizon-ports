@@ -6,7 +6,7 @@ description = "Right-click a grown crop to harvest and replant it."
 authors = ["Jamalam", "lavoide", "arismoko"]
 license = "MIT"
 credits = "Ported to Minecraft 26.3 by lavoide, and to Sunrise by arismoko."
-homepage = "https://github.com/arismoko/horizon-ports"
+homepage = "https://github.com/arismoko/sunrise-ports"
 side = "both"
 
 [native]

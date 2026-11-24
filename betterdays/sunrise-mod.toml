@@ -6,7 +6,7 @@ description = "Set the length of day and night, and let sleeping speed the night
 authors = ["wendall911", "lavoide", "arismoko"]
 license = "LGPL-3.0-or-later"
 credits = "Ported to Minecraft 26.3 by lavoide, and to Sunrise by arismoko."
-homepage = "https://github.com/arismoko/horizon-ports"
+homepage = "https://github.com/arismoko/sunrise-ports"
 side = "both"
 
 [native]

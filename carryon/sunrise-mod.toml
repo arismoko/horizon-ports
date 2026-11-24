@@ -6,7 +6,7 @@ description = "Hold the carry key and right-click with empty hands to pick up ch
 authors = ["Tschipp", "Purplicious_Cow", "cy4n", "arismoko"]
 license = "LGPL-3.0-only"
 credits = "Ported to Minecraft 26.3 by lavoide, and to Sunrise by arismoko."
-homepage = "https://github.com/arismoko/horizon-ports"
+homepage = "https://github.com/arismoko/sunrise-ports"
 side = "both"
 
 [native]

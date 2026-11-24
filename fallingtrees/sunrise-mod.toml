@@ -6,7 +6,7 @@ description = "Chop the bottom log of a tree with an axe and the whole tree come
 authors = ["The Panda Oliver", "arismoko"]
 license = "GPL-3.0-only"
 credits = "Ported to Minecraft 26.3 by lavoide, and to Sunrise by arismoko."
-homepage = "https://github.com/arismoko/horizon-ports"
+homepage = "https://github.com/arismoko/sunrise-ports"
 side = "both"
 
 [native]
