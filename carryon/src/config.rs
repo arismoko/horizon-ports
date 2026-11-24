@@ -34,6 +34,7 @@ pub struct Settings {
     pub stackable_entities: bool,
     pub size_matters_stacking: bool,
     pub pickup_unbreakable: bool,
+    pub use_scripts: bool,
 }
 
 /// The setting keys, in the order [`SPECS`] lists them.
@@ -61,6 +62,7 @@ pub mod key {
     pub const SIZE_MATTERS: &str = "entity_size_matters_stacking";
     pub const PICKUP_UNBREAKABLE: &str = "pickup_unbreakable_blocks";
     pub const FACE_PLAYER: &str = "face_player";
+    pub const USE_SCRIPTS: &str = "use_scripts";
 }
 
 /// One setting's kind and default.
@@ -95,6 +97,7 @@ pub const SPECS: &[(&str, Kind)] = &[
     (key::SIZE_MATTERS, Kind::Toggle(true)),
     (key::PICKUP_UNBREAKABLE, Kind::Toggle(false)),
     (key::FACE_PLAYER, Kind::Toggle(true)),
+    (key::USE_SCRIPTS, Kind::Toggle(false)),
 ];
 
 pub fn flag(host: &dyn Host, key: &str, default: bool) -> bool {
@@ -133,6 +136,7 @@ impl Settings {
             stackable_entities: flag(host, key::STACKABLE, true),
             size_matters_stacking: flag(host, key::SIZE_MATTERS, true),
             pickup_unbreakable: flag(host, key::PICKUP_UNBREAKABLE, false),
+            use_scripts: flag(host, key::USE_SCRIPTS, false),
         }
     }
 }
@@ -401,6 +405,7 @@ mod tests {
             stackable_entities: true,
             size_matters_stacking: true,
             pickup_unbreakable: false,
+            use_scripts: false,
         }
     }
 

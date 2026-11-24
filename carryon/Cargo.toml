@@ -1,6 +1,6 @@
 [package]
 name = "mod-carryon"
-version = "0.4.1"
+version = "0.5.0"
 edition = "2024"
 license = "LGPL-3.0-only"
 description = "Carry On for Sunrise: pick up chests, other block entities and mobs, and carry them"
@@ -11,3 +11,4 @@ publish = false
 [dependencies]
 # The pinned SDK's API crate, fetched into .sunrise/sdk/ by any `cargo sunrise-mod` command.
 sunrise-mod-api = { path = ".sunrise/sdk/api/crates/sunrise-mod-api" }
+serde_json = "1"

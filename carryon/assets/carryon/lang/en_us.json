@@ -33,5 +33,6 @@
   "carryon.config.stackable_entities": "Mobs can be stacked",
   "carryon.config.entity_size_matters_stacking": "A larger mob can't go on a smaller one",
   "carryon.config.pickup_unbreakable_blocks": "Survival players can carry unbreakable blocks",
-  "carryon.config.face_player": "Carried blocks face you"
+  "carryon.config.face_player": "Carried blocks face you",
+  "carryon.config.use_scripts": "Use pickup scripts from data packs"
 }

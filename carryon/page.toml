@@ -13,11 +13,13 @@ What it does:
 - Others see what you carry: blocks in your hands, mobs over your head as their spawn egg.
 - Settings (Options > Mods) hold the original's switches and numbers: reach (scaled by your reach attribute), mob size limits (relative to your scale), slowness multipliers and heavy options, stack limit, baby pickup, hostile mobs, any-block pickup, unbreakable blocks, hitting while carrying, setting down when hit, the whitelist switches and whether carried blocks face you.
 - The lists are text files in `config/carryon/` (forbidden and allowed blocks and mobs, forbidden and allowed stacking, placement state exceptions), written with the original's defaults on first run; entries are ids, ids with `*`, or `#tags`.
+- Pickup scripts: with "Use pickup scripts" on, data packs can add `carryon/scripts/*.json` files in the original's format to match blocks or mobs, skip checks, require advancements, experience, game modes, scores, places or effects, run commands on pickup, while carrying and on placement, and change how the carried thing is drawn.
 - `/carryon debug` shows what you carry, `/carryon clear` drops it from your hands, and operators can `clear` or `place` for chosen players.
 
 Differences from the original:
 
-- Players can't be picked up, the arms are not raised while carrying, custom pickup scripts and conditions are not supported, and there are no model overrides.
+- Players can't be picked up, the arms are not raised while carrying (nor turned by a script), Game Stages pickup conditions have no effect (as in the original without Game Stages), and there are no model overrides.
+- A script naming a mob type matches that type; the original's comparison never matched one.
 - A carried mob is shown over the hotbar in first person rather than in your arms, and as its spawn egg on other players.
 - Each side reads its own lists; the server's decide what can be picked up.
 """

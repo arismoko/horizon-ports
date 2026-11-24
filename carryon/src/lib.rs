@@ -21,11 +21,17 @@
 //!
 //! The options are `config.rs`: switches and numbers are mod settings, the lists are text files in
 //! `config/carryon/`. The carry key is a Controls binding (left shift unless rebound) the client reports to the server;
-//! `/carryon debug|clear|place` are the original's commands. Not ported: picking up players (a player can't be
-//! a vehicle on this engine), the raised arms (the arm pose hooks aren't asked for an empty hand), custom
-//! pickup scripts and conditions, the model overrides.
+//! `/carryon debug|clear|place` are the original's commands.
+//! - Pickup scripts (`scripts.rs`, `common/scripting`): with `use_scripts` on, a data pack's
+//!   `carryon/scripts/*.json` may match a block or mob, skip checks, add conditions on the player, run commands
+//!   on pickup, each carried tick and placement, and change how the carried thing is drawn.
+//!
+//! Not ported: picking up players (a player can't be a vehicle on this engine), the raised arms and a script's
+//! arm rotations (the arm pose hooks aren't asked for an empty hand), Game Stages pickup conditions (without
+//! Game Stages the original passes them all), the model overrides.
 
 mod config;
+mod scripts;
 
 use std::collections::{HashMap, HashSet};
 use std::ops::ControlFlow;
@@ -33,17 +39,18 @@ use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, OnceLock};
 
 use mod_api::{
-    ActiveEffect, AttachmentCodec, AttachmentType, AttackEntityEvent, BlockPos, BlockUpdateFlags,
-    BreakBlockEvent, ClientHost, ClientTickPostEvent, Command, CommandArgumentValue, CommandSource,
-    Compound, Direction, EntityInteractEvent, EntityRef, Flow, GameMode, GuiEntity, GuiEntityLook,
+    ActiveEffect, AddServerReloadListenersEvent, AttachmentCodec, AttachmentType,
+    AttackEntityEvent, BlockPos, BlockUpdateFlags, BreakBlockEvent, CameraType, ClientHost,
+    ClientTickPostEvent, Command, CommandArgumentValue, CommandSource, Compound, Direction,
+    EntityInteractEvent, EntityRef, FileToIdConverter, Flow, GameMode, GuiEntity, GuiEntityLook,
     GuiEntityView, GuiRenderPostEvent, Hand, HitHost, Holder, Hooks, Host, HostBlockStates,
-    HostSide, IPayloadContext, IPayloadHandler, InteractionResult, ItemDisplayContext, ItemKey,
-    ItemStack, KeyRegistration, LeftClickBlockEvent, LivingDeathEvent, LivingIncomingDamageEvent,
-    LivingRef, MobCategory, MouseScrollingEvent, PayloadBytes, PayloadHandleError, PayloadId,
-    PlacementContext, PlacementSource, PlayerRef, PlayerSwitchHotbarSlotPreEvent,
-    RegisterCommandsEvent, Registrar, RegistrationContext, RemovalReason, RenderHandEvent,
-    RenderPlayerPostEvent, RightClickBlockEvent, ServerHost, ServerTickEvent, ServerTickPhase,
-    SettingSpec, SoundSource, Tag, Text,
+    HostSide, IPayloadContext, IPayloadHandler, Identifier, InteractionResult, ItemDisplayContext,
+    ItemKey, ItemStack, KeyRegistration, LeftClickBlockEvent, LivingDeathEvent,
+    LivingIncomingDamageEvent, LivingRef, MainHand, MobCategory, MouseScrollingEvent, PayloadBytes,
+    PayloadHandleError, PayloadId, PlacementContext, PlacementSource, PlayerRef,
+    PlayerSwitchHotbarSlotPreEvent, RegisterCommandsEvent, Registrar, RegistrationContext,
+    ReloadContext, RemovalReason, RenderHandEvent, RenderPlayerPostEvent, RightClickBlockEvent,
+    ServerHost, ServerTickEvent, ServerTickPhase, SettingSpec, SoundSource, Tag, Text,
 };
 
 use config::{Lists, Settings, permitted};
@@ -547,8 +554,15 @@ enum Shown {
     },
 }
 
-fn shown() -> &'static Mutex<HashMap<u32, Shown>> {
-    static S: OnceLock<Mutex<HashMap<u32, Shown>>> = OnceLock::new();
+/// What a client draws for one carrying player, and how its script changes the drawing.
+#[derive(Clone)]
+struct Carried {
+    what: Shown,
+    render: Option<scripts::Render>,
+}
+
+fn shown() -> &'static Mutex<HashMap<u32, Carried>> {
+    static S: OnceLock<Mutex<HashMap<u32, Carried>>> = OnceLock::new();
     S.get_or_init(|| Mutex::new(HashMap::new()))
 }
 
@@ -591,8 +605,9 @@ impl IPayloadHandler for KeyHandler {
 struct CarriedHandler;
 
 impl IPayloadHandler for CarriedHandler {
-    /// `[entity id u32, kind u8 (0 block, 1 entity), length u32, bytes]` repeated: a block's state string, or a
-    /// mob's type, a 0 byte and its data as network NBT. The whole list each time.
+    /// `[entity id u32, kind u8 (0 block, 1 entity), length u32, bytes, length u32, render]` repeated: a block's
+    /// state string, or a mob's type, a 0 byte and its data as network NBT; then its script's render JSON,
+    /// empty for none. The whole list each time.
     fn handle(
         &self,
         payload: PayloadBytes,
@@ -611,17 +626,32 @@ impl IPayloadHandler for CarriedHandler {
             }
             let body = &b[i..i + len];
             i += len;
-            if kind == 0 {
+            if i + 4 > b.len() {
+                break;
+            }
+            let render_len = u32::from_be_bytes([b[i], b[i + 1], b[i + 2], b[i + 3]]) as usize;
+            i += 4;
+            if i + render_len > b.len() {
+                break;
+            }
+            let render = std::str::from_utf8(&b[i..i + render_len])
+                .ok()
+                .and_then(scripts::Render::from_text);
+            i += render_len;
+            let what = if kind == 0 {
                 let (bid, props) = parse_state(&String::from_utf8_lossy(body));
-                map.insert(id, Shown::Block { id: bid, props });
+                Shown::Block { id: bid, props }
             } else if let Some(z) = body.iter().position(|c| *c == 0) {
                 let kind = String::from_utf8_lossy(&body[..z]).to_string();
                 let data = match Tag::from_network_bytes(&body[z + 1..], None) {
                     Ok((Tag::Compound(c), _)) => c,
                     _ => Compound::new(),
                 };
-                map.insert(id, Shown::Entity { kind, data });
-            }
+                Shown::Entity { kind, data }
+            } else {
+                continue;
+            };
+            map.insert(id, Carried { what, render });
         }
         *lock(shown()) = map;
         Ok(())
@@ -746,6 +776,32 @@ fn sound_at(
     }
 }
 
+/// What a carry keeps of its script (`CarryOnData.activeScript`): the commands still to run and the render the
+/// clients draw by.
+fn script_tag(script: &scripts::Script) -> Compound {
+    let mut c = Compound::new();
+    let effects = script.effects();
+    let parts = [
+        ("loop", effects.map_or("", |e| e.r#loop.as_str())),
+        ("place", effects.map_or("", |e| e.place.as_str())),
+        ("render", script.render().unwrap_or("")),
+    ];
+    for (key, value) in parts {
+        if !value.is_empty() {
+            c.insert(key.into(), s(value));
+        }
+    }
+    c
+}
+
+/// A carry's script command or render, empty when it has none.
+fn script_part(carry: &Compound, key: &str) -> String {
+    match carry.get(&"script".into()) {
+        Some(Tag::Compound(c)) => get_str(c, key).unwrap_or_default(),
+        _ => String::new(),
+    }
+}
+
 fn entity_kind(host: &dyn Host, e: EntityRef) -> String {
     e.kind(host)
         .and_then(|k| k.id(host))
@@ -758,16 +814,15 @@ impl Mod {
         lock(&self.jobs).push(job);
     }
 
-    /// PickupHandler.tryPickUpBlock, the checks the click can make.
+    /// PickupHandler.tryPickUpBlock, the checks the click can make: None when it can't be picked up, else the
+    /// script that matched it, if any.
     fn block_pickable(
         host: &mut dyn ServerHost,
         player: PlayerRef,
         dim: &str,
         pos: [i32; 3],
-    ) -> bool {
-        let Some(level) = host.level(dim) else {
-            return false;
-        };
+    ) -> Option<Option<Arc<scripts::Script>>> {
+        let level = host.level(dim)?;
         let reader: &dyn ServerHost = &*host;
         let cfg = Settings::read(reader);
         let center = pos.map(|c| f64::from(c) + 0.5);
@@ -778,14 +833,37 @@ impl Mod {
             "minecraft:block_interaction_range",
             &cfg,
         ) {
-            return false;
+            return None;
         }
-        let Some(state) = level.block_state(reader, pos) else {
-            return false;
+        let state = level.block_state(reader, pos)?;
+        let block = level.block(reader, pos).and_then(|k| k.id(reader))?;
+        let be = reader.block_entity(level, pos);
+        let script = if cfg.use_scripts {
+            let data = be.and_then(|be| {
+                let mut data = be.data(reader)?;
+                let id = be.kind(reader).and_then(|k| k.id(reader))?;
+                data.insert("id".into(), s(id));
+                Some(data)
+            });
+            let states = reader.block_states();
+            let found = scripts::inspect_block(
+                reader,
+                block,
+                states.destroy_speed(state).unwrap_or(0.0),
+                states.explosion_resistance(state).unwrap_or(0.0),
+                data.as_ref(),
+            );
+            match found {
+                Ok(found) => found,
+                Err(e) => {
+                    eprintln!("[carryon] pickup script: {e}");
+                    return None;
+                }
+            }
+        } else {
+            None
         };
-        let Some(block) = level.block(reader, pos).and_then(|k| k.id(reader)) else {
-            return false;
-        };
+        let overrides = script.as_ref().is_some_and(|s| s.override_checks);
         let block_key = level.block(reader, pos);
         let in_tag = |tag: &str| block_key.and_then(|k| reader.block_in_tag(k, tag)) == Some(true);
         let lists = Lists::get(reader);
@@ -798,41 +876,55 @@ impl Mod {
                 &in_tag,
             )
         {
-            return false;
+            return None;
         }
         // DoorBlock.HALF: the halves of tall blocks stay (a trapdoor's `half` is another property).
         if matches!(
             level.block_property(reader, pos, "half").as_deref(),
             Some("upper" | "lower")
         ) {
-            return false;
+            return None;
         }
-        if reader
-            .block_states()
-            .destroy_speed(state)
-            .is_some_and(|s| s < 0.0)
+        if !overrides
+            && reader
+                .block_states()
+                .destroy_speed(state)
+                .is_some_and(|s| s < 0.0)
             && !creative(reader, player)
             && !cfg.pickup_unbreakable
         {
-            return false;
+            return None;
         }
-        let Some(be) = reader.block_entity(level, pos) else {
-            return cfg.pickup_all_blocks;
-        };
+        if be.is_none() && !overrides && !cfg.pickup_all_blocks {
+            return None;
+        }
         // A locked container stays.
-        if be.lock(reader).is_some_and(|l| !l.is_empty()) {
-            return false;
+        if be.is_some_and(|be| be.lock(reader).is_some_and(|l| !l.is_empty())) {
+            return None;
         }
-        true
+        match script {
+            Some(script) => match script.fulfills(host, player) {
+                Ok(true) => Some(Some(script)),
+                Ok(false) => None,
+                Err(e) => {
+                    eprintln!("[carryon] pickup script: {e}");
+                    None
+                }
+            },
+            None => Some(None),
+        }
     }
 
     fn pick_block(&self, host: &mut dyn ServerHost, uuid: u128, dim: &str, pos: [i32; 3]) {
         let Some(player) = host.player(uuid) else {
             return;
         };
-        if !may_pick(host, player) || !Self::block_pickable(host, player, dim, pos) {
+        if !may_pick(host, player) {
             return;
         }
+        let Some(script) = Self::block_pickable(host, player, dim, pos) else {
+            return;
+        };
         let Some(level) = host.level(dim) else { return };
         let reader: &dyn ServerHost = &*host;
         let Some(state) = level.block_state(reader, pos) else {
@@ -864,6 +956,12 @@ impl Mod {
             c.insert("tile".into(), Tag::Compound(t));
         }
         c.insert("selected".into(), Tag::Int(slot));
+        if let Some(script) = &script {
+            c.insert("script".into(), Tag::Compound(script_tag(script)));
+            if let Some(effects) = script.effects() {
+                scripts::run(host, player, &effects.pickup);
+            }
+        }
         // The carry is stored before the block goes, so a refused store never loses the block.
         if !set_carry(host, uuid, c) {
             return;
@@ -894,16 +992,43 @@ impl Mod {
         }
     }
 
-    /// PickupHandler.tryPickupEntity, the checks the click can make.
-    fn entity_pickable(host: &mut dyn ServerHost, player: PlayerRef, e: EntityRef) -> bool {
+    /// PickupHandler.tryPickupEntity, the checks the click can make: None when it can't be picked up, else the
+    /// script that matched it, if any.
+    fn entity_pickable(
+        host: &mut dyn ServerHost,
+        player: PlayerRef,
+        e: EntityRef,
+    ) -> Option<Option<Arc<scripts::Script>>> {
         let nbt = e.nbt(host);
         let reader: &dyn ServerHost = &*host;
         let cfg = Settings::read(reader);
         let lists = Lists::get(reader);
         let kind = entity_kind(reader, e);
         if kind.is_empty() || kind == "minecraft:player" {
-            return false;
+            return None;
         }
+        let script = if cfg.use_scripts {
+            let mut data = nbt.clone().unwrap_or_default();
+            data.insert("id".into(), s(&kind));
+            let [width, height] = e.dimensions(reader).unwrap_or([0.0; 2]);
+            let found = scripts::inspect_entity(&scripts::EntityFacts {
+                kind: &kind,
+                width: width as f32,
+                height: height as f32,
+                health: LivingRef::new(e).health(reader).unwrap_or(0.0),
+                nbt: &data,
+            });
+            match found {
+                Ok(found) => found,
+                Err(err) => {
+                    eprintln!("[carryon] pickup script: {err}");
+                    return None;
+                }
+            }
+        } else {
+            None
+        };
+        let overrides = script.as_ref().is_some_and(|s| s.override_checks);
         let baby = nbt
             .as_ref()
             .and_then(|n| get_int(n, "Age"))
@@ -916,12 +1041,10 @@ impl Mod {
             &|tag| reader.entity_type_in_tag(&kind, tag),
         );
         // A baby can be carried though the grown mob is not allowed.
-        if !allowed && !(cfg.allow_babies && baby) {
-            return false;
+        if !allowed && !overrides && !(cfg.allow_babies && baby) {
+            return None;
         }
-        let Some(at) = e.position(reader) else {
-            return false;
-        };
+        let at = e.position(reader)?;
         if !in_reach(
             reader,
             player,
@@ -929,22 +1052,38 @@ impl Mod {
             "minecraft:entity_interaction_range",
             &cfg,
         ) {
-            return false;
+            return None;
         }
         if !creative(reader, player) {
-            if !cfg.pickup_hostile && e.classification(reader) == Some(MobCategory::Monster) {
-                return false;
+            if !overrides
+                && !cfg.pickup_hostile
+                && e.classification(reader) == Some(MobCategory::Monster)
+            {
+                return None;
             }
             let scale = scale_of(reader, player, &cfg);
             if let Some([w, h]) = e.dimensions(reader)
                 && (cfg.max_entity_width < w * scale || cfg.max_entity_height < h * scale)
             {
-                return false;
+                return None;
             }
         }
         // Someone else's pet stays.
         let owner = nbt.and_then(|n| uuid_of(n.get(&"Owner".into())));
-        owner.is_none_or(|o| o == player.uuid())
+        if owner.is_some_and(|o| o != player.uuid()) {
+            return None;
+        }
+        match script {
+            Some(script) => match script.fulfills(host, player) {
+                Ok(true) => Some(Some(script)),
+                Ok(false) => None,
+                Err(err) => {
+                    eprintln!("[carryon] pickup script: {err}");
+                    None
+                }
+            },
+            None => Some(None),
+        }
     }
 
     fn pick_entity(&self, host: &mut dyn ServerHost, uuid: u128, id: u32) {
@@ -952,9 +1091,12 @@ impl Mod {
             return;
         };
         let Some(e) = host.entity(id) else { return };
-        if !may_pick(host, player) || !Self::entity_pickable(host, player, e) {
+        if !may_pick(host, player) {
             return;
         }
+        let Some(script) = Self::entity_pickable(host, player, e) else {
+            return;
+        };
         let reader: &dyn ServerHost = &*host;
         let kind = entity_kind(reader, e);
         let [w, h] = e.dimensions(reader).unwrap_or([0.6, 0.6]);
@@ -962,6 +1104,9 @@ impl Mod {
         e.detach_leash(host, true);
         e.eject_passengers(host);
         e.stop_riding(host);
+        if let Some(effects) = script.as_ref().and_then(|s| s.effects()) {
+            scripts::run(host, player, &effects.pickup);
+        }
         let Some(mut data) = e.nbt(host) else { return };
         for k in ["Passengers", "leash", "Leash", "Pos", "Motion"] {
             data.remove(&(*k).into());
@@ -975,6 +1120,9 @@ impl Mod {
             Tag::List(vec![Tag::Double(w.to_bits()), Tag::Double(h.to_bits())]),
         );
         c.insert("selected".into(), Tag::Int(slot));
+        if let Some(script) = &script {
+            c.insert("script".into(), Tag::Compound(script_tag(script)));
+        }
         // The carry is stored before the mob goes, so a refused store never loses the mob.
         if !set_carry(host, uuid, c) {
             return;
@@ -1093,6 +1241,7 @@ impl Mod {
                     return fail(host);
                 };
                 let sound = reader.block_states().sound(state);
+                scripts::run(host, player, &script_part(&carry, "place"));
                 let flags = BlockUpdateFlags::NEIGHBORS | BlockUpdateFlags::CLIENTS;
                 if !matches!(level.set_block(host, pos, state, flags), Ok(true)) {
                     return fail(host);
@@ -1133,6 +1282,7 @@ impl Mod {
                     f64::from(pos[1]),
                     f64::from(pos[2]) + 0.5,
                 ];
+                scripts::run(host, player, &script_part(&carry, "place"));
                 if host.summon(dim, &kind, at, data).is_none() {
                     eprintln!("[carryon] {kind} not summoned at {at:?}");
                     return fail(host);
@@ -1218,6 +1368,7 @@ impl Mod {
         if let Some(e) = host.entity(id) {
             let _ = e.start_riding(host, top, true);
         }
+        scripts::run(host, player, &script_part(&carry, "place"));
         set_carry(host, uuid, Compound::new());
         if let Some(ent) = host.player(uuid).map(|p| p.entity()) {
             ent.play_sound(host, "minecraft:entity.horse.saddle", 0.5, 1.5);
@@ -1306,6 +1457,7 @@ impl Mod {
                 continue;
             }
             let kind = get_str(&carry, "type").unwrap_or_default();
+            scripts::run(host, player, &script_part(&carry, "loop"));
             let reader: &dyn ServerHost = &*host;
             // Slowness: a mob by its area, a block by the size of its data (a level per 500 characters
             // of its NBT text, here its network size), up to IV; 1 tick, renewed each tick.
@@ -1386,6 +1538,9 @@ impl Mod {
                 bytes.push(k);
                 bytes.extend((body.len() as u32).to_be_bytes());
                 bytes.extend(body);
+                let render = script_part(&carry, "render").into_bytes();
+                bytes.extend((render.len() as u32).to_be_bytes());
+                bytes.extend(render);
             }
         }
         if send {
@@ -1437,7 +1592,7 @@ fn local_id(host: &dyn ClientHost) -> Option<u32> {
     host.local_player().map(|p| p.entity().id())
 }
 
-fn local_shown(host: &dyn ClientHost) -> Option<Shown> {
+fn local_shown(host: &dyn ClientHost) -> Option<Carried> {
     let id = local_id(host)?;
     lock(shown()).get(&id).cloned()
 }
@@ -1487,6 +1642,37 @@ fn draw_block(
     }
 }
 
+/// `CarryRenderHelper.performScriptTransformation`: the script's rotation (x, then y, then z), translation and
+/// scale, about the centre of what is drawn. In third person from behind a block's z translation is turned
+/// round, as the original does.
+fn script_transform(
+    host: &dyn ClientHost,
+    draw: &mut dyn mod_api::BlockEntityDrawContext,
+    render: &scripts::Render,
+    centre: [f32; 3],
+    block: bool,
+) {
+    draw.translate(centre);
+    let [rx, ry, rz] = render.rotation.or(0.0);
+    for (axis, degrees) in [
+        ([1.0, 0.0, 0.0], rx),
+        ([0.0, 1.0, 0.0], ry),
+        ([0.0, 0.0, 1.0], rz),
+    ] {
+        draw.rotate_about(axis, degrees, [0.0; 3]);
+    }
+    let [x, y, z] = render.translation.or(0.0);
+    let behind = block && host.camera_type() == CameraType::ThirdPersonBack;
+    draw.translate([x, y, if behind { -z } else { z }]);
+    draw.scale(render.scale.or(1.0));
+    draw.translate(centre.map(|c| -c));
+}
+
+/// The block a script draws instead of the carried one (its default state), if it names one.
+fn render_block(render: Option<&scripts::Render>) -> Option<String> {
+    render.and_then(|r| r.name_block.clone())
+}
+
 #[mod_api::sunrise_mod]
 impl Hooks for Mod {
     fn register(&self, r: &mut dyn Registrar, _cx: &RegistrationContext) {
@@ -1505,9 +1691,31 @@ impl Hooks for Mod {
             KeyRegistration::new("carry", "key.keyboard.left.shift").label("key.carry.desc"),
         );
         let mut payloads = r.payload_handlers();
-        let mut channel = payloads.registrar("1").optional();
+        let mut channel = payloads.registrar("2").optional();
         channel.play_to_client(PayloadId(CHANNEL.into()), Some(Arc::new(CarriedHandler)));
         channel.play_to_server(PayloadId(KEY_CHANNEL.into()), Arc::new(KeyHandler));
+    }
+
+    /// `ScriptReloadListener`: the pickup scripts in `data/<namespace>/carryon/scripts/`, read on every data
+    /// load.
+    fn add_server_reload_listeners(
+        &self,
+        _: &dyn ReloadContext,
+        event: &mut AddServerReloadListenersEvent<'_>,
+    ) {
+        let added = Identifier::parse("carryon:scripts")
+            .map_err(|e| e.to_string())
+            .and_then(|id| {
+                let files =
+                    FileToIdConverter::json("carryon/scripts").map_err(|e| e.to_string())?;
+                event
+                    .listeners
+                    .add_listener(id, files, Arc::new(scripts::Listener))
+                    .map_err(|e| e.to_string())
+            });
+        if let Err(e) = added {
+            eprintln!("[carryon] pickup scripts not loaded: {e}");
+        }
     }
 
     /// `CommandCarryOn`: `/carryon debug`, and `clear` and `place` for yourself or (operators)
@@ -1634,7 +1842,7 @@ impl Hooks for Mod {
                         }
                     }
                 } else if may_pick(host, player)
-                    && Self::block_pickable(host, player, &dim, click.pos)
+                    && Self::block_pickable(host, player, &dim, click.pos).is_some()
                 {
                     self.queue(Job::PickBlock {
                         uuid: click.player,
@@ -1681,9 +1889,7 @@ impl Hooks for Mod {
             return None;
         }
         let e = host.entity(id)?;
-        if !Self::entity_pickable(host, player, e) {
-            return None;
-        }
+        Self::entity_pickable(host, player, e)?;
         let mut jobs = lock(&self.jobs);
         if !jobs
             .iter()
@@ -1807,7 +2013,7 @@ impl Hooks for Mod {
 
     /// CarriedObjectRender.drawFirstPerson: the carried block in both hands, in place of the hands.
     fn render_hand(&self, host: &dyn ClientHost, event: &mut RenderHandEvent<'_, '_>) -> Flow {
-        let Some(what) = lock(shown())
+        let Some(Carried { what, render }) = lock(shown())
             .get(&(event.render.player_entity_id as u32))
             .cloned()
         else {
@@ -1824,13 +2030,29 @@ impl Hooks for Mod {
             draw.translate([-size / 2.0, -1.12, -1.7]);
             draw.scale([size, size, size]);
             draw.rotate_about([1.0, 0.0, 0.0], 8.0, [0.5, 0.5, 0.5]);
-            let props = if config::flag(host, config::key::FACE_PLAYER, true) {
-                block_props(&props, "south")
-            } else {
-                props
-            };
-            draw_block(host, draw, &id, &props);
+            if let Some(r) = &render {
+                script_transform(host, draw, r, [0.5; 3], true);
+            }
+            match render_block(render.as_ref()) {
+                Some(name) => draw_block(host, draw, &name, &[]),
+                None => {
+                    let props = if config::flag(host, config::key::FACE_PLAYER, true) {
+                        block_props(&props, "south")
+                    } else {
+                        props
+                    };
+                    draw_block(host, draw, &id, &props);
+                }
+            }
             draw.pop();
+        }
+        // A script that hides the main arm's hand leaves the hands drawn.
+        if let Some(r) = &render {
+            let main_left =
+                host.local_player().and_then(|p| p.entity().main_arm(host)) == Some(MainHand::Left);
+            if (main_left && !r.left_arm) || (!main_left && !r.right_arm) {
+                return Flow::Continue;
+            }
         }
         event.cancelled = true;
         Flow::Cancel
@@ -1838,7 +2060,7 @@ impl Hooks for Mod {
 
     /// CarriedObjectRender.drawThirdPerson: the carried block in front of a player's chest.
     fn render_player_post(&self, host: &dyn ClientHost, event: &mut RenderPlayerPostEvent<'_>) {
-        let Some(what) = lock(shown()).get(&event.player.id).cloned() else {
+        let Some(Carried { what, render }) = lock(shown()).get(&event.player.id).cloned() else {
             return;
         };
         let draw = &mut *event.draw;
@@ -1848,20 +2070,35 @@ impl Hooks for Mod {
                 let size = 0.7;
                 draw.translate([-size / 2.0, 0.75, 0.3]);
                 draw.scale([size, size, size]);
-                let props = if config::flag(host, config::key::FACE_PLAYER, true) {
-                    block_props(&props, "south")
-                } else {
-                    props
-                };
-                draw_block(host, draw, &id, &props);
+                if let Some(r) = &render {
+                    script_transform(host, draw, r, [0.5; 3], true);
+                }
+                match render_block(render.as_ref()) {
+                    Some(name) => draw_block(host, draw, &name, &[]),
+                    None => {
+                        let props = if config::flag(host, config::key::FACE_PLAYER, true) {
+                            block_props(&props, "south")
+                        } else {
+                            props
+                        };
+                        draw_block(host, draw, &id, &props);
+                    }
+                }
             }
             Shown::Entity { kind, .. } => {
+                let kind = render
+                    .as_ref()
+                    .and_then(|r| r.name_entity.clone())
+                    .unwrap_or(kind);
                 if let Some(stack) = spawn_eggs(host)
                     .get(&kind)
                     .and_then(|k| ItemStack::new(*k, 1))
                 {
                     draw.translate([0.0, 1.25, 0.45]);
                     draw.scale([0.6, 0.6, 0.6]);
+                    if let Some(r) = &render {
+                        script_transform(host, draw, r, [0.0; 3], false);
+                    }
                     draw.item(&stack, ItemDisplayContext::Fixed, None, 0);
                 }
             }
@@ -1874,8 +2111,28 @@ impl Hooks for Mod {
         if event.gui_hidden || !host.camera_type().is_first_person() {
             return;
         }
-        let Some(Shown::Entity { kind, data }) = local_shown(host) else {
+        let Some(Carried {
+            what: Shown::Entity { kind, data },
+            render,
+        }) = local_shown(host)
+        else {
             return;
+        };
+        // CarryRenderHelper.getRenderEntity: a script may draw another mob, and loads its data over the mob's.
+        let (kind, data) = match render {
+            Some(scripts::Render {
+                name_entity: Some(name),
+                nbt,
+                ..
+            }) => (name, nbt.unwrap_or_default()),
+            Some(scripts::Render { nbt: Some(nbt), .. }) => {
+                let mut data = data;
+                for (k, v) in nbt.iter() {
+                    data.insert(k.clone(), v.clone());
+                }
+                (kind, data)
+            }
+            _ => (kind, data),
         };
         let [w, h] = event.batch.size();
         let rect = [w / 2.0 - 45.0, h - 125.0, w / 2.0 + 45.0, h - 30.0];
