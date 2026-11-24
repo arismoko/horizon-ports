@@ -14,8 +14,8 @@ Needed on both the server and the client.
 
 Differences from the original:
 
-- Floating/flat 3D item rendering on top of enchanting tables in the world is not yet implemented, as Sunrise's block-entity render hook currently dispatches only for mod block entities rather than vanilla enchanting tables.
-- The `keep_enchantment_screen_book` option hides the reroll button while keeping the clickable reroll region and tooltip, drawing a static book icon rather than vanilla's animated 3D opening book model.
+- Items on an enchanting table are not drawn on the table in the world (the `FLAT` and `FLOATING` settings), because the mod API can't yet draw for a vanilla block entity ([sunrise-org/sunrise#5531](https://github.com/sunrise-org/sunrise/issues/5531)).
+- With `keep_enchantment_screen_book`, the screen draws a still book where vanilla's opens and turns its pages, because the mod API can't yet draw an animated vanilla model in a screen ([sunrise-org/sunrise#5532](https://github.com/sunrise-org/sunrise/issues/5532)). The reroll click region and its tooltip work as in the original.
 
 A port of Easy Magic by Fuzs, under the MPL-2.0 licence.
 """
