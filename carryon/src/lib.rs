@@ -1730,7 +1730,7 @@ impl Hooks for Mod {
                 let carry = carry_of(host, uuid);
                 let lines = describe(&carry);
                 for line in &lines {
-                    let _ = host.commands().feedback(Text::literal(line.clone()));
+                    let _ = host.commands().feedback(Text::literal(line.clone()), false);
                 }
                 Ok(i32::from(!lines.is_empty()))
             }));
