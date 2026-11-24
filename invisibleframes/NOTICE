@@ -1,11 +1,9 @@
-Invisible Frames for Horizon 26.3 (version 0.4.1)
+Invisible Frames for Sunrise (version 0.5.0)
 
-A port of Invisible Frames 1.1.0 by Roundaround.
+A port of Invisible Frames 2.0.1 by Roundaround.
 Original source: https://github.com/Roundaround/mc-fabric-invisible-frames
 Original licence: MIT
 
-Ported to Horizon by lavoide: the rules are re-implemented in Rust as a Horizon native mod (the mod API plus
-the [[native.mixin]] patches and game modules listed in horizon-mod.toml; no Java code is included). This port is distributed under the same licence as the original (MIT); the licence text is in LICENSE. Built
-against Horizon's exact-build SDK dd67b76ff23e28c6d8e21859df600d31572f81a0.
-
-LICENSE is the original jar's LICENSE_invisibleframes.
+Ported to Minecraft 26.3 by lavoide, and to Sunrise by arismoko: the rules are re-implemented in
+Rust on Sunrise's mod API (no Java code is included); the icon is the original's. This port is
+distributed under the same licence as the original (MIT); the licence text is in LICENSE.

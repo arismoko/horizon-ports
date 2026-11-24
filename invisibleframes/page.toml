@@ -1,0 +1,11 @@
+summary = "Sneak and use an item frame to make it invisible, leaving only its item in view."
+description = """
+Sneak and use an item frame that holds an item to make the frame invisible: only the item stays in view. Do it again to show the frame.
+
+- Works on item frames and glow item frames.
+- A frame that loses its item becomes visible again, so an empty frame is never lost from sight.
+- Fixed frames (made with commands) are left alone.
+
+A port of Invisible Frames by Roundaround, under the MIT licence.
+"""
+categories = ["decoration"]
