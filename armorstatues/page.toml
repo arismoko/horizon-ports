@@ -1,0 +1,33 @@
+summary = "Pose, style, position, align, and equip armor stands from an in-game tabbed screen, with vanilla server command and Vanilla Tweaks fallback."
+description = """
+Sneak and use any armor stand with an empty hand to open a tabbed configuration screen:
+
+- **Rotations**: 2D square sliders and Z sliders for head, body, arms, and legs with Shift/Alt axis locking, limited/unlimited toggle, randomize, reset, mirror, and copy/paste.
+- **Poses**: 29 Minecraft and Vanilla Tweaks pose presets with live interactive previews.
+- **Style**: Custom name field and checkboxes for Show Arms, Small, Invisible, No Base Plate, Immovable, Invulnerable, and Sealed (creative only).
+- **Position**: Logarithmic scale slider (hold Alt to reset), rotation slider, 1/4/8/16-pixel Move By controls, X/Y/Z nudges, and per-row Focus mode to see the stand while adjusting it.
+- **Alignments**: Center or corner on a block, or align held blocks, floating items, flat items, and tools to block surfaces.
+- **Equipment** (with the mod on the server): Equip armor, hands, and arbitrary items on the head slot, with disabled-slot enforcement, Binding Curse protection, and automatic Show Arms when placing hand items.
+- **Client-only mode & Vanilla Tweaks** (on vanilla servers without the mod): Automatically falls back to queued `/data merge` and `/attribute` commands, or to Vanilla Tweaks `/trigger as_trigger` commands plus the Vanilla Tweaks tab (Check Target, Lock, Unlock, Tool Rack, Swap Hands, Swap Head) when enabled in mod settings.
+
+Install on both client and server for the full six-tab experience, or client-only when connecting to vanilla servers. (Sunrise servers without this mod still reject the join because of mod-list and menu registry matching.)
+
+Differences from the original:
+
+- External edits while the screen is open show up after reopening, and client-only mode starts from default stand pose/flags plus a per-session edit cache (gap: sunrise-org/sunrise#5528).
+- Client-only mode checks `may_build` and lets the server enforce command permissions rather than pre-checking the player's permission level on the client (gap: sunrise-org/sunrise#5529).
+- The Vanilla Tweaks credits button on Poses, Alignments, and Vanilla Tweaks shows its tooltip but does not open an external URL confirmation prompt (gap: sunrise-org/sunrise#5483).
+- The screen shows the armor stand item where the original shows a live, posed stand (gap: sunrise-org/sunrise#5538).
+- Draws with vanilla GUI sprites instead of the original's All Rights Reserved textures.
+
+A port of Armor Statues and Statue Menus by Fuzs, under the MPL-2.0 licence.
+"""
+categories = ["decoration", "utility"]
+
+[[screenshots]]
+path = "page/rotations.png"
+caption = "The Rotations tab: square and vertical sliders for each body part around the stand preview."
+
+[[screenshots]]
+path = "page/equipment.png"
+caption = "The Equipment tab: the stand's armour and hands beside your inventory."
