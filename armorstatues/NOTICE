@@ -1,12 +1,15 @@
-Armor Statues for Horizon 26.3 (version 0.4.0)
+Armor Statues for Sunrise (version 0.5.0)
 
-A port of Armor Statues 8.0.6 by Fuzs.
-Original source: https://github.com/Fuzss/armorstatues
+A port of Armor Statues 8.0.6 and Statue Menus by Fuzs.
+Original sources:
+  https://github.com/Fuzss/armorstatues
+  https://github.com/Fuzss/statuemenus
 Original licence: MPL-2.0
 
-Ported to Horizon by lavoide: the rules are re-implemented in Rust on Horizon's mod API (no Java
-code is included). This port is distributed under the same licence as the original (MPL-2.0); the licence text is in LICENSE. Built
-against Horizon's exact-build SDK dd67b76ff23e28c6d8e21859df600d31572f81a0.
+Ported to Minecraft 26.3 by lavoide (version 0.4.0), and to Sunrise by arismoko (version 0.5.0):
+the behaviour is re-implemented in Rust on Sunrise's mod API (no Java code is included). This port
+is distributed under the same licence as the original (MPL-2.0); the licence text is in LICENSE.
 
-The original's assets licence (LICENSE-ASSETS.md, All Rights Reserved) doesn't apply: this package
-carries no assets from it. Poses and texts come from the bundled Puzzles Lib (also Fuzs, MPL-2.0).
+The original assets licences (LICENSE-ASSETS.md, All Rights Reserved) do not apply: this package
+carries no textures or icons from either repository, drawing its screen with vanilla GUI sprites
+and its own icon.

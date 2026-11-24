@@ -1,0 +1,23 @@
+summary = "Pose, style, position, align, and equip armor stands from an in-game six-tab screen."
+description = """
+Sneak and use any armor stand with an empty hand to open a six-tab configuration screen:
+
+- **Rotations**: 2D square sliders and Z sliders for head, body, arms, and legs with Shift/Alt axis locking, limited/unlimited toggle, randomize, reset, mirror, and copy/paste.
+- **Poses**: 29 Minecraft and Vanilla Tweaks pose presets with live interactive previews.
+- **Style**: Custom name field and checkboxes for Show Arms, Small, Invisible, No Base Plate, Immovable, Invulnerable, and Sealed (creative only).
+- **Position**: Logarithmic scale slider (hold Alt to reset), rotation slider, 1/4/8/16-pixel Move By controls, X/Y/Z nudges, and per-row Focus mode to see the stand while adjusting it.
+- **Alignments**: Center or corner on a block, or align held blocks, floating items, flat items, and tools to block surfaces.
+- **Equipment**: Equip armor, hands, and arbitrary items on the head slot, with disabled-slot enforcement, Binding Curse protection, and automatic Show Arms when placing hand items.
+
+Needed on both the server and the client.
+
+Differences from the original:
+
+- Edits made to the same armor stand by another player or command while the screen is open show up after reopening (the client mod API does not expose synced armor stand pose and flag fields).
+- The Vanilla Tweaks credits button on Poses and Alignments shows its tooltip but does not open an external URL confirmation prompt.
+- Client-only mode for unmodded servers (`/data merge` and Vanilla Tweaks `/trigger` commands) is not included.
+- Draws with vanilla GUI sprites instead of the original's All Rights Reserved textures.
+
+A port of Armor Statues and Statue Menus by Fuzs, under the MPL-2.0 licence.
+"""
+categories = ["decoration", "utility"]
