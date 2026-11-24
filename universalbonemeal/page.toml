@@ -1,0 +1,28 @@
+summary = "Bone meal grows cactus, sugar cane, vines, nether wart, chorus, coral, flowers and more."
+description = """
+Bone meal works on the plants vanilla leaves out, and a few blocks besides:
+
+- Cactus and sugar cane grow one or two blocks taller, up to a height between 12 and 16 that is fixed for each spot. Cactus sometimes grows a cactus flower on top.
+- Vines grow up to five blocks downwards.
+- Nether wart grows one stage, three times in four.
+- Ripe melon and pumpkin stems get a few growth ticks to grow their fruit.
+- A chorus flower gets a growth tick, and a chorus plant gives one to every flower it reaches.
+- Lily pads, dead bushes and small flowers spread copies of themselves nearby, where each can survive.
+- Mycelium grows red and brown mushrooms. Podzol grows ferns, large ferns, sweet berry bushes and the odd dead bush.
+- Dirt, coarse dirt, rooted dirt and dirt paths next to grass or mycelium turn into it, if sky light reaches them.
+- Coral in a warm ocean has a two-in-five chance to grow into a coral tree, claw or mushroom.
+- A spore blossom drops another spore blossom.
+- Blocks in `#universalbonemeal:fertilizer_resistant_plants` (torchflowers and wither roses by default) never take bone meal.
+
+Each use takes one bone meal, as vanilla's does, and shows vanilla's green growth particles.
+
+Differences from the original:
+
+- Data packs can't change the growth rules. The original keeps them in a data map and two data registries; the port has the default rules in code ([sunrise-org/sunrise#5368](https://github.com/sunrise-org/sunrise/issues/5368)).
+- Copied flowers, lily pads and dead bushes, and grown mushrooms, follow vanilla's rules for where they survive. A plant from another mod with a rule of its own is judged by the vanilla rule of its kind ([sunrise-org/sunrise#3596](https://github.com/sunrise-org/sunrise/issues/3596)).
+- Whether sky light reaches the block above dirt comes from that block's shape and fluid. A block that changes this itself, such as glass, is judged by its shape ([sunrise-org/sunrise#5364](https://github.com/sunrise-org/sunrise/issues/5364)). The same issue covers two more reads: air is read from `#minecraft:air`, and a block from another mod that takes bone meal itself is left to that mod only when it is a valid target there.
+- A damageable item used as fertiliser wears by one point per use without Unbreaking ([sunrise-org/sunrise#5369](https://github.com/sunrise-org/sunrise/issues/5369)).
+
+A port of Universal Bone Meal by Fuzs, under the MPL-2.0 licence.
+"""
+categories = ["game-mechanics"]
