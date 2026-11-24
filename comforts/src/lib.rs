@@ -222,14 +222,6 @@ fn copy_custom_name_to_block_entity(
     }
 }
 
-fn broken_state_keeping_water(level: &dyn LevelHost, waterlogged: bool) -> Option<BlockState> {
-    if waterlogged {
-        level.block_state_id("minecraft:water")
-    } else {
-        level.block_state_id("minecraft:air")
-    }
-}
-
 const fn dir_to_face(dir: Direction) -> BlockFace {
     match dir {
         Direction::Down => BlockFace::Down,
@@ -964,7 +956,7 @@ impl BlockPart for SleepingBagPart {
                 let meta = level.block_states();
                 return event.state.with(&meta, "occupied", &partner_occ).ok();
             }
-            return broken_state_keeping_water(level, waterlogged);
+            return level.block_state_id("minecraft:air");
         }
         Some(event.state)
     }
@@ -1053,12 +1045,14 @@ impl BlockPart for HammockPart {
                 let meta = level.block_states();
                 return event.state.with(&meta, "occupied", &partner_occ).ok();
             }
-            return broken_state_keeping_water(level, waterlogged);
+            return level.block_state_id("minecraft:air");
         }
         // If our supporting rope behind this half disappeared, break this hammock half.
+        // Returning air lets `Block.updateOrDestroy` call `destroy_block` (dropping the
+        // hammock from the head half and preserving water when waterlogged).
         let rope_dir = if head_here { facing } else { facing.opposite() };
         if event.direction == rope_dir && !rope_ok {
-            return broken_state_keeping_water(level, waterlogged);
+            return level.block_state_id("minecraft:air");
         }
         Some(event.state)
     }
@@ -1215,7 +1209,7 @@ impl BlockPart for RopeAndNailPart {
                 .block_face_sturdy(support_pos, dir_to_face(dir), SupportType::Full)
                 .unwrap_or(false)
             {
-                return broken_state_keeping_water(level, waterlogged);
+                return level.block_state_id("minecraft:air");
             }
         }
         if event.direction == dir
