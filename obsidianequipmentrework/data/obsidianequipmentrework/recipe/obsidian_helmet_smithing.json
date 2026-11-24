@@ -1,9 +1,9 @@
 {
-  "addition": "obsidianequipmentrework:obsidian_ingot",
+  "type": "minecraft:smithing_transform",
+  "template": "obsidianequipmentrework:obsidian_upgrade_smithing_template",
   "base": "minecraft:diamond_helmet",
+  "addition": "obsidianequipmentrework:obsidian_ingot",
   "result": {
     "id": "obsidianequipmentrework:obsidian_helmet"
-  },
-  "template": "obsidianequipmentrework:obsidian_upgrade_smithing_template",
-  "type": "minecraft:smithing_transform"
+  }
 }

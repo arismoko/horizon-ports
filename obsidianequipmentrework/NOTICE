@@ -1,11 +1,10 @@
-Obsidian Equipment Reworked for Horizon 26.3 (version 0.4.0)
+Obsidian Equipment Reworked for Sunrise (version 1.2.0)
 
-A port of Obsidian Equipment Reworked 1.0 by Tokimi, CozyStudios.
+A port of Obsidian Equipment Reworked 1.2 by Tokimi and CozyStudios.
 Original source: https://github.com/CozyCord/Obsidian-Equipment-Reworked
 Original licence: CC0-1.0
 
-Ported to Horizon by lavoide: the rules are re-implemented in Rust on Horizon's mod API, and the
-content (items, blocks, textures, models, data) is carried over from the original jar. This port is distributed under the same licence as the original (CC0-1.0); the licence text is in LICENSE. Built
-against Horizon's exact-build SDK dd67b76ff23e28c6d8e21859df600d31572f81a0.
-
-The jar names CC0-1.0 and ships no licence file; LICENSE is the CC0 1.0 text.
+Earlier ported to Minecraft 26.3 by lavoide. Ported to Sunrise by arismoko: the original's
+rules are re-implemented in Rust on Sunrise's mod API (no Java code is included), and its
+content (textures, models, recipes, tags, translations) is carried over. This port is
+distributed under the same licence as the original (CC0-1.0); the licence text is in LICENSE.

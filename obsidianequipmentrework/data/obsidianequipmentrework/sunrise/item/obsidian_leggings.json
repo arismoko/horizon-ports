@@ -1,22 +1,14 @@
 {
-  "template": "minecraft:iron_leggings",
+  "template": "minecraft:diamond_leggings",
   "components": {
-    "minecraft:max_damage": 560,
+    "minecraft:max_damage": 525,
     "minecraft:enchantable": {
       "value": 12
-    },
-    "minecraft:repairable": {
-      "items": "obsidianequipmentrework:obsidian_ingot"
-    },
-    "minecraft:equippable": {
-      "asset_id": "obsidianequipmentrework:obsidian",
-      "equip_sound": "minecraft:item.armor.equip_iron",
-      "slot": "legs"
     },
     "minecraft:attribute_modifiers": [
       {
         "type": "minecraft:armor",
-        "amount": 8,
+        "amount": 6.0,
         "id": "minecraft:armor.leggings",
         "operation": "add_value",
         "slot": "legs"
@@ -30,11 +22,16 @@
       },
       {
         "type": "minecraft:knockback_resistance",
-        "amount": 0.05,
+        "amount": 0.05000000074505806,
         "id": "minecraft:armor.leggings",
         "operation": "add_value",
         "slot": "legs"
       }
-    ]
+    ],
+    "minecraft:equippable": {
+      "asset_id": "obsidianequipmentrework:obsidian",
+      "equip_sound": "minecraft:item.armor.equip_diamond",
+      "slot": "legs"
+    }
   }
 }

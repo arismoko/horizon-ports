@@ -1,24 +1,21 @@
 {
-  "template": "minecraft:iron_axe",
+  "template": "minecraft:diamond_pickaxe",
   "components": {
     "minecraft:max_damage": 1800,
     "minecraft:enchantable": {
       "value": 12
     },
-    "minecraft:repairable": {
-      "items": "obsidianequipmentrework:obsidian_ingot"
-    },
     "minecraft:attribute_modifiers": [
       {
         "type": "minecraft:attack_damage",
-        "amount": 8.5,
+        "amount": 4.5,
         "id": "minecraft:base_attack_damage",
         "operation": "add_value",
         "slot": "mainhand"
       },
       {
         "type": "minecraft:attack_speed",
-        "amount": -3.1,
+        "amount": -2.799999952316284,
         "id": "minecraft:base_attack_speed",
         "operation": "add_value",
         "slot": "mainhand"
@@ -31,7 +28,7 @@
           "correct_for_drops": false
         },
         {
-          "blocks": "#minecraft:mineable/axe",
+          "blocks": "#minecraft:mineable/pickaxe",
           "correct_for_drops": true,
           "speed": 8.7
         }

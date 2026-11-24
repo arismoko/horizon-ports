@@ -1,22 +1,14 @@
 {
-  "template": "minecraft:iron_chestplate",
+  "template": "minecraft:diamond_chestplate",
   "components": {
-    "minecraft:max_damage": 525,
+    "minecraft:max_damage": 560,
     "minecraft:enchantable": {
       "value": 12
-    },
-    "minecraft:repairable": {
-      "items": "obsidianequipmentrework:obsidian_ingot"
-    },
-    "minecraft:equippable": {
-      "asset_id": "obsidianequipmentrework:obsidian",
-      "equip_sound": "minecraft:item.armor.equip_iron",
-      "slot": "chest"
     },
     "minecraft:attribute_modifiers": [
       {
         "type": "minecraft:armor",
-        "amount": 6,
+        "amount": 8.0,
         "id": "minecraft:armor.chestplate",
         "operation": "add_value",
         "slot": "chest"
@@ -30,11 +22,16 @@
       },
       {
         "type": "minecraft:knockback_resistance",
-        "amount": 0.05,
+        "amount": 0.05000000074505806,
         "id": "minecraft:armor.chestplate",
         "operation": "add_value",
         "slot": "chest"
       }
-    ]
+    ],
+    "minecraft:equippable": {
+      "asset_id": "obsidianequipmentrework:obsidian",
+      "equip_sound": "minecraft:item.armor.equip_diamond",
+      "slot": "chest"
+    }
   }
 }

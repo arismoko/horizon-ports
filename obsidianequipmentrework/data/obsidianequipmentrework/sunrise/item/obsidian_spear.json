@@ -1,0 +1,49 @@
+{
+  "template": "minecraft:diamond_spear",
+  "components": {
+    "minecraft:max_damage": 1800,
+    "minecraft:enchantable": {
+      "value": 12
+    },
+    "minecraft:attack_animation": {
+      "type": "stab",
+      "duration": 22
+    },
+    "minecraft:attribute_modifiers": [
+      {
+        "type": "minecraft:attack_damage",
+        "amount": 3.5,
+        "id": "minecraft:base_attack_damage",
+        "operation": "add_value",
+        "slot": "mainhand"
+      },
+      {
+        "type": "minecraft:attack_speed",
+        "amount": -3.0909091234207153,
+        "id": "minecraft:base_attack_speed",
+        "operation": "add_value",
+        "slot": "mainhand"
+      }
+    ],
+    "minecraft:kinetic_weapon": {
+      "contact_cooldown_ticks": 10,
+      "delay_ticks": 9,
+      "dismount_conditions": {
+        "max_duration_ticks": 55,
+        "min_speed": 7.25
+      },
+      "knockback_conditions": {
+        "max_duration_ticks": 120,
+        "min_speed": 5.1
+      },
+      "damage_conditions": {
+        "max_duration_ticks": 187,
+        "min_relative_speed": 4.6
+      },
+      "forward_movement": 0.38,
+      "damage_multiplier": 1.14,
+      "sound": "minecraft:item.spear.use",
+      "hit_sound": "minecraft:item.spear.hit"
+    }
+  }
+}

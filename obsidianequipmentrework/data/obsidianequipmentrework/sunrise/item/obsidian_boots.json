@@ -1,22 +1,14 @@
 {
-  "template": "minecraft:iron_boots",
+  "template": "minecraft:diamond_boots",
   "components": {
-    "minecraft:max_damage": 385,
+    "minecraft:max_damage": 455,
     "minecraft:enchantable": {
       "value": 12
-    },
-    "minecraft:repairable": {
-      "items": "obsidianequipmentrework:obsidian_ingot"
-    },
-    "minecraft:equippable": {
-      "asset_id": "obsidianequipmentrework:obsidian",
-      "equip_sound": "minecraft:item.armor.equip_iron",
-      "slot": "feet"
     },
     "minecraft:attribute_modifiers": [
       {
         "type": "minecraft:armor",
-        "amount": 3,
+        "amount": 3.0,
         "id": "minecraft:armor.boots",
         "operation": "add_value",
         "slot": "feet"
@@ -30,11 +22,16 @@
       },
       {
         "type": "minecraft:knockback_resistance",
-        "amount": 0.05,
+        "amount": 0.05000000074505806,
         "id": "minecraft:armor.boots",
         "operation": "add_value",
         "slot": "feet"
       }
-    ]
+    ],
+    "minecraft:equippable": {
+      "asset_id": "obsidianequipmentrework:obsidian",
+      "equip_sound": "minecraft:item.armor.equip_diamond",
+      "slot": "feet"
+    }
   }
 }

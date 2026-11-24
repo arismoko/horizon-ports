@@ -1,0 +1,22 @@
+summary = "Obsidian tools, armour, spear, horse and nautilus armour between diamond and netherite."
+description = """
+A full obsidian tier between diamond and netherite:
+- tools, a spear and armour;
+- horse and nautilus armour;
+- an Obsidian Upgrade smithing template that turns diamond gear into obsidian.
+
+Obsidian Ingots are blasted from obsidian. The template and the animal armour turn up in Nether and Overworld chests.
+
+Differences from the original:
+
+- Diamond gear can still be upgraded straight to netherite (the original removes that recipe).
+- The template's smithing slot hint names the netherite ingot.
+- Items from the older Obsidian Equipment mod aren't converted.
+
+A port of Obsidian Equipment Reworked by Tokimi and CozyStudios, under CC0-1.0.
+"""
+categories = ["equipment", "game-mechanics"]
+
+[[screenshots]]
+path = "page/equipment.png"
+caption = "The obsidian tier beside diamond and netherite."

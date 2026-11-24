@@ -1,0 +1,14 @@
+# Obsidian Equipment Reworked for Sunrise: native code in src/ with its data/ and assets/.
+id = "obsidianequipmentrework"
+name = "Obsidian Equipment Reworked"
+version = "1.2.0"
+description = "Obsidian tools, armour, spear, horse and nautilus armour between diamond and netherite."
+authors = ["Tokimi", "CozyStudios", "arismoko"]
+license = "CC0-1.0"
+credits = "Ported to Minecraft 26.3 by lavoide, and to Sunrise by arismoko."
+homepage = "https://github.com/arismoko/sunrise-ports"
+side = "both"
+
+[native]
+game = "26.3"
+sunrise = "f8aa80e4c40cf1a5d30e85d13937f3fcf06d8237"
