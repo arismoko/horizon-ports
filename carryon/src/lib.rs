@@ -652,9 +652,14 @@ fn carrying(host: &mut dyn ServerHost, uuid: u128) -> bool {
     !carry_of(host, uuid).is_empty()
 }
 
-fn set_carry(host: &mut dyn ServerHost, uuid: u128, c: Compound) {
-    if let Err(e) = CARRY.set(host, Holder::Player(uuid), c) {
-        eprintln!("[carryon] carry data not saved: {e:?}");
+/// Stores what the player carries; `false` when it could not be stored.
+fn set_carry(host: &mut dyn ServerHost, uuid: u128, c: Compound) -> bool {
+    match CARRY.set(host, Holder::Player(uuid), c) {
+        Ok(_) => true,
+        Err(e) => {
+            eprintln!("[carryon] carry data not saved: {e:?}");
+            false
+        }
     }
 }
 
@@ -859,6 +864,10 @@ impl Mod {
             c.insert("tile".into(), Tag::Compound(t));
         }
         c.insert("selected".into(), Tag::Int(slot));
+        // The carry is stored before the block goes, so a refused store never loses the block.
+        if !set_carry(host, uuid, c) {
+            return;
+        }
         // The block entity goes with the player: no drops, no container spill.
         let flags = BlockUpdateFlags::NEIGHBORS
             | BlockUpdateFlags::CLIENTS
@@ -868,10 +877,10 @@ impl Mod {
             Ok(true) => {}
             other => {
                 eprintln!("[carryon] pickup at {pos:?} refused: {other:?}");
+                set_carry(host, uuid, Compound::new());
                 return;
             }
         }
-        set_carry(host, uuid, c);
         if let Some(snd) = sound {
             sound_at(
                 host,
@@ -957,9 +966,6 @@ impl Mod {
         for k in ["Passengers", "leash", "Leash", "Pos", "Motion"] {
             data.remove(&(*k).into());
         }
-        if !e.remove(host, RemovalReason::Discarded) {
-            return;
-        }
         let mut c = Compound::new();
         c.insert("type".into(), s("entity"));
         c.insert("kind".into(), s(&kind));
@@ -969,7 +975,14 @@ impl Mod {
             Tag::List(vec![Tag::Double(w.to_bits()), Tag::Double(h.to_bits())]),
         );
         c.insert("selected".into(), Tag::Int(slot));
-        set_carry(host, uuid, c);
+        // The carry is stored before the mob goes, so a refused store never loses the mob.
+        if !set_carry(host, uuid, c) {
+            return;
+        }
+        if !e.remove(host, RemovalReason::Discarded) {
+            set_carry(host, uuid, Compound::new());
+            return;
+        }
         if let Some(ent) = host.player(uuid).map(|p| p.entity()) {
             ent.play_sound(host, "minecraft:entity.item.pickup", 1.0, 0.5);
         }
@@ -1477,6 +1490,7 @@ fn draw_block(
 #[mod_api::sunrise_mod]
 impl Hooks for Mod {
     fn register(&self, r: &mut dyn Registrar, _cx: &RegistrationContext) {
+        let _ = r.register_attachment_type("carryon:carry", CARRY.sync);
         for (name, kind) in config::SPECS {
             let label = format!("carryon.config.{name}");
             let spec = match kind {
