@@ -28,6 +28,7 @@ Macaw's Bridges is All Rights Reserved. **None of the original mod's assets or d
 
 - **Mirroring rope bridges in structure templates (`Bridge_Block_Rope.mirror`)**: Sunrise's typed mod API exposes `BlockPart::rotate` (`IBlockExtension.rotate`) for structure template placement, but has no `BlockPart::mirror` hook for custom `BlockBehaviour.mirror` overrides (gap: sunrise-org/sunrise#5314). Structure rotation of rope bridges, rail bridges, torches, and lanterns is implemented via `BlockPart::rotate`.
 - **Same-tick `onPlace` connection refresh after `set_block`**: in vanilla, `Bridge_Block.onPlace` and `Bridge_Block_Rope.onPlace` immediately recompute `connection` whenever a block is placed via `setBlock` (including when extending a bridge by right-clicking an existing bridge). Our right-click extension computes the neighbour connection directly before calling `set_block`, and normal player/dispenser placement uses `state_for_placement`; external `/setblock` placement without neighbour updates relies on `update_shape` because Sunrise has no writable `BlockPart::on_place` hook (gap: sunrise-org/sunrise#5302).
+- **Block item display names**: block items currently show raw `block.mcwbridges.<id>` translation keys because Sunrise gives a declared block's item the `block.<ns>.<id>` name key while the original mod's language files use `item.<ns>.<id>` (gap: sunrise-org/sunrise#5574).
 
 ## Building
 
