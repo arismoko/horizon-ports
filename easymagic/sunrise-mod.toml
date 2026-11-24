@@ -1,7 +1,7 @@
 # Easy Magic for Sunrise: native code in src/ using the typed mod API, with menu and tags in data/.
 id = "easymagic"
 name = "Easy Magic"
-version = "0.5.0"
+version = "0.5.1"
 description = "Enchanting tables keep their items, reroll enchantments, accept lenient and chiseled bookshelves, and show chiseled bookshelf book tooltips."
 authors = ["Fuzs", "lavoide", "arismoko"]
 license = "MPL-2.0"
