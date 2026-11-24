@@ -3,7 +3,7 @@
 //!
 //! - `securecrops:secure_farmland_and_crops`: with a crop on it, the farmland and the crop stay.
 //! - `securecrops:secure_farmland_break_crops`: with a crop on it, the farmland stays and the
-//!   crop breaks, dropping its items.
+//!   crop should break, dropping its items; until sunrise-org/sunrise#5372 the crop stays too.
 //! - `securecrops:secure_farmland_if_empty`: with nothing on it, the farmland stays.
 //!
 //! "A crop" is what vanilla's `FarmlandBlock.shouldMaintainFarmland` reads: the block above is in
@@ -97,18 +97,10 @@ impl Hooks for Mod {
         ) {
             Outcome::Trample => Flow::Continue,
             Outcome::Keep => Flow::Cancel,
-            Outcome::BreakCrop => {
-                // A cancelled trample rolls back its listeners' writes, and a block can't be
-                // destroyed inside the hook's transaction, so the crop breaks once the hook is
-                // done, later in the same tick and with no breaker (sunrise-org/sunrise#5372).
-                let _ = host.schedule_task(
-                    0,
-                    Box::new(move |host: &mut dyn ServerHost| {
-                        let _ = level.destroy_block(host, above, true, None, false);
-                    }),
-                );
-                Flow::Cancel
-            }
+            // The crop should break here too, but a cancelling listener's writes are rolled back
+            // and `destroy_block` refuses inside the hook's transaction (sunrise-org/sunrise#5372),
+            // so for now the crop stays like the farmland.
+            Outcome::BreakCrop => Flow::Cancel,
         }
     }
 }
