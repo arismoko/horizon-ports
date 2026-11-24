@@ -523,12 +523,23 @@ impl EntityRenderer for TreeRenderer {
 // ---------------------------------------------------------------------------- the chop
 
 /// The tool in the player's main hand, by name.
-fn held(host: &dyn Host, player: EntityRef) -> Option<String> {
+fn held(host: &dyn Host, player: EntityRef) -> Option<(mod_api::ItemKey, String)> {
     LivingRef::new(player)
         .with_hand_item(host, Hand::Main, |held| {
-            held.item().id(host).map(str::to_owned)
+            let item = held.item();
+            item.id(host).map(|id| (item, id.to_owned()))
         })
         .flatten()
+}
+
+/// Whether `item` is in the item tag named `tag`.
+fn item_in_tag(host: &dyn Host, item: mod_api::ItemKey, tag: &str) -> bool {
+    let tags = host.tags();
+    mod_api::Identifier::parse(tag)
+        .ok()
+        .and_then(|id| tags.key(&id))
+        .and_then(|key| tags.is_in_tag(item, key))
+        == Some(true)
 }
 
 /// Whether `player` would fell a tree by breaking `pos` now, and the tree: not sneaking (or
@@ -546,8 +557,11 @@ fn chop(host: &dyn Host, player: EntityRef, pos: [i32; 3]) -> Option<(Kind, Tree
         return None;
     }
     if flag(host, key::REQUIRE_TOOL[kind_index(kind)], false)
-        && !held(host, player)
-            .is_some_and(|item| filters::Filters::get(host).tools.valid(&item, &|_| false))
+        && !held(host, player).is_some_and(|(item, name)| {
+            filters::Filters::get(host)
+                .tools
+                .valid(&name, &|tag| item_in_tag(host, item, tag))
+        })
     {
         return None;
     }

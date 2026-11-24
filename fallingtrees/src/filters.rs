@@ -1,7 +1,7 @@
 //! The editable filters (`TreeConfig.Filter`): which blocks are a tree's stems, its leaves, a cactus-like
 //! column, and which items count as the felling tool. Each is a text file in `config/fallingtrees/`, written
 //! with the original's defaults when missing. A line is a block or item id (`*` stands for any run of
-//! characters), a `#tag` (blocks only: a host can't read an item's tags), or `!id` to refuse one that would
+//! characters), a `#tag`, or `!id` to refuse one that would
 //! otherwise match; a line starting with `;` is a comment. A name passes unless refused, when it is listed or
 //! in a listed tag.
 
@@ -109,7 +109,7 @@ impl Filters {
             tools: load(
                 host,
                 "tools.txt",
-                "*_axe\n",
+                "#minecraft:axes\n",
                 "Items that count as the tool (for the kinds that require one).",
             ),
         })
@@ -135,8 +135,8 @@ mod tests {
 
     #[test]
     fn the_default_tool_filter_takes_axes_not_pickaxes() {
-        let f = Filter::parse("*_axe\n");
-        assert!(f.valid("minecraft:iron_axe", &|_| false));
+        let f = Filter::parse("#minecraft:axes\n");
+        assert!(f.valid("minecraft:iron_axe", &|t| t == "minecraft:axes"));
         assert!(!f.valid("minecraft:iron_pickaxe", &|_| false));
     }
 }
