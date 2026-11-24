@@ -1,0 +1,15 @@
+summary = "Sneak and use a damaged Mending item to repair it with your own experience."
+description = """
+Sneak and use a damaged item that has Mending to repair it with your own experience.
+
+- With more than 2 points of experience, sneaking and using the item repairs it instead of using it.
+- Each use spends 20 points when you have at least 30 and the item lacks at least 40 durability, otherwise 2 points.
+- The item gets back what Mending gives for those points: 40 or 4 durability.
+
+Differences from the original:
+
+- The durability per point is vanilla Mending's (2). The original asks the item's enchantments, so a data pack that changes Mending's rate changes the repair there ([sunrise#5350](https://github.com/sunrise-org/sunrise/issues/5350)).
+
+A port of Better Than Mending by legobmw99, under the GPL-3.0 licence.
+"""
+categories = ["game-mechanics"]

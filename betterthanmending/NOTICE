@@ -1,11 +1,9 @@
-Better Than Mending for Horizon 26.3 (version 0.4.0)
+Better Than Mending for Sunrise (version 0.5.0)
 
-A port of Better Than Mending 1.3.0 by legobmw99.
+A port of Better Than Mending by legobmw99.
 Original source: https://github.com/legobmw99/BetterThanMending
 Original licence: GPL-3.0-only
 
-Ported to Horizon by lavoide: the rules are re-implemented in Rust on Horizon's mod API (no Java
-code is included). This port is distributed under the same licence as the original (GPL-3.0-only); the licence text is in LICENSE. Built
-against Horizon's exact-build SDK dd67b76ff23e28c6d8e21859df600d31572f81a0.
-
-LICENSE is the original repository's COPYING.txt.
+Ported to Minecraft 26.3 by lavoide, and to Sunrise by arismoko: the rules are re-implemented in
+Rust on Sunrise's mod API (no Java code is included). This port is distributed under the same
+licence as the original (GPL-3.0-only); the licence text is in LICENSE.

@@ -1,165 +1,153 @@
-//! Better Than Mending for Horizon: sneak and use a damaged item with Mending to repair it with
-//! your experience, as Better Than Mending 1.3.0 (legobmw99) does: 20 points of experience for
-//! 40 durability when you have at least 30 points and the item lacks 40, else 2 points for 4.
-//! Without 2 points the item's own use goes ahead.
+//! Better Than Mending for Sunrise: sneak and use a damaged item that has a
+//! `minecraft:repair_with_xp` enchantment (Mending) to repair it with your own
+//! experience, as Better Than Mending (legobmw99) does.
 //!
-//! `right_click_item` reads the player's sneaking (`is_shift_key_down`) and experience (level and
-//! progress) straight from the player, and decides on both sides: the client consumes the click
-//! so it doesn't start the item's own use, the server queues the repair for the server tick:
-//! `item modify` sets the hand's `minecraft:damage`, `experience add` takes the points.
-//! (The old port, without those reads, probed experience with scoreboard commands each tick a
-//! player sneaked and tracked sneaking from `movement_input`/`player_toggle_sneak`.)
-use std::sync::Mutex;
-
+//! With more than 2 points of experience the use is taken on both sides. On the
+//! server, 20 points go when you have at least 30 and the item lacks at least 40
+//! durability, otherwise 2 points; the item gets back the durability Mending gives
+//! for those points.
 use mod_api::{
-    Compound, Flow, Hand, HostSide, Hooks, Host, InteractionResult, ItemStack, PlayerRef, RightClickItemEvent,
-    ServerHost, ServerTickEvent, ServerTickPhase, Tag,
+    EnchantmentEffect, Flow, Hooks, Host, HostSide, InteractionResult, ItemResource, ItemStack,
+    LivingRef, PlayerRef, RightClickItemEvent, ServerHost,
 };
 
-/// What the player's experience allows, from the last probe.
-#[derive(Debug, Clone, Copy, Default, PartialEq)]
-pub struct Xp {
-    pub at_least_2: bool,
-    pub at_least_30: bool,
-}
-
-/// The repair for an item with `damage`, as the Java mod picks it: (points to take, new damage).
-pub fn repair(xp: Xp, damage: u32) -> Option<(u32, u32)> {
-    if damage == 0 {
-        return None;
-    }
-    if xp.at_least_30 && damage >= 40 {
-        return Some((20, damage - 40));
-    }
-    xp.at_least_2.then(|| (2, damage.saturating_sub(4)))
-}
-
-/// Total experience points of `level` full levels (vanilla `Player.getXpNeededForNextLevel` summed).
-pub fn points_for_level(level: i32) -> i64 {
-    let l = level.max(0) as i64;
-    if l <= 16 {
-        l * l + 6 * l
-    } else if l <= 31 {
-        (5 * l * l - 81 * l + 720) / 2
+/// Experience points to reach `level` from 0, as the original's
+/// `Utilities.getExperienceForLevel` computes them (in doubles, truncated).
+pub fn experience_for_level(level: i32) -> i32 {
+    let l = f64::from(level);
+    if level == 0 {
+        0
+    } else if level > 0 && level < 16 {
+        (l * l + 6.0 * l) as i32
+    } else if level > 15 && level < 32 {
+        (2.5 * l * l - 40.5 * l + 360.0) as i32
     } else {
-        (9 * l * l - 325 * l + 4440) / 2
+        (4.5 * l * l - 162.5 * l + 2220.0) as i32
     }
 }
 
-/// What `level` and `points` into the next level allow.
-pub fn xp_of(level: i32, points: i32) -> Xp {
-    let total = points_for_level(level) + points.max(0) as i64;
-    Xp { at_least_2: total >= 2, at_least_30: total >= 30 }
+/// The level `experience` points make (`Utilities.getLevelForExperience`).
+pub fn level_for_experience(experience: i32) -> i32 {
+    let mut level = 0;
+    while experience_for_level(level) <= experience {
+        level += 1;
+    }
+    level - 1
 }
 
-/// A queued repair.
-#[derive(Debug, PartialEq)]
-pub struct Repair {
-    pub player: String,
-    pub main_hand: bool,
-    pub damage: u32,
-    pub points: u32,
-}
-
-impl Repair {
-    pub fn commands(&self) -> [String; 2] {
-        let slot = if self.main_hand { "weapon.mainhand" } else { "weapon.offhand" };
-        [
-            format!(
-                "item modify entity {} {slot} {{\"type\":\"minecraft:set_components\",\"components\":{{\"minecraft:damage\":{}}}}}",
-                self.player, self.damage
-            ),
-            format!("experience add {} -{} points", self.player, self.points),
-        ]
+/// The points needed to fill `level`'s bar (`Player.getXpNeededForNextLevel`).
+pub fn xp_needed_for_next_level(level: i32) -> i32 {
+    if level >= 30 {
+        112 + (level - 30) * 9
+    } else if level >= 15 {
+        37 + (level - 15) * 5
+    } else {
+        7 + level * 2
     }
 }
 
-#[derive(Default)]
-struct Mod {
-    queue: Mutex<Vec<Repair>>,
+/// A player's experience in points (`Utilities.getPlayerXP`): the level's points plus the
+/// bar's share of the next, added as a float and truncated.
+pub fn player_xp(level: i32, progress: f32, needed: i32) -> i32 {
+    (experience_for_level(level) as f32 + progress * needed as f32) as i32
 }
 
-/// The Mending level in a stack's component patch (`minecraft:enchantments`, ids to levels).
-fn mending_level(stack: &ItemStack) -> i32 {
-    let Some(components) = stack.components() else { return 0 };
-    let find = |c: &Compound, key: &str| c.iter().find(|(k, _)| k.to_string_lossy() == key).map(|(_, v)| v.clone());
-    let Some(Tag::Compound(mut levels)) = find(components.as_nbt(), "minecraft:enchantments") else { return 0 };
-    if let Some(Tag::Compound(inner)) = find(&levels, "levels") {
-        levels = inner;
-    }
-    match find(&levels, "minecraft:mending") {
-        Some(Tag::Int(n)) => n,
-        Some(Tag::Byte(n)) => n as i32,
-        Some(Tag::Short(n)) => n as i32,
-        _ => 0,
-    }
+/// The points one use spends (`Common.doMend`): 20 with at least 30 points on an item
+/// that lacks at least 40, else 2.
+pub fn points_to_spend(xp: i32, damage: u32) -> u32 {
+    if xp >= 30 && damage >= 40 { 20 } else { 2 }
 }
 
-/// The repair this use makes, if any: (points, new damage).
-fn decide(host: &dyn Host, player: PlayerRef, stack: &ItemStack) -> Option<(u32, u32)> {
-    if stack.damage() == 0 || mending_level(stack) == 0 {
+/// Vanilla Mending's `minecraft:repair_with_xp` effect: two durability per point.
+/// The original asks `EnchantmentHelper.modifyDurabilityToRepairFromXp`, which a data
+/// pack's change to the effect would follow; the API has no such read (sunrise#5350).
+const MENDING_REPAIR_PER_POINT: u32 = 2;
+
+/// The new damage after spending `points` on an item with `damage`.
+pub fn repaired_damage(damage: u32, points: u32) -> u32 {
+    damage - (points * MENDING_REPAIR_PER_POINT).min(damage)
+}
+
+/// Level, points into the bar, and total after taking `points` (`Utilities.addPlayerXP`
+/// with a negative amount). None when that would go below zero: nothing changes.
+pub fn experience_after(xp: i32, points: u32) -> Option<(i32, i32, i32)> {
+    let experience = xp - points as i32;
+    if experience < 0 {
         return None;
     }
-    if player.entity().is_shift_key_down(host) != Some(true) {
+    let level = level_for_experience(experience);
+    Some((level, experience - experience_for_level(level), experience))
+}
+
+fn repair_with_xp() -> EnchantmentEffect {
+    EnchantmentEffect::new("minecraft:repair_with_xp").expect("a namespaced id")
+}
+
+/// The player's experience in points when this use mends (`Common.willMend`).
+fn will_mend(host: &dyn Host, player: PlayerRef, stack: &ItemStack) -> Option<i32> {
+    if player.entity().is_shift_key_down(host) != Some(true)
+        || !stack.is_damaged()
+        || !ItemResource::of(stack).has_enchantment_effect(host, repair_with_xp())
+    {
         return None;
     }
     let exp = player.experience(host)?;
-    let needed = player.xp_needed_for_next_level(host).unwrap_or(0);
-    let points = (exp.progress * needed as f32).round() as i32;
-    repair(xp_of(exp.level, points), stack.damage())
+    let needed = player.xp_needed_for_next_level(host)?;
+    let xp = player_xp(exp.level, exp.progress, needed);
+    (xp > 2).then_some(xp)
 }
 
-#[mod_api::horizon_mod]
+/// `Common.doMend` on the server: repairs the hand's item, then takes the points.
+fn mend(host: &mut dyn ServerHost, player: PlayerRef, event: &RightClickItemEvent<'_>, xp: i32) {
+    let click = event.click;
+    let points = points_to_spend(xp, click.stack.damage());
+    let mut stack = click.stack.clone();
+    stack.set_damage(repaired_damage(stack.damage(), points));
+    if !matches!(
+        LivingRef::new(player.entity()).set_hand_item(host, click.hand, Some(stack)),
+        Ok(true)
+    ) {
+        return;
+    }
+    let Some((level, into_bar, total)) = experience_after(xp, points) else {
+        return;
+    };
+    player.set_experience_levels(host, level);
+    player.set_experience_points(host, into_bar);
+    player.set_total_experience(host, total);
+}
+
+#[derive(Default)]
+struct Mod;
+
+#[mod_api::sunrise_mod]
 impl Hooks for Mod {
     fn right_click_item(&self, host: HostSide<'_>, event: &mut RightClickItemEvent<'_>) -> Flow {
-        let click = event.click;
-        let decided = match host {
+        let player_id = event.click.player;
+        match host {
             HostSide::Server(host) => {
-                if !host.on("betterthanmending") {
+                let Some(player) = host.player(player_id) else {
                     return Flow::Continue;
-                }
-                let Some(player) = host.player(click.player) else { return Flow::Continue };
-                let Some((points, damage)) = decide(&*host, player, click.stack) else { return Flow::Continue };
-                let Some(name) = player.name(&*host) else { return Flow::Continue };
-                let main_hand = matches!(click.hand, Hand::Main);
-                self.queue.lock().unwrap_or_else(|e| e.into_inner()).push(Repair { player: name, main_hand, damage, points });
-                true
+                };
+                let Some(xp) = will_mend(&*host, player, event.click.stack) else {
+                    return Flow::Continue;
+                };
+                mend(host, player, event, xp);
             }
             HostSide::Client(host) => {
                 let host: &dyn Host = &*host;
-                host.player(click.player).is_some_and(|player| decide(host, player, click.stack).is_some())
+                let Some(player) = host.player(player_id) else {
+                    return Flow::Continue;
+                };
+                if will_mend(host, player, event.click.stack).is_none() {
+                    return Flow::Continue;
+                }
             }
-        };
-        if !decided {
-            return Flow::Continue;
         }
-        *event.cancellation_result = InteractionResult::Consume;
+        *event.cancellation_result = InteractionResult::Success;
         event.cancelled = true;
         Flow::Cancel
     }
-
-    fn server_tick(&self, host: &mut dyn ServerHost, event: &mut ServerTickEvent<'_>) {
-        if !matches!(event.phase, ServerTickPhase::ServerTickEnd { .. }) || !host.on("betterthanmending") {
-            return;
-        }
-        let queue = std::mem::take(&mut *self.queue.lock().unwrap_or_else(|e| e.into_inner()));
-        // The repair, then the experience it costs: no experience is taken for a failed repair.
-        for repair in queue {
-            run_in_order(&repair.commands(), &mut |line| host.commands().run_command(line));
-        }
-    }
-}
-
-/// Runs `lines` in order and stops at the first one that fails, so a later step never runs
-/// without the one before it. True when every line ran.
-pub fn run_in_order(lines: &[String], run: &mut dyn FnMut(&str) -> bool) -> bool {
-    for line in lines {
-        if !run(line) {
-            eprintln!("[{}] command failed, the rest skipped: {line}", "betterthanmending");
-            return false;
-        }
-    }
-    true
 }
 
 #[cfg(test)]
@@ -167,56 +155,36 @@ mod tests {
     use super::*;
 
     #[test]
-    fn a_failed_step_stops_the_rest() {
-        let lines = vec!["first".to_string(), "second".to_string()];
-        let mut ran = Vec::new();
-        assert!(!run_in_order(&lines, &mut |l| {
-            ran.push(l.to_string());
-            false
-        }));
-        assert_eq!(ran, ["first"]);
-        ran.clear();
-        assert!(run_in_order(&lines, &mut |l| {
-            ran.push(l.to_string());
-            true
-        }));
-        assert_eq!(ran, ["first", "second"]);
-    }
-
-
-    const RICH: Xp = Xp { at_least_2: true, at_least_30: true };
-    const POOR: Xp = Xp { at_least_2: true, at_least_30: false };
-
-    #[test]
-    fn repairs_as_the_java_mod() {
-        assert_eq!(repair(RICH, 100), Some((20, 60)));
-        assert_eq!(repair(RICH, 39), Some((2, 35)));
-        assert_eq!(repair(POOR, 100), Some((2, 96)));
-        assert_eq!(repair(POOR, 3), Some((2, 0)));
-        assert_eq!(repair(Xp::default(), 100), None);
-        assert_eq!(repair(RICH, 0), None);
+    fn experience_table_matches_vanilla_totals() {
+        // The totals at the top of each vanilla formula band.
+        assert_eq!(experience_for_level(1), 7);
+        assert_eq!(experience_for_level(15), 315);
+        assert_eq!(experience_for_level(16), 352);
+        assert_eq!(experience_for_level(30), 1395);
+        assert_eq!(experience_for_level(32), 1628);
+        for level in 0..40 {
+            assert_eq!(
+                experience_for_level(level + 1) - experience_for_level(level),
+                xp_needed_for_next_level(level)
+            );
+            assert_eq!(level_for_experience(experience_for_level(level)), level);
+        }
     }
 
     #[test]
-    fn repair_commands() {
-        let r = Repair { player: "Steve".into(), main_hand: true, damage: 60, points: 20 };
-        assert_eq!(
-            r.commands(),
-            [
-                "item modify entity Steve weapon.mainhand {\"type\":\"minecraft:set_components\",\"components\":{\"minecraft:damage\":60}}".to_string(),
-                "experience add Steve -20 points".to_string(),
-            ]
-        );
+    fn spends_as_the_original() {
+        assert_eq!(points_to_spend(30, 40), 20);
+        assert_eq!(points_to_spend(29, 100), 2);
+        assert_eq!(points_to_spend(100, 39), 2);
+        assert_eq!(repaired_damage(100, 20), 60);
+        assert_eq!(repaired_damage(3, 2), 0);
     }
 
     #[test]
-    fn experience_totals() {
-        assert_eq!(points_for_level(3), 27);
-        assert_eq!(points_for_level(4), 40);
-        assert_eq!(points_for_level(17), 394);
-        assert_eq!(points_for_level(32), 1628);
-        assert_eq!(xp_of(3, 3), Xp { at_least_2: true, at_least_30: true });
-        assert_eq!(xp_of(0, 1), Xp::default());
-        assert_eq!(xp_of(1, 0), Xp { at_least_2: true, at_least_30: false });
+    fn takes_points_off_the_bar_and_level() {
+        // Level 3 with 3 of 13 points: 30 points; 20 go, leaving level 1 with 3 of 9.
+        assert_eq!(player_xp(3, 3.0 / 13.0, 13), 30);
+        assert_eq!(experience_after(30, 20), Some((1, 3, 10)));
+        assert_eq!(experience_after(1, 2), None);
     }
 }
