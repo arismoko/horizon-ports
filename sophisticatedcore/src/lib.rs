@@ -1498,7 +1498,7 @@ impl Hooks for Mod {
         let backpacks = has("sophisticatedbackpacks");
         let storage_loaded = has("sophisticatedstorage");
         // Experience, as the original's `xp_still`: a tank fluid with no block or flowing form; it travels in
-        // the `xp_bucket` item.
+        // the `xp_bucket` item, which its fluid file names as its bucket so an empty bucket fills to it.
         let xp = r.declare_fluid("xp_still");
         let empty_bucket = r.item_key("minecraft:bucket");
         r.item_capability(

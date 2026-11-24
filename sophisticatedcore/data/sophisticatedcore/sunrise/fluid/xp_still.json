@@ -1,4 +1,5 @@
 {
   "sprite": "sophisticatedcore:block/xp_still",
-  "tint": 4294967295
+  "tint": 4294967295,
+  "bucket_item": "sophisticatedcore:xp_bucket"
 }
