@@ -1,0 +1,21 @@
+{
+  "container.easymagic.enchanting.reroll": "Reroll enchantments",
+  "container.easymagic.enchanting.reroll.one": "1 Amethyst Shard",
+  "container.easymagic.enchanting.reroll.many": "%s Amethyst Shards",
+  "container.easymagic.enchanting.experience.one": "1 Experience Point",
+  "container.easymagic.enchanting.experience.many": "%s Experience Points",
+  "tag.item.easymagic.enchanting_catalysts": "Enchanting Catalysts",
+  "tag.item.easymagic.reroll_catalysts": "Reroll Catalysts",
+  "tag.block.easymagic.unaltered_enchanting_tables": "Unaltered Enchanting Tables",
+  "easymagic.setting.keep_book": "Keep Enchantment Screen Book",
+  "easymagic.setting.keep_book.tooltip": "Hide the reroll button graphics in the enchanting screen; clicking the book area still rerolls.",
+  "easymagic.setting.chiseled_tooltip": "Chiseled Bookshelf Tooltip",
+  "easymagic.setting.chiseled_tooltip.tooltip": "Show a tooltip for the book you are looking at in a chiseled bookshelf.",
+  "easymagic.setting.chiseled_tooltip.disabled": "Disabled",
+  "easymagic.setting.chiseled_tooltip.crouching": "Crouching",
+  "easymagic.setting.chiseled_tooltip.enabled": "Enabled",
+  "easymagic.setting.chiseled_tooltip_x": "Chiseled Tooltip X Offset",
+  "easymagic.setting.chiseled_tooltip_x.tooltip": "Horizontal offset in GUI pixels for the chiseled bookshelf book tooltip.",
+  "easymagic.setting.chiseled_tooltip_y": "Chiseled Tooltip Y Offset",
+  "easymagic.setting.chiseled_tooltip_y.tooltip": "Vertical offset in GUI pixels for the chiseled bookshelf book tooltip."
+}

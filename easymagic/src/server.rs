@@ -1,257 +1,853 @@
-// Easy Magic 8.0.1 (Fuzs), the server's side: the re-roll (ModEnchantmentMenu.clickMenuButton
-// with id 4) and the table that keeps its item and lapis (ModEnchantmentTableBlockEntity's
-// inventory) between uses.
-//
-// Injected as `crate::game::lan_stations::easymagic`.
-use super::*;
-use mod_api::{AttachmentCodec, AttachmentError, AttachmentType};
-use horizon_core::nbt::{Compound, Tag};
-
-const REROLL: i32 = 4;
-const LAPIS_COST: u32 = 1;
-const XP_COST: i32 = 5;
-
-/// The level and bar left after paying `points` (Player.giveExperiencePoints with a negative
-/// amount, which can go down levels).
-fn pay_points(level: i32, progress: f32, points: i32) -> (i32, f32) {
-    let needed = horizon_client::entities::Experience::needed;
-    let mut level = level;
-    let mut have = (progress * needed(level) as f32).round() as i32 - points;
-    while have < 0 && level > 0 {
-        level -= 1;
-        have += needed(level);
-    }
-    let have = have.max(0);
-    (level, have as f32 / needed(level) as f32)
-}
-fn total_xp(level: i32, progress: f32) -> i32 {
-    let levels = if level < 17 {
-        level * level + 6 * level
-    } else if level < 32 {
-        (2.5 * (level * level) as f32 - 40.5 * level as f32 + 360.0) as i32
-    } else {
-        (4.5 * (level * level) as f32 - 162.5 * level as f32 + 2220.0) as i32
-    };
-    levels + (horizon_client::entities::Experience::needed(level) as f32 * progress) as i32
-}
-
-/// clickMenuButton(4): with an item that has offers, and the lapis and points (or creative), the
-/// player gets a new enchantment seed, pays, and the offers are made again. True when `id` was
-/// the re-roll on this player's open enchanting menu; any other menu's button 4 (a stonecutter
-/// recipe, a loom pattern, a lectern's, a mod menu's) goes back to the game's dispatcher.
-pub(crate) fn reroll(game: &mut Game<'_>, conn: u32, window: i32, id: i32) -> bool {
-    if id != REROLL {
-        return false;
-    }
-    let Some(host) = game.lan.as_mut() else {
-        return false;
-    };
-    let Some(gi) = host.hub.guests.iter().position(|g| g.conn == conn) else {
-        return false;
-    };
-    let Some(mut gs) = host
-        .menus
-        .get_mut(&conn)
-        .and_then(|p| p.station.take_if(|s| s.window == window && s.kind == StationKind::Enchanting))
-    else {
-        return false;
-    };
-    let g = &host.hub.guests[gi];
-    let creative = g.creative();
-    let spectator = g.spectator();
-    let lapis = gs.menu.slot(1).map_or(0, |l| l.count);
-    let usable = gs.menu.slot(0).is_some() && gs.menu.data[0..3].iter().any(|c| *c > 0);
-    let afford = creative || lapis >= LAPIS_COST && total_xp(g.xp_level, g.xp_progress) >= XP_COST;
-    if usable && afford && !spectator {
-        let seed = game.world.random.next_int();
-        if let Some(host) = game.lan.as_mut() {
-            host.hub.guests.update(gi, |g| g.xp_seed = seed);
-        }
-        if !creative {
-            let env = game.menu_env();
-            let left = gs.menu.slot(1).cloned().map(|mut l| {
-                l.count -= LAPIS_COST;
-                l
-            });
-            gs.menu.set_slot(&env, 1, left.filter(|l| l.count > 0));
-            game.as_guest(conn, |game| {
-                let (level, progress) =
-                    pay_points(game.experience.level, game.experience.progress, XP_COST);
-                let old = game.experience.level;
-                game.experience.level = level;
-                game.experience.progress = progress;
-                game.experience.total = (game.experience.total - XP_COST).max(0);
-                if level != old {
-                    game.native_player_level_changed(old);
-                }
-            });
-        }
-        gs.menu.enchant_changed = false;
-        game.lan_enchant_offers(gi, &mut gs);
-    }
-    if let Some(p) = game.lan.as_mut().and_then(|host| host.menus.get_mut(&conn)) {
-        *p.station = Some(gs);
-    }
-    game.lan_send_station(conn);
-    true
-}
-
-/// What each table holds between uses, by position (ModEnchantmentTableBlockEntity's two
-/// slots), saved with the level.
-#[derive(Clone, Default)]
-pub(crate) struct EmTables(Vec<([i32; 3], [Option<ItemStack>; 2])>);
-fn encode(t: &EmTables) -> std::result::Result<Compound, AttachmentError> {
-    let list = t
-        .0
-        .iter()
-        .map(|(pos, slots)| {
-            let mut c = Compound::new();
-            c.insert("pos".into(), Tag::IntArray(pos.to_vec()));
-            for (i, s) in slots.iter().enumerate() {
-                if let Some(s) = s {
-                    c.insert(format!("slot{i}").as_str().into(), horizon_client::save::item_to_nbt(s));
-                }
-            }
-            Tag::Compound(c)
-        })
-        .collect();
-    let mut c = Compound::new();
-    c.insert("tables".into(), Tag::List(list));
-    Ok(c)
-}
-fn decode(c: &Compound) -> std::result::Result<EmTables, AttachmentError> {
-    let mut out = Vec::new();
-    if let Some(Tag::List(list)) = c.get(&"tables".into()) {
-        for t in list {
-            let Tag::Compound(t) = t else { continue };
-            let Some(Tag::IntArray(p)) = t.get(&"pos".into()) else { continue };
-            if p.len() != 3 {
-                continue;
-            }
-            let slot = |i: usize| {
-                t.get(&format!("slot{i}").as_str().into())
-                    .and_then(horizon_client::save::item_from_nbt)
-            };
-            out.push(([p[0], p[1], p[2]], [slot(0), slot(1)]));
-        }
-    }
-    Ok(EmTables(out))
-}
-fn none() -> EmTables {
-    EmTables::default()
-}
-static TABLES: AttachmentType<EmTables> = AttachmentType {
-    namespace: "easymagic",
-    name: "tables",
-    default: none,
-    codec: Some(AttachmentCodec { encode, decode }),
-    copy_on_death: false,
-    sync: false,
+use crate::config::{ServerConfig, server_config};
+use crate::enchant::{
+    apply_enchantments_to_stack, catalog, compute_offers, compute_scaled_enchanting_power,
+    is_enchanting_catalyst, is_reroll_catalyst, is_stack_enchantable,
+    is_unaltered_enchanting_table, roll_row_enchantments, subtract_experience_points,
+    total_experience,
 };
+use crate::payloads::{CluesPayload, ShelfItemPayload, ShelfQueryPayload, channels};
+use crate::storage::{
+    TableContents, advance_player_seed, clear_mirror, comparator_signal,
+    drop_and_clear_table_contents, get_or_init_player_seed, read_table_contents,
+    read_table_contents_level, write_table_contents,
+};
+use mod_api::wire::Writer;
+use mod_api::{
+    AnalogOutputEvent, AnimateTickEvent, BlockPart, Flow, GameMode, HasAnalogOutputEvent, Host,
+    HostTransaction, IPayloadContext, ITEMS, InteractionResult, ItemPlace, ItemResource, ItemStack,
+    LevelHost, LevelRandomHost, LevelRef, LevelSide, LoopContext, MenuButtonEvent,
+    MenuButtonValidEvent, MenuClickedEvent, MenuClosedEvent, MenuContainer, MenuKey, MenuPart,
+    MenuRef, MenuReplace, MenuSlotChangedEvent, MenuSlotRulesEvent, MenuStillValidEvent,
+    ModMenuOpen, NeighbourUpdate, OnBlockExplodedEvent, OnBlockStateChangeEvent,
+    OnDestroyedByPlayerEvent, PlayerRef, ServerHost, SoundSource, StatType, Text,
+    UseWithoutItemEvent,
+};
+use std::collections::HashMap;
+use std::sync::{LazyLock, Mutex, PoisonError};
 
-/// AbstractContainerMenu.removed for the table's menu: the item and the lapis stay in the table
-/// instead of going back to the player (only the carried stack does).
-pub(crate) fn keep(game: &mut Game<'_>, conn: u32, window: Option<i32>) {
-    let station = |game: &mut Game<'_>| {
-        game.lan.as_mut().and_then(|host| host.menus.get_mut(&conn)).and_then(|p| p.station.take())
-    };
-    let Some(mut gs) = station(game) else {
-        return;
-    };
-    let put_back = |game: &mut Game<'_>, gs| {
-        if let Some(p) = game.lan.as_mut().and_then(|host| host.menus.get_mut(&conn)) {
-            *p.station = Some(gs);
-        }
-    };
-    if gs.kind != StationKind::Enchanting || window.is_some_and(|w| w != gs.window) {
-        return put_back(game, gs);
-    }
-    let slots = [gs.menu.slot(0).cloned(), gs.menu.slot(1).cloned()];
-    if slots.iter().all(Option::is_none) {
-        return put_back(game, gs);
-    }
-    {
-        let env = game.menu_env();
-        gs.menu.set_slot(&env, 0, None);
-        gs.menu.set_slot(&env, 1, None);
-    }
-    let pos = gs.pos;
-    put_back(game, gs);
-    let mut tables = TABLES.get(game, mod_api::Holder::Level).ok().unwrap_or_default();
-    // Something already kept there (two players at one table) goes in first, as far as it fits.
-    if let Some(i) = tables.0.iter().position(|(p, _)| *p == pos) {
-        let (_, old) = tables.0.remove(i);
-        for s in old.into_iter().flatten() {
-            game.pop_resource(pos, s);
-        }
-    }
-    tables.0.push((pos, slots));
-    let _ = TABLES.set(game, mod_api::Holder::Level, tables);
+pub const MENU_ID: &str = "easymagic:enchanting";
+pub const REROLL_BUTTON_ID: i32 = 4;
+
+fn find_menu_key(host: &dyn Host) -> Option<MenuKey> {
+    host.menu_keys()
+        .into_iter()
+        .find(|k| k.id(host).is_some_and(|n| n.as_str() == MENU_ID))
 }
 
-/// The first time the guest's table menu is sent: what the table keeps goes into its slots, and
-/// the offers are made for it.
-pub(crate) fn restore(game: &mut Game<'_>, conn: u32) {
-    let Some(host) = game.lan.as_mut() else {
-        return;
-    };
-    let Some(gi) = host.hub.guests.iter().position(|g| g.conn == conn) else {
-        return;
-    };
-    let fresh = host.menus.get(&conn).and_then(|p| p.station.as_ref()).is_some_and(|s| {
-        s.kind == StationKind::Enchanting && s.state == 0 && s.sent_data.is_empty()
+fn notify_comparator(host: &mut dyn ServerHost, level: LevelRef, pos: [i32; 3]) {
+    if let Some(state) = level.block_state(&*host, pos) {
+        let _ = level.update_neighbors(host, pos, state, NeighbourUpdate::OutputSignal);
+    }
+}
+
+#[derive(Clone, Debug)]
+struct ViewerEntry {
+    window: i32,
+    dimension: String,
+    pos: [i32; 3],
+    last_power: i32,
+    still_valid: bool,
+}
+
+type TableKey = (String, [i32; 3]);
+
+static VIEWERS: LazyLock<Mutex<HashMap<u128, ViewerEntry>>> = LazyLock::new(Mutex::default);
+static DIRTY_TABLES: LazyLock<Mutex<Vec<TableKey>>> = LazyLock::new(Mutex::default);
+static PENDING_DROPS: LazyLock<Mutex<Vec<TableKey>>> = LazyLock::new(Mutex::default);
+
+pub fn reset_server_state() {
+    VIEWERS
+        .lock()
+        .unwrap_or_else(PoisonError::into_inner)
+        .clear();
+    DIRTY_TABLES
+        .lock()
+        .unwrap_or_else(PoisonError::into_inner)
+        .clear();
+    PENDING_DROPS
+        .lock()
+        .unwrap_or_else(PoisonError::into_inner)
+        .clear();
+    clear_mirror();
+}
+
+pub fn mark_table_dirty(dimension: &str, pos: [i32; 3]) {
+    let mut dirty = DIRTY_TABLES.lock().unwrap_or_else(PoisonError::into_inner);
+    let entry = (dimension.to_owned(), pos);
+    if !dirty.contains(&entry) {
+        dirty.push(entry);
+    }
+}
+
+fn invalidate_viewers_at(dimension: &str, pos: [i32; 3]) {
+    let mut map = VIEWERS.lock().unwrap_or_else(PoisonError::into_inner);
+    for entry in map.values_mut() {
+        if entry.dimension == dimension && entry.pos == pos {
+            entry.still_valid = false;
+        }
+    }
+}
+
+fn viewers_at(dimension: &str, pos: [i32; 3]) -> Vec<(u128, i32)> {
+    VIEWERS
+        .lock()
+        .unwrap_or_else(PoisonError::into_inner)
+        .iter()
+        .filter(|(_, e)| e.still_valid && e.dimension == dimension && e.pos == pos)
+        .map(|(&uuid, e)| (uuid, e.window))
+        .collect()
+}
+
+fn viewer_of(uuid: u128) -> Option<ViewerEntry> {
+    VIEWERS
+        .lock()
+        .unwrap_or_else(PoisonError::into_inner)
+        .get(&uuid)
+        .cloned()
+}
+
+/// Replaces the 3 owned container slots of an open `easymagic:enchanting` menu.
+fn set_menu_owned_slots(
+    host: &mut dyn ServerHost,
+    menu: MenuRef,
+    desired: &[Option<ItemStack>; 3],
+) {
+    let _ = host.transaction(|host, tx| {
+        for (slot, target) in desired.iter().enumerate() {
+            let place = ItemPlace::MenuSlot { menu, slot };
+            if let Some(current_res) = place.resource(host) {
+                let cur_amt = place.amount(host);
+                if cur_amt > 0 {
+                    let _ = place.extract(host, tx, &current_res, cur_amt);
+                }
+            }
+            if let Some(stack) = target {
+                let res = ItemResource::of(stack);
+                let _ = place.insert(host, tx, &res, stack.count());
+            }
+        }
+        Ok::<(), ()>(())
     });
-    if !fresh || !TABLES.has(game, mod_api::Holder::Level).unwrap_or(false) {
-        return;
+}
+
+fn read_menu_owned_slots(host: &dyn Host, menu: MenuRef) -> [Option<ItemStack>; 3] {
+    [
+        menu.slot(host, 0).flatten(),
+        menu.slot(host, 1).flatten(),
+        menu.slot(host, 2).flatten(),
+    ]
+}
+
+#[allow(clippy::too_many_arguments)]
+fn send_clues_and_data(
+    host: &mut dyn ServerHost,
+    player: PlayerRef,
+    menu: MenuRef,
+    window: i32,
+    level: LevelRef,
+    pos: [i32; 3],
+    slot0: Option<&ItemStack>,
+    seed: i32,
+    cfg: &ServerConfig,
+) -> i32 {
+    let scaled_power = compute_scaled_enchanting_power(&*host, level, pos, cfg);
+    let (costs, rows) = compute_offers(&*host, slot0, seed, scaled_power, cfg.enchantment_hint);
+    let _ = menu.set_data_slot(host, 0, costs[0]);
+    let _ = menu.set_data_slot(host, 1, costs[1]);
+    let _ = menu.set_data_slot(host, 2, costs[2]);
+    let _ = menu.set_data_slot(host, 3, seed);
+    if let Some(ch) = channels() {
+        let payload = CluesPayload {
+            window,
+            costs,
+            seed,
+            rows,
+        };
+        let _ = ch.clues.send(host, player, &payload);
     }
-    let Some(mut gs) = game.lan.as_mut().and_then(|host| host.menus.get_mut(&conn)).and_then(|p| p.station.take()) else {
+    scaled_power
+}
+
+fn sync_viewers_for_table(
+    host: &mut dyn ServerHost,
+    dimension: &str,
+    pos: [i32; 3],
+    stacks: &[Option<ItemStack>; 3],
+    exclude_player: Option<u128>,
+) {
+    let Some(level) = host.level(dimension) else {
         return;
     };
-    let mut tables = TABLES.get(game, mod_api::Holder::Level).ok().unwrap_or_default();
-    if let Some(i) = tables.0.iter().position(|(p, _)| *p == gs.pos) {
-        let (_, [item, lapis]) = tables.0.remove(i);
-        let _ = TABLES.set(game, mod_api::Holder::Level, tables);
-        let env = game.menu_env();
-        gs.menu.set_slot(&env, 0, item);
-        gs.menu.set_slot(&env, 1, lapis);
-        gs.menu.enchant_changed = false;
-        game.lan_enchant_offers(gi, &mut gs);
-    }
-    if let Some(p) = game.lan.as_mut().and_then(|host| host.menus.get_mut(&conn)) {
-        *p.station = Some(gs);
+    let cfg = server_config();
+    for (viewer_uuid, window) in viewers_at(dimension, pos) {
+        let Some(player) = host.player(viewer_uuid) else {
+            continue;
+        };
+        let Some(menu) = host.menu(viewer_uuid, window) else {
+            continue;
+        };
+        if exclude_player != Some(viewer_uuid) {
+            set_menu_owned_slots(host, menu, stacks);
+        }
+        let seed = get_or_init_player_seed(host, viewer_uuid);
+        let power = send_clues_and_data(
+            host,
+            player,
+            menu,
+            window,
+            level,
+            pos,
+            stacks[0].as_ref(),
+            seed,
+            &cfg,
+        );
+        if let Some(entry) = VIEWERS
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .get_mut(&viewer_uuid)
+        {
+            entry.last_power = power;
+        }
     }
 }
 
-/// Once a tick: a table that is gone (broken, blown up) drops what it kept
-/// (Containers.dropContents in onRemove).
-pub(crate) fn watch(game: &mut Game<'_>) {
-    static LAST: std::sync::atomic::AtomicI64 = std::sync::atomic::AtomicI64::new(i64::MIN);
-    let now = game.world.game_time;
-    if LAST.swap(now, std::sync::atomic::Ordering::Relaxed) == now
-        || !TABLES.has(game, mod_api::Holder::Level).unwrap_or(false)
-    {
-        return;
+pub fn send_server_config_to(host: &mut dyn ServerHost, player: PlayerRef) {
+    if let Some(ch) = channels() {
+        let _ = ch.server_config.send(host, player, &server_config());
     }
-    let mut tables = TABLES.get(game, mod_api::Holder::Level).ok().unwrap_or_default();
-    let mut gone = Vec::new();
-    tables.0.retain(|(p, slots)| {
-        let loaded = game.world.chunks.contains_key(&(p[0] >> 4, p[2] >> 4));
-        let table = &*game.res.facts().get(game.world.block(p[0], p[1], p[2])).name
-            == "minecraft:enchanting_table";
-        if loaded && !table {
-            gone.push((*p, slots.clone()));
-            false
+}
+
+pub fn broadcast_server_config(host: &mut dyn ServerHost) {
+    if let Some(ch) = channels() {
+        let _ = ch.server_config.send_to_all(host, &server_config());
+    }
+}
+
+/// `BlockPart` attached to `minecraft:enchanting_table`.
+pub struct EnchantingTablePart;
+
+#[mod_api::sunrise_part]
+impl BlockPart for EnchantingTablePart {
+    fn use_without_item(
+        &self,
+        host: &mut dyn ServerHost,
+        event: &mut UseWithoutItemEvent<'_>,
+    ) -> Option<InteractionResult> {
+        let cfg = server_config();
+        if !cfg.convert_vanilla_enchanting_table_when_interacting {
+            return None;
+        }
+        if is_unaltered_enchanting_table(&*host, event.state.block()) {
+            return None;
+        }
+        let mkey = find_menu_key(&*host)?;
+        let player_uuid = event.click.player;
+        let pos = event.click.pos;
+        let dim = event.click.dimension.key().id().to_owned();
+        let player = host.player(player_uuid)?;
+        let level = host.level(&dim)?;
+
+        let contents = read_table_contents(host, &dim, pos);
+        let stacks = contents.to_stacks(&*host);
+        let seed = get_or_init_player_seed(host, player_uuid);
+        let scaled_power = compute_scaled_enchanting_power(&*host, level, pos, &cfg);
+        let (costs, rows) = compute_offers(
+            &*host,
+            stacks[0].as_ref(),
+            seed,
+            scaled_power,
+            cfg.enchantment_hint,
+        );
+
+        let title = host
+            .block_entity(level, pos)
+            .and_then(|be| be.name(&*host))
+            .filter(|name| !name.is_empty())
+            .map(Text::literal)
+            .unwrap_or_else(|| Text::translate("container.enchant", Vec::new()));
+
+        let initial_clues = CluesPayload {
+            window: 0,
+            costs,
+            seed,
+            rows,
+        };
+        let mut writer = Writer::new();
+        writer.put(&initial_clues);
+
+        let mut open = ModMenuOpen::new(mkey, title);
+        open.extra = writer.into_bytes();
+        open.data = vec![costs[0], costs[1], costs[2], seed];
+        open.pos = Some(pos);
+        open.replace = MenuReplace::CloseFirst;
+
+        let Ok(Some(window)) = player.open_mod_menu(host, open) else {
+            return None;
+        };
+
+        if let Some(menu) = host.menu(player_uuid, window) {
+            set_menu_owned_slots(host, menu, &stacks);
+        }
+
+        VIEWERS
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .insert(
+                player_uuid,
+                ViewerEntry {
+                    window,
+                    dimension: dim,
+                    pos,
+                    last_power: scaled_power,
+                    still_valid: true,
+                },
+            );
+
+        if let Some(ch) = channels() {
+            let mut payload = initial_clues;
+            payload.window = window;
+            let _ = ch.clues.send(host, player, &payload);
+        }
+
+        Some(InteractionResult::Success)
+    }
+
+    fn has_analog_output(&self, _level: &dyn LevelHost, event: &mut HasAnalogOutputEvent) {
+        event.output = true;
+    }
+
+    fn analog_output(&self, level: &mut dyn LevelRandomHost, event: &mut AnalogOutputEvent) {
+        let pos = [event.pos.x, event.pos.y, event.pos.z];
+        let contents = read_table_contents_level(level, pos);
+        event.output = comparator_signal(&contents);
+    }
+
+    fn on_destroyed_by_player(
+        &self,
+        host: &mut dyn ServerHost,
+        event: &mut OnDestroyedByPlayerEvent<'_>,
+    ) -> Option<bool> {
+        let dim = host.dimension().to_owned();
+        invalidate_viewers_at(&dim, event.pos);
+        if let Some(level) = host.level(&dim) {
+            drop_and_clear_table_contents(host, level, &dim, event.pos);
+        }
+        None
+    }
+
+    fn on_block_exploded(&self, host: &mut dyn ServerHost, event: &mut OnBlockExplodedEvent<'_>) {
+        let pos = [event.pos.x, event.pos.y, event.pos.z];
+        let dim = host.dimension().to_owned();
+        invalidate_viewers_at(&dim, pos);
+        if let Some(level) = host.level(&dim) {
+            drop_and_clear_table_contents(host, level, &dim, pos);
+        }
+    }
+
+    fn on_block_state_change(&self, level: LevelSide, event: &mut OnBlockStateChangeEvent) {
+        if !matches!(level, LevelSide::Server(_)) {
+            return;
+        }
+        if event.new.block() == event.old.block() {
+            return;
+        }
+        let pos = [event.pos.x, event.pos.y, event.pos.z];
+        let dim = event.dimension.key().id().to_owned();
+        invalidate_viewers_at(&dim, pos);
+        let mut drops = PENDING_DROPS.lock().unwrap_or_else(PoisonError::into_inner);
+        let key = (dim, pos);
+        if !drops.contains(&key) {
+            drops.push(key);
+        }
+    }
+
+    fn animate_tick(&self, host: &mut dyn mod_api::ClientHost, event: &mut AnimateTickEvent<'_>) {
+        crate::client::animate_enchanting_table(host, event);
+    }
+}
+
+/// `MenuPart` attached to `easymagic:enchanting`.
+pub struct EnchantingMenuPart;
+
+#[mod_api::sunrise_part]
+impl MenuPart for EnchantingMenuPart {
+    fn menu_clicked(&self, host: &mut dyn ServerHost, event: &mut MenuClickedEvent<'_>) -> Flow {
+        // Shift-click (ClickType::QUICK_MOVE == 1) from player inventory: route catalysts directly
+        // to slots 1/2 instead of letting slot 0 capture a single catalyst item.
+        if event.mode != 1 || event.slot < 3 {
+            return Flow::Continue;
+        }
+        let Some(menu) = host.menu(event.uuid, event.window) else {
+            return Flow::Continue;
+        };
+        let src_slot = event.slot as usize;
+        let Some(stack) = menu.slot(&*host, src_slot).flatten() else {
+            return Flow::Continue;
+        };
+        let cfg = server_config();
+        let target_slot = if is_enchanting_catalyst(&*host, stack.item()) {
+            Some(1usize)
+        } else if cfg.dedicated_reroll_catalyst_active() && is_reroll_catalyst(&*host, stack.item())
+        {
+            Some(2usize)
         } else {
-            true
+            None
+        };
+        let Some(dst_slot) = target_slot else {
+            return Flow::Continue;
+        };
+
+        let resource = ItemResource::of(&stack);
+        let amount = stack.count();
+        let moved = host
+            .transaction(|host, tx| {
+                let src = ItemPlace::MenuSlot {
+                    menu,
+                    slot: src_slot,
+                };
+                let dst = ItemPlace::MenuSlot {
+                    menu,
+                    slot: dst_slot,
+                };
+                let taken = src.extract(host, tx, &resource, amount).unwrap_or(0);
+                if taken == 0 {
+                    return Ok::<u32, ()>(0);
+                }
+                let put = dst.insert(host, tx, &resource, taken).unwrap_or(0);
+                if put < taken {
+                    let _ = src.insert(host, tx, &resource, taken - put);
+                }
+                Ok(put)
+            })
+            .unwrap_or(0);
+
+        if moved > 0 {
+            Flow::Cancel
+        } else {
+            Flow::Continue
         }
-    });
-    if gone.is_empty() {
+    }
+
+    fn menu_slot_rules(&self, host: &dyn Host, event: &mut MenuSlotRulesEvent<'_>) {
+        if event.container != MenuContainer::Main {
+            return;
+        }
+        let cfg = server_config();
+        match event.slot {
+            0 => {
+                event.max_stack = 1;
+            }
+            1 => {
+                event.may_place = is_enchanting_catalyst(host, event.stack.item());
+            }
+            2 => {
+                event.may_place = cfg.dedicated_reroll_catalyst_active()
+                    && is_reroll_catalyst(host, event.stack.item());
+            }
+            _ => {}
+        }
+    }
+
+    fn menu_button_valid(&self, _host: &dyn Host, event: &mut MenuButtonValidEvent<'_>) -> Flow {
+        match event.id {
+            0 | 1 | 2 | REROLL_BUTTON_ID => Flow::Cancel,
+            _ => Flow::Continue,
+        }
+    }
+
+    fn menu_button(&self, event: &mut MenuButtonEvent<'_>) {
+        let player_uuid = event.context.player;
+        let button_id = event.context.id;
+        let Some(viewer) = viewer_of(player_uuid) else {
+            return;
+        };
+        if !viewer.still_valid {
+            return;
+        }
+        let host = event.subject.host();
+        let Some(player) = host.player(player_uuid) else {
+            return;
+        };
+        let Some(level) = host.level(&viewer.dimension) else {
+            return;
+        };
+        let Some(menu) = host.menu(player_uuid, viewer.window) else {
+            return;
+        };
+
+        let cfg = server_config();
+        let mut stacks = read_menu_owned_slots(&*host, menu);
+        let creative = player.game_mode(&*host) == Some(GameMode::Creative);
+
+        if button_id == REROLL_BUTTON_ID {
+            if !cfg.reroll_enchantments {
+                return;
+            }
+            let Some(item_stack) = stacks[0].as_ref() else {
+                return;
+            };
+            if !is_stack_enchantable(&*host, item_stack) {
+                return;
+            }
+            let catalyst_slot = if cfg.dedicated_reroll_catalyst_active() {
+                2
+            } else {
+                1
+            };
+            let catalyst_cost = cfg.reroll_catalyst_cost.max(0) as u32;
+            let xp_cost = cfg.reroll_experience_points_cost.max(0);
+            let catalyst_have = stacks[catalyst_slot].as_ref().map_or(0, ItemStack::count);
+            let (exp_level, exp_progress) = player
+                .experience(&*host)
+                .map_or((0, 0.0), |e| (e.level, e.progress));
+            let enough_xp = if cfg.rerolling_takes_enchantment_levels {
+                exp_level >= xp_cost
+            } else {
+                total_experience(exp_level, exp_progress) >= xp_cost
+            };
+
+            if !creative && (catalyst_have < catalyst_cost || !enough_xp) {
+                return;
+            }
+
+            let prev_seed = get_or_init_player_seed(host, player_uuid);
+            let _new_seed = advance_player_seed(host, player_uuid, prev_seed);
+
+            if !creative {
+                if catalyst_cost > 0
+                    && let Some(cat_stack) = stacks[catalyst_slot].take()
+                {
+                    stacks[catalyst_slot] = cat_stack.shrink(catalyst_cost);
+                }
+                if xp_cost > 0 {
+                    if cfg.rerolling_takes_enchantment_levels {
+                        let _ = player.give_levels(host, -xp_cost);
+                    } else {
+                        let (new_lvl, new_pts, new_total) =
+                            subtract_experience_points(exp_level, exp_progress, xp_cost);
+                        let _ = player.set_experience_levels(host, new_lvl);
+                        let _ = player.set_experience_points(host, new_pts);
+                        let _ = player.set_total_experience(host, new_total);
+                    }
+                }
+            }
+
+            set_menu_owned_slots(host, menu, &stacks);
+            let updated = TableContents::from_stacks(&*host, &stacks);
+            write_table_contents(host, &viewer.dimension, viewer.pos, &updated);
+            if catalyst_slot == 1 {
+                notify_comparator(host, level, viewer.pos);
+            }
+            sync_viewers_for_table(
+                host,
+                &viewer.dimension,
+                viewer.pos,
+                &stacks,
+                Some(player_uuid),
+            );
+            return;
+        }
+
+        if (0..=2).contains(&button_id) {
+            let slot_idx = button_id as usize;
+            let Some(item_stack) = stacks[0].clone() else {
+                return;
+            };
+            if !is_stack_enchantable(&*host, &item_stack) {
+                return;
+            }
+            let seed = get_or_init_player_seed(host, player_uuid);
+            let scaled_power = compute_scaled_enchanting_power(&*host, level, viewer.pos, &cfg);
+            let (costs, _) = compute_offers(
+                &*host,
+                Some(&item_stack),
+                seed,
+                scaled_power,
+                cfg.enchantment_hint,
+            );
+            let required_level = costs[slot_idx];
+            if required_level <= 0 {
+                return;
+            }
+            let cat = catalog(&*host);
+            let chosen =
+                roll_row_enchantments(&*host, &cat, &item_stack, seed, slot_idx, required_level);
+            if chosen.is_empty() {
+                return;
+            }
+
+            let cost_count = (slot_idx + 1) as u32;
+            let lapis_have = stacks[1].as_ref().map_or(0, ItemStack::count);
+            let player_level = player.experience(&*host).map_or(0, |e| e.level);
+            if !creative && (lapis_have < cost_count || player_level < required_level) {
+                return;
+            }
+
+            let Some(enchanted) = apply_enchantments_to_stack(&*host, &item_stack, &chosen) else {
+                return;
+            };
+
+            stacks[0] = Some(enchanted);
+            if !creative {
+                let _ = player.give_levels(host, -(cost_count as i32));
+                if let Some(lapis_stack) = stacks[1].take() {
+                    stacks[1] = lapis_stack.shrink(cost_count);
+                }
+            }
+
+            let _next_seed = advance_player_seed(host, player_uuid, seed);
+            let _ = player.award_stat(host, StatType::Custom, "minecraft:enchant_item", 1);
+            let pitch = 0.9 + ((seed.unsigned_abs() % 20) as f32) * 0.01;
+            let _ = level.play_sound(
+                host,
+                "minecraft:block.enchantment_table.use",
+                [
+                    f64::from(viewer.pos[0]) + 0.5,
+                    f64::from(viewer.pos[1]) + 0.5,
+                    f64::from(viewer.pos[2]) + 0.5,
+                ],
+                SoundSource::Blocks,
+                1.0,
+                pitch,
+                None,
+            );
+
+            set_menu_owned_slots(host, menu, &stacks);
+            let updated = TableContents::from_stacks(&*host, &stacks);
+            write_table_contents(host, &viewer.dimension, viewer.pos, &updated);
+            notify_comparator(host, level, viewer.pos);
+            sync_viewers_for_table(
+                host,
+                &viewer.dimension,
+                viewer.pos,
+                &stacks,
+                Some(player_uuid),
+            );
+        }
+    }
+
+    fn menu_slot_changed(&self, host: &mut dyn ServerHost, event: &mut MenuSlotChangedEvent<'_>) {
+        let Some(player_uuid) = event.context.player else {
+            return;
+        };
+        let Some(viewer) = viewer_of(player_uuid) else {
+            return;
+        };
+        if !viewer.still_valid {
+            return;
+        }
+        let stacks = [
+            event.context.slot(MenuContainer::Main, 0),
+            event.context.slot(MenuContainer::Main, 1),
+            event.context.slot(MenuContainer::Main, 2),
+        ];
+        let contents = TableContents::from_stacks(&*host, &stacks);
+        write_table_contents(host, &viewer.dimension, viewer.pos, &contents);
+
+        let slot1_changed = event
+            .changed
+            .iter()
+            .any(|c| c.container == MenuContainer::Main && c.slot == 1);
+        if slot1_changed && let Some(level) = host.level(&viewer.dimension) {
+            notify_comparator(host, level, viewer.pos);
+        }
+
+        sync_viewers_for_table(
+            host,
+            &viewer.dimension,
+            viewer.pos,
+            &stacks,
+            Some(player_uuid),
+        );
+    }
+
+    fn menu_still_valid(&self, _context: &dyn LoopContext, event: &mut MenuStillValidEvent<'_>) {
+        let Some(viewer) = viewer_of(event.player) else {
+            event.valid = false;
+            return;
+        };
+        if !viewer.still_valid {
+            event.valid = false;
+            return;
+        }
+        let dx = event.eye[0] - (f64::from(viewer.pos[0]) + 0.5);
+        let dy = event.eye[1] - (f64::from(viewer.pos[1]) + 0.5);
+        let dz = event.eye[2] - (f64::from(viewer.pos[2]) + 0.5);
+        // Vanilla default block reach (4.5) + AbstractContainerMenu.stillValid margin (4.0)
+        if dx * dx + dy * dy + dz * dz > 72.25 {
+            event.valid = false;
+        }
+    }
+}
+
+pub fn on_menu_closed(_host: &mut dyn ServerHost, event: &mut MenuClosedEvent<'_>) {
+    let mut map = VIEWERS.lock().unwrap_or_else(PoisonError::into_inner);
+    if let Some(entry) = map.get(&event.uuid)
+        && entry.window == event.window
+    {
+        map.remove(&event.uuid);
+    }
+}
+
+pub fn on_server_tick_post(host: &mut dyn ServerHost, level: LevelRef) {
+    let active_dim = level
+        .dimension()
+        .id(&*host)
+        .unwrap_or_else(|| host.dimension())
+        .to_owned();
+
+    // 1. Drain any pending drops for this dimension (e.g. /setblock replacement)
+    let drops: Vec<[i32; 3]> = {
+        let mut guard = PENDING_DROPS.lock().unwrap_or_else(PoisonError::into_inner);
+        let mut matched = Vec::new();
+        guard.retain(|(dim, pos)| {
+            if *dim == active_dim {
+                matched.push(*pos);
+                false
+            } else {
+                true
+            }
+        });
+        matched
+    };
+    for pos in drops {
+        let still_table = level
+            .block_state(&*host, pos)
+            .and_then(|s| s.block().id(&*host))
+            == Some("minecraft:enchanting_table");
+        if !still_table {
+            drop_and_clear_table_contents(host, level, &active_dim, pos);
+        }
+    }
+
+    // 2. Drain hopper-dirtied tables in this dimension and push updated slots to open viewers
+    let dirty: Vec<[i32; 3]> = {
+        let mut guard = DIRTY_TABLES.lock().unwrap_or_else(PoisonError::into_inner);
+        let mut matched = Vec::new();
+        guard.retain(|(dim, pos)| {
+            if *dim == active_dim {
+                matched.push(*pos);
+                false
+            } else {
+                true
+            }
+        });
+        matched
+    };
+    for pos in dirty {
+        if !viewers_at(&active_dim, pos).is_empty() {
+            let contents = read_table_contents(host, &active_dim, pos);
+            let stacks = contents.to_stacks(&*host);
+            sync_viewers_for_table(host, &active_dim, pos, &stacks, None);
+        }
+    }
+
+    // 3. For active viewers in this dimension (empty most ticks), detect broken tables or bookshelf changes
+    let active: Vec<(u128, ViewerEntry)> = VIEWERS
+        .lock()
+        .unwrap_or_else(PoisonError::into_inner)
+        .iter()
+        .filter(|(_, e)| e.dimension == active_dim)
+        .map(|(&u, e)| (u, e.clone()))
+        .collect();
+    if active.is_empty() {
         return;
     }
-    let _ = TABLES.set(game, mod_api::Holder::Level, tables);
-    for (p, slots) in gone {
-        for s in slots.into_iter().flatten() {
-            game.pop_resource(p, s);
+
+    let cfg = server_config();
+    for (uuid, entry) in active {
+        if !entry.still_valid {
+            continue;
+        }
+        let still_table = level
+            .block_state(&*host, entry.pos)
+            .and_then(|s| s.block().id(&*host))
+            == Some("minecraft:enchanting_table");
+        if !still_table {
+            invalidate_viewers_at(&entry.dimension, entry.pos);
+            continue;
+        }
+        let new_power = compute_scaled_enchanting_power(&*host, level, entry.pos, &cfg);
+        if new_power != entry.last_power
+            && let (Some(player), Some(menu)) = (host.player(uuid), host.menu(uuid, entry.window))
+        {
+            let stacks = read_menu_owned_slots(&*host, menu);
+            let seed = get_or_init_player_seed(host, uuid);
+            let power = send_clues_and_data(
+                host,
+                player,
+                menu,
+                entry.window,
+                level,
+                entry.pos,
+                stacks[0].as_ref(),
+                seed,
+                &cfg,
+            );
+            if let Some(v) = VIEWERS
+                .lock()
+                .unwrap_or_else(PoisonError::into_inner)
+                .get_mut(&uuid)
+            {
+                v.last_power = power;
+            }
         }
     }
+}
+
+/// Server handler for `easymagic:shelf_query`: returns the book stack stored in a chiseled
+/// bookshelf slot so the client can display its full tooltip on the HUD.
+pub fn handle_shelf_query(
+    query: ShelfQueryPayload,
+    ctx: &mut dyn IPayloadContext,
+) -> Result<(), String> {
+    if query.slot >= 6 {
+        return Ok(());
+    }
+    let Ok(player) = ctx.player() else {
+        return Ok(());
+    };
+    let Ok(host) = ctx.server_host() else {
+        return Ok(());
+    };
+    let Some(level) = host.level(host.dimension()) else {
+        return Ok(());
+    };
+
+    // Distance guard: only answer queries within normal reach (<= 16 blocks).
+    if let Some(ppos) = player.entity().position(&*host) {
+        let dx = ppos[0] - (f64::from(query.pos[0]) + 0.5);
+        let dy = ppos[1] - (f64::from(query.pos[1]) + 0.5);
+        let dz = ppos[2] - (f64::from(query.pos[2]) + 0.5);
+        if dx * dx + dy * dy + dz * dz > 256.0 {
+            return Ok(());
+        }
+    }
+
+    let is_shelf = level
+        .block_state(&*host, query.pos)
+        .and_then(|s| s.block().id(&*host))
+        == Some("minecraft:chiseled_bookshelf");
+    let stack = if is_shelf {
+        level
+            .capability(host, &ITEMS, query.pos, None)
+            .and_then(|cap| {
+                let slot = query.slot as usize;
+                let res = cap.resource(host, slot)?;
+                let amt = cap.amount(host, slot).max(1);
+                res.to_stack(amt)
+            })
+    } else {
+        None
+    };
+
+    let reply = ShelfItemPayload {
+        pos: query.pos,
+        slot: query.slot,
+        stack,
+    };
+    if let Some(ch) = channels() {
+        let _ = ch.shelf_item.reply(ctx, &reply);
+    }
+    Ok(())
 }
