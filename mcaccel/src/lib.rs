@@ -207,7 +207,12 @@ impl Hooks for Mod {
                 ..Default::default()
             };
             if let Some(face) = face {
-                block.components = vec![("minecraft:equippable".into(), Some(equippable(face)))];
+                // The original's faces are not compostable (only the vanilla carved pumpkin is),
+                // so the template's `compostable` goes.
+                block.components = vec![
+                    ("minecraft:equippable".into(), Some(equippable(face))),
+                    ("minecraft:compostable".into(), None),
+                ];
             }
             // A refused declaration is reported at startup with its reason.
             let _ = event.register(block);
