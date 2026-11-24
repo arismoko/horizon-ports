@@ -692,46 +692,6 @@ impl DynamicFpsConfig {
         cfg
     }
 
-    /// Overlay only explicitly stored Options > Mods settings onto `self`, so
-    /// edits made in `config/dynamicfps.toml` while the game was closed are not
-    /// overwritten by untouched setting defaults.
-    pub fn apply_stored_host_settings(&mut self, host: &dyn ClientHost) {
-        let keys = [
-            SET_ENABLED,
-            SET_IGNORE_INITIAL_CLICK,
-            SET_IDLE_TIME,
-            SET_IDLE_CONDITION,
-            SET_VOLUME_UP,
-            SET_VOLUME_DOWN,
-            SET_UNFOCUSED_FPS,
-            SET_UNFOCUSED_VOLUME_MASTER,
-            SET_UNFOCUSED_SHOW_TOASTS,
-            SET_INVISIBLE_FPS,
-            SET_INVISIBLE_VOLUME_MASTER,
-            SET_INVISIBLE_SHOW_TOASTS,
-            SET_HOVERED_FPS,
-            SET_HOVERED_VOLUME_MASTER,
-            SET_HOVERED_SHOW_TOASTS,
-            SET_ABANDONED_FPS,
-            SET_ABANDONED_VOLUME_MASTER,
-            SET_ABANDONED_SHOW_TOASTS,
-            SET_UNPLUGGED_FPS,
-            SET_BATTERY_ENABLED,
-            SET_BATTERY_SWITCH_STATES,
-            SET_BATTERY_NOTIFICATIONS,
-            SET_BATTERY_CRITICAL_LEVEL,
-            SET_BATTERY_INDICATOR_CONDITION,
-            SET_BATTERY_INDICATOR_DEBUG,
-            SET_BATTERY_INDICATOR_PLACEMENT,
-            SET_MOCK_BATTERY_DATA,
-        ];
-        for key in keys {
-            if host.setting(MOD_ID, key).is_some() {
-                self.apply_single_setting(host, key);
-            }
-        }
-    }
-
     /// Apply a single Options > Mods `setting_changed` key onto `self`.
     pub fn apply_single_setting(&mut self, host: &dyn ClientHost, key: &str) -> bool {
         match key {
@@ -1468,6 +1428,17 @@ frame_rate_target = -1
         );
         assert_eq!(cfg.invisible.raw_volume_multiplier(SoundSource::Music), 1.0);
         assert_eq!(cfg.invisible.volume_multiplier(SoundSource::Music), 0.0);
+    }
+
+    #[test]
+    fn non_minute_and_long_idle_timeouts_round_trip_without_truncation() {
+        for timeout_seconds in [45_u32, 90, 3600] {
+            let mut original = DynamicFpsConfig::default();
+            original.idle.timeout_seconds = timeout_seconds;
+            let toml = original.to_toml();
+            let parsed = DynamicFpsConfig::parse_toml(&toml);
+            assert_eq!(parsed.idle.timeout_seconds, timeout_seconds);
+        }
     }
 
     #[test]

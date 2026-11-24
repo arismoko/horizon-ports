@@ -107,11 +107,9 @@ impl Runtime {
             return;
         }
         self.settings_synced = true;
-        self.config.apply_stored_host_settings(host);
+        // `config/dynamicfps.toml` is the single source of truth; mirror it into
+        // the Options > Mods UI without reading back stale stored settings.
         self.config.write_to_host_settings(host);
-        self.battery.configure(self.config.battery);
-        self.smooth_volume.on_state_change(&self.config, self.state);
-        VOLUME_TABLE.store(self.smooth_volume.snapshot());
     }
 
     fn persist_config_file(&self, host: &dyn ClientHost) {
@@ -308,8 +306,9 @@ impl Hooks for DynamicFps {
         }
         let mut guard = self.lock();
         let rt = &mut *guard;
+        let changed = rt.config.apply_single_setting(host, event.key);
         rt.sync_initial_settings(host);
-        if rt.config.apply_single_setting(host, event.key) {
+        if changed {
             rt.battery.configure(rt.config.battery);
             let now_ms = host.millis();
             rt.update_state(now_ms);
