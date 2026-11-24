@@ -2,7 +2,7 @@
 //! block (water, lava, magma, fire, wool, leaves) is moved, with their spawn point, to the nearest
 //! safe surface within 128 blocks, as SafeSpawn 1.0.0 (Tokimi, CozyStudios) does.
 //!
-//! Once per player, marked in the player's saved data: if the block below their feet is blocked,
+//! Once per player, marked in the player's saved data (`PlayerPersisted`, kept through death): if the block below their feet is blocked,
 //! square rings around them are walked, radius 1 to 128, loading the chunks they cross, and the
 //! first column whose `MOTION_BLOCKING` surface stands on a safe, solid full block with room for a
 //! player above is taken; the player is teleported there and their spawn point set to it.
@@ -10,13 +10,16 @@ use std::collections::HashSet;
 use std::sync::{Mutex, OnceLock};
 
 use mod_api::{
-    BlockPos, BlockShapeKind, ConfigPath, GlobalPos, Heightmap, Hooks, Host, HostSide, LevelRef,
-    PlayerLoggedInEvent, PlayerRef, PlayerRespawnConfig, PlayerTickPostEvent, ServerHost, Tag,
+    BlockPos, BlockShapeKind, Compound, ConfigPath, GlobalPos, Heightmap, Hooks, Host, HostSide,
+    JavaString, LevelRef, PlayerLoggedInEvent, PlayerRef, PlayerRespawnConfig, PlayerTickPostEvent,
+    ServerHost, Tag,
 };
 
 pub const MAX_SEARCH_RADIUS: i32 = 128;
 /// The key in the player's saved data that marks them as checked.
 pub const SPAWNED_KEY: &str = "safespawn:spawned";
+/// The compound of the saved data a death respawn keeps (NeoForge's `Player.PERSISTED_NBT_TAG`).
+const PERSISTED: &str = "PlayerPersisted";
 const CONFIG: &str = "safespawn/blocked_blocks.txt";
 /// The blocks a player may not spawn standing on: ids and `#tags`.
 pub const DEFAULT_BLOCKED: &[&str] = &[
@@ -161,14 +164,23 @@ fn find_safe(
 
 /// The first-join check for `player`, with their level in place.
 fn check(host: &mut dyn ServerHost, player: PlayerRef) {
-    let key = SPAWNED_KEY.into();
-    let seen = player
+    // Kept in `PlayerPersisted`, which a death respawn carries over, so the check runs once.
+    let persisted = JavaString::from(PERSISTED);
+    let mut kept = match player
         .persistent_data(&*host)
-        .is_some_and(|data| data.get(&key).is_some());
-    if seen
-        || player
-            .set_persistent_data_key(host, &key, Some(&Tag::Byte(1)))
-            .is_err()
+        .and_then(|data| data.get(&persisted))
+    {
+        Some(Tag::Compound(kept)) => kept.clone(),
+        _ => Compound::new(),
+    };
+    let key = JavaString::from(SPAWNED_KEY);
+    if kept.get(&key).is_some() {
+        return;
+    }
+    kept.insert(key, Tag::Byte(1));
+    if player
+        .set_persistent_data_key(host, &persisted, Some(&Tag::Compound(kept)))
+        .is_err()
     {
         return;
     }
