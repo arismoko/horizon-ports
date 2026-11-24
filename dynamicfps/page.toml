@@ -29,3 +29,11 @@ Differences from the original:
 A port of Dynamic FPS by juliand665 and LostLuma, under the MIT licence.
 """
 categories = ["optimization", "utility"]
+
+[[screenshots]]
+path = "page/settings.png"
+caption = "Dynamic FPS settings in Options → Mods, including idle detection and volume transition speeds."
+
+[[screenshots]]
+path = "page/unfocused-banner.png"
+caption = "The HUD status banner shown at the top of the screen while forcing reduced FPS."
