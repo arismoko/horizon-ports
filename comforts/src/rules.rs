@@ -1482,4 +1482,52 @@ sleepingBagEffects = ["minecraft:slowness;30;2", "weakness;9999;10", "bad_entry"
             "item.comforts.hammock.missing_rope"
         );
     }
+
+    #[test]
+    fn block_loot_tables_use_26_3_schema() {
+        let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("data/comforts/loot_table/blocks");
+        let mut names = vec!["rope_and_nail".to_owned()];
+        for color in COLORS {
+            names.push(format!("hammock_{color}"));
+            names.push(format!("sleeping_bag_{color}"));
+        }
+        for name in names {
+            let path = dir.join(format!("{name}.json"));
+            let raw = std::fs::read_to_string(&path).expect("read block loot table");
+            let v: serde_json::Value = serde_json::from_str(&raw).expect("parse block loot table");
+            let pool = &v["pools"][0];
+            assert_eq!(
+                pool["condition"]["type"].as_str(),
+                Some("minecraft:survives_explosion"),
+                "{name}: pool must use 26.3 condition.type"
+            );
+            assert!(
+                pool.get("conditions").is_none(),
+                "{name}: legacy conditions array"
+            );
+            let entry = &pool["entries"][0];
+            let block_id = format!("comforts:{name}");
+            assert_eq!(entry["name"].as_str(), Some(block_id.as_str()));
+            if name != "rope_and_nail" {
+                assert_eq!(
+                    entry["condition"]["type"].as_str(),
+                    Some("minecraft:match_block"),
+                    "{name}: entry must use 26.3 match_block"
+                );
+                assert_eq!(
+                    entry["condition"]["blocks"].as_str(),
+                    Some(block_id.as_str())
+                );
+                assert_eq!(entry["condition"]["state"]["part"].as_str(), Some("head"));
+                assert_eq!(
+                    entry["modifier"]["type"].as_str(),
+                    Some("minecraft:copy_components"),
+                    "{name}: entry must use 26.3 modifier"
+                );
+                assert!(entry.get("conditions").is_none());
+                assert!(entry.get("functions").is_none());
+            }
+        }
+    }
 }
