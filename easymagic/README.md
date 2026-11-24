@@ -21,10 +21,11 @@ A Sunrise 26.3 port of [Easy Magic](https://github.com/Fuzss/easymagic) by Fuzs 
 
 - Items on an enchanting table are not drawn on the table in the world (the `FLAT` and `FLOATING` settings), because the mod API can't yet draw for a vanilla block entity ([sunrise-org/sunrise#5531](https://github.com/sunrise-org/sunrise/issues/5531)).
 - With `keep_enchantment_screen_book`, the screen draws a still book where vanilla's opens and turns its pages, because the mod API can't yet draw an animated vanilla model in a screen ([sunrise-org/sunrise#5532](https://github.com/sunrise-org/sunrise/issues/5532)). The reroll click region and its tooltip work as in the original.
+- Unaltered enchanting tables (when `convert_vanilla_enchanting_table_when_interacting = false` or listed in `#easymagic:unaltered_enchanting_tables`) keep vanilla's bookshelf rules and particles instead of lenient and chiseled bookshelf power ([sunrise-org/sunrise#5374](https://github.com/sunrise-org/sunrise/issues/5374)).
 
 ## Configuration
 
-Server settings live in `config/easymagic-server.toml` and sync automatically to connected clients. Client settings live in `config/easymagic-client.toml` and in **Options → Mods → Easy Magic**.
+Server settings live in `config/easymagic-server.toml` and sync automatically to connected clients. Client settings live in **Options → Mods → Easy Magic**.
 
 ## Building
 

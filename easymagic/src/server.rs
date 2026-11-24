@@ -1,4 +1,4 @@
-use crate::config::{ServerConfig, server_config};
+use crate::config::{ServerConfig, server_config, synced_server_config};
 use crate::enchant::{
     apply_enchantments_to_stack, catalog, compute_offers, compute_scaled_enchanting_power,
     is_enchanting_catalyst, is_reroll_catalyst, is_stack_enchantable,
@@ -7,9 +7,8 @@ use crate::enchant::{
 };
 use crate::payloads::{CluesPayload, ShelfItemPayload, ShelfQueryPayload, channels};
 use crate::storage::{
-    TableContents, advance_player_seed, clear_mirror, comparator_signal,
-    drop_and_clear_table_contents, get_or_init_player_seed, read_table_contents,
-    read_table_contents_level, write_table_contents,
+    TableContents, advance_player_seed, comparator_signal, drop_and_clear_table_contents,
+    get_or_init_player_seed, read_table_contents, read_table_contents_level, write_table_contents,
 };
 use mod_api::wire::Writer;
 use mod_api::{
@@ -52,7 +51,9 @@ struct ViewerEntry {
 type TableKey = (String, [i32; 3]);
 
 static VIEWERS: LazyLock<Mutex<HashMap<u128, ViewerEntry>>> = LazyLock::new(Mutex::default);
-static DIRTY_TABLES: LazyLock<Mutex<Vec<TableKey>>> = LazyLock::new(Mutex::default);
+/// Notification hints for tables touched by capability transactions, keyed by `(dim, pos)` with
+/// the pre-mutation comparator signal baseline so aborted transactions produce no side effects.
+static DIRTY_TABLES: LazyLock<Mutex<HashMap<TableKey, i32>>> = LazyLock::new(Mutex::default);
 static PENDING_DROPS: LazyLock<Mutex<Vec<TableKey>>> = LazyLock::new(Mutex::default);
 
 pub fn reset_server_state() {
@@ -68,15 +69,21 @@ pub fn reset_server_state() {
         .lock()
         .unwrap_or_else(PoisonError::into_inner)
         .clear();
-    clear_mirror();
 }
 
-pub fn mark_table_dirty(dimension: &str, pos: [i32; 3]) {
-    let mut dirty = DIRTY_TABLES.lock().unwrap_or_else(PoisonError::into_inner);
-    let entry = (dimension.to_owned(), pos);
-    if !dirty.contains(&entry) {
-        dirty.push(entry);
-    }
+pub fn mark_table_dirty(dimension: &str, pos: [i32; 3], prev_signal: i32) {
+    DIRTY_TABLES
+        .lock()
+        .unwrap_or_else(PoisonError::into_inner)
+        .entry((dimension.to_owned(), pos))
+        .or_insert(prev_signal);
+}
+
+fn clear_table_dirty(dimension: &str, pos: [i32; 3]) {
+    DIRTY_TABLES
+        .lock()
+        .unwrap_or_else(PoisonError::into_inner)
+        .remove(&(dimension.to_owned(), pos));
 }
 
 fn invalidate_viewers_at(dimension: &str, pos: [i32; 3]) {
@@ -329,6 +336,7 @@ impl BlockPart for EnchantingTablePart {
     ) -> Option<bool> {
         let dim = host.dimension().to_owned();
         invalidate_viewers_at(&dim, event.pos);
+        clear_table_dirty(&dim, event.pos);
         if let Some(level) = host.level(&dim) {
             drop_and_clear_table_contents(host, level, &dim, event.pos);
         }
@@ -339,6 +347,7 @@ impl BlockPart for EnchantingTablePart {
         let pos = [event.pos.x, event.pos.y, event.pos.z];
         let dim = host.dimension().to_owned();
         invalidate_viewers_at(&dim, pos);
+        clear_table_dirty(&dim, pos);
         if let Some(level) = host.level(&dim) {
             drop_and_clear_table_contents(host, level, &dim, pos);
         }
@@ -354,6 +363,7 @@ impl BlockPart for EnchantingTablePart {
         let pos = [event.pos.x, event.pos.y, event.pos.z];
         let dim = event.dimension.key().id().to_owned();
         invalidate_viewers_at(&dim, pos);
+        clear_table_dirty(&dim, pos);
         let mut drops = PENDING_DROPS.lock().unwrap_or_else(PoisonError::into_inner);
         let key = (dim, pos);
         if !drops.contains(&key) {
@@ -432,7 +442,9 @@ impl MenuPart for EnchantingMenuPart {
         if event.container != MenuContainer::Main {
             return;
         }
-        let cfg = server_config();
+        // Runs on both sides: use the synced server config so client slot prediction matches
+        // dedicated_reroll_catalyst on remote servers.
+        let cfg = synced_server_config();
         match event.slot {
             0 => {
                 event.max_stack = 1;
@@ -497,13 +509,13 @@ impl MenuPart for EnchantingMenuPart {
             let catalyst_cost = cfg.reroll_catalyst_cost.max(0) as u32;
             let xp_cost = cfg.reroll_experience_points_cost.max(0);
             let catalyst_have = stacks[catalyst_slot].as_ref().map_or(0, ItemStack::count);
-            let (exp_level, exp_progress) = player
+            let (exp_level, exp_progress, exp_total) = player
                 .experience(&*host)
-                .map_or((0, 0.0), |e| (e.level, e.progress));
+                .map_or((0, 0.0, 0), |e| (e.level, e.progress, e.total));
             let enough_xp = if cfg.rerolling_takes_enchantment_levels {
                 exp_level >= xp_cost
             } else {
-                total_experience(exp_level, exp_progress) >= xp_cost
+                total_experience(exp_level, exp_progress) >= i128::from(xp_cost)
             };
 
             if !creative && (catalyst_have < catalyst_cost || !enough_xp) {
@@ -524,7 +536,7 @@ impl MenuPart for EnchantingMenuPart {
                         let _ = player.give_levels(host, -xp_cost);
                     } else {
                         let (new_lvl, new_pts, new_total) =
-                            subtract_experience_points(exp_level, exp_progress, xp_cost);
+                            subtract_experience_points(exp_level, exp_progress, exp_total, xp_cost);
                         let _ = player.set_experience_levels(host, new_lvl);
                         let _ = player.set_experience_points(host, new_pts);
                         let _ = player.set_total_experience(host, new_total);
@@ -535,6 +547,7 @@ impl MenuPart for EnchantingMenuPart {
             set_menu_owned_slots(host, menu, &stacks);
             let updated = TableContents::from_stacks(&*host, &stacks);
             write_table_contents(host, &viewer.dimension, viewer.pos, &updated);
+            clear_table_dirty(&viewer.dimension, viewer.pos);
             if catalyst_slot == 1 {
                 notify_comparator(host, level, viewer.pos);
             }
@@ -615,6 +628,7 @@ impl MenuPart for EnchantingMenuPart {
             set_menu_owned_slots(host, menu, &stacks);
             let updated = TableContents::from_stacks(&*host, &stacks);
             write_table_contents(host, &viewer.dimension, viewer.pos, &updated);
+            clear_table_dirty(&viewer.dimension, viewer.pos);
             notify_comparator(host, level, viewer.pos);
             sync_viewers_for_table(
                 host,
@@ -643,6 +657,7 @@ impl MenuPart for EnchantingMenuPart {
         ];
         let contents = TableContents::from_stacks(&*host, &stacks);
         write_table_contents(host, &viewer.dimension, viewer.pos, &contents);
+        clear_table_dirty(&viewer.dimension, viewer.pos);
 
         let slot1_changed = event
             .changed
@@ -720,13 +735,14 @@ pub fn on_server_tick_post(host: &mut dyn ServerHost, level: LevelRef) {
         }
     }
 
-    // 2. Drain hopper-dirtied tables in this dimension and push updated slots to open viewers
-    let dirty: Vec<[i32; 3]> = {
+    // 2. Drain hopper-dirtied tables in this dimension (post-commit) and publish comparator
+    //    updates and viewer syncs only where the committed attachment state actually changed.
+    let dirty: Vec<([i32; 3], i32)> = {
         let mut guard = DIRTY_TABLES.lock().unwrap_or_else(PoisonError::into_inner);
         let mut matched = Vec::new();
-        guard.retain(|(dim, pos)| {
+        guard.retain(|(dim, pos), prev_signal| {
             if *dim == active_dim {
-                matched.push(*pos);
+                matched.push((*pos, *prev_signal));
                 false
             } else {
                 true
@@ -734,11 +750,30 @@ pub fn on_server_tick_post(host: &mut dyn ServerHost, level: LevelRef) {
         });
         matched
     };
-    for pos in dirty {
-        if !viewers_at(&active_dim, pos).is_empty() {
-            let contents = read_table_contents(host, &active_dim, pos);
-            let stacks = contents.to_stacks(&*host);
-            sync_viewers_for_table(host, &active_dim, pos, &stacks, None);
+    for (pos, prev_signal) in dirty {
+        let still_table = level
+            .block_state(&*host, pos)
+            .and_then(|s| s.block().id(&*host))
+            == Some("minecraft:enchanting_table");
+        if !still_table {
+            continue;
+        }
+        let contents = read_table_contents(host, &active_dim, pos);
+        if comparator_signal(&contents) != prev_signal {
+            notify_comparator(host, level, pos);
+        }
+        let table_viewers = viewers_at(&active_dim, pos);
+        if !table_viewers.is_empty() {
+            let needs_sync = table_viewers.iter().any(|&(uuid, window)| {
+                host.menu(uuid, window).is_some_and(|menu| {
+                    let cur = read_menu_owned_slots(&*host, menu);
+                    TableContents::from_stacks(&*host, &cur) != contents
+                })
+            });
+            if needs_sync {
+                let stacks = contents.to_stacks(&*host);
+                sync_viewers_for_table(host, &active_dim, pos, &stacks, None);
+            }
         }
     }
 
@@ -810,18 +845,19 @@ pub fn handle_shelf_query(
     let Ok(host) = ctx.server_host() else {
         return Ok(());
     };
-    let Some(level) = host.level(host.dimension()) else {
+    let Some(level) = player.level(&*host) else {
         return Ok(());
     };
 
     // Distance guard: only answer queries within normal reach (<= 16 blocks).
-    if let Some(ppos) = player.entity().position(&*host) {
-        let dx = ppos[0] - (f64::from(query.pos[0]) + 0.5);
-        let dy = ppos[1] - (f64::from(query.pos[1]) + 0.5);
-        let dz = ppos[2] - (f64::from(query.pos[2]) + 0.5);
-        if dx * dx + dy * dy + dz * dz > 256.0 {
-            return Ok(());
-        }
+    let Some(ppos) = player.entity().position(&*host) else {
+        return Ok(());
+    };
+    let dx = ppos[0] - (f64::from(query.pos[0]) + 0.5);
+    let dy = ppos[1] - (f64::from(query.pos[1]) + 0.5);
+    let dz = ppos[2] - (f64::from(query.pos[2]) + 0.5);
+    if dx * dx + dy * dy + dz * dz > 256.0 {
+        return Ok(());
     }
 
     let is_shelf = level

@@ -45,24 +45,6 @@ impl ChiseledBookshelfPower {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum ItemRenderType {
-    None,
-    Flat,
-    Floating,
-}
-
-impl ItemRenderType {
-    fn parse(raw: &str) -> Option<Self> {
-        match raw.trim().to_ascii_uppercase().as_str() {
-            "NONE" => Some(Self::None),
-            "FLAT" => Some(Self::Flat),
-            "FLOATING" => Some(Self::Floating),
-            _ => None,
-        }
-    }
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ChiseledBookshelfTooltip {
     Disabled,
     Crouching,
@@ -70,15 +52,6 @@ pub enum ChiseledBookshelfTooltip {
 }
 
 impl ChiseledBookshelfTooltip {
-    fn parse(raw: &str) -> Option<Self> {
-        match raw.trim().to_ascii_uppercase().as_str() {
-            "DISABLED" => Some(Self::Disabled),
-            "CROUCHING" => Some(Self::Crouching),
-            "ENABLED" => Some(Self::Enabled),
-            _ => None,
-        }
-    }
-
     fn from_choice(index: u32) -> Self {
         match index {
             0 => Self::Disabled,
@@ -216,7 +189,6 @@ dedicated_reroll_catalyst = false
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ClientConfig {
-    pub render_enchanting_table_contents: ItemRenderType,
     pub keep_enchantment_screen_book: bool,
     pub chiseled_bookshelf_tooltip: ChiseledBookshelfTooltip,
     pub chiseled_bookshelf_tooltip_offset_x: i32,
@@ -226,64 +198,11 @@ pub struct ClientConfig {
 impl Default for ClientConfig {
     fn default() -> Self {
         Self {
-            render_enchanting_table_contents: ItemRenderType::Floating,
             keep_enchantment_screen_book: false,
             chiseled_bookshelf_tooltip: ChiseledBookshelfTooltip::Enabled,
             chiseled_bookshelf_tooltip_offset_x: 0,
             chiseled_bookshelf_tooltip_offset_y: 0,
         }
-    }
-}
-
-impl ClientConfig {
-    pub fn default_toml() -> &'static str {
-        r#"# Easy Magic client configuration
-# Render inventory contents of an enchanting table: "NONE", "FLAT", or "FLOATING".
-render_enchanting_table_contents = "FLOATING"
-# Hide the reroll button graphics and keep the book area inside the enchantment screen.
-keep_enchantment_screen_book = false
-# Show a tooltip for the hovered book in a chiseled bookshelf: "DISABLED", "CROUCHING", or "ENABLED".
-chiseled_bookshelf_tooltip = "ENABLED"
-# Offset on x-axis for chiseled bookshelf book tooltips.
-chiseled_bookshelf_tooltip_offset_x = 0
-# Offset on y-axis for chiseled bookshelf book tooltips.
-chiseled_bookshelf_tooltip_offset_y = 0
-"#
-    }
-
-    pub fn parse_toml(source: &str) -> Self {
-        let mut cfg = Self::default();
-        for (key, value) in parse_flat_toml(source) {
-            match key {
-                "render_enchanting_table_contents" => {
-                    if let Some(v) = ItemRenderType::parse(unquote(value)) {
-                        cfg.render_enchanting_table_contents = v;
-                    }
-                }
-                "keep_enchantment_screen_book" => {
-                    if let Some(v) = parse_bool(value) {
-                        cfg.keep_enchantment_screen_book = v;
-                    }
-                }
-                "chiseled_bookshelf_tooltip" => {
-                    if let Some(v) = ChiseledBookshelfTooltip::parse(unquote(value)) {
-                        cfg.chiseled_bookshelf_tooltip = v;
-                    }
-                }
-                "chiseled_bookshelf_tooltip_offset_x" => {
-                    if let Some(v) = parse_i32(value) {
-                        cfg.chiseled_bookshelf_tooltip_offset_x = v;
-                    }
-                }
-                "chiseled_bookshelf_tooltip_offset_y" => {
-                    if let Some(v) = parse_i32(value) {
-                        cfg.chiseled_bookshelf_tooltip_offset_y = v;
-                    }
-                }
-                _ => {}
-            }
-        }
-        cfg
     }
 }
 
@@ -313,14 +232,6 @@ static SYNCED_SERVER_CONFIG: RwLock<ServerConfig> = RwLock::new(ServerConfig {
     chiseled_bookshelf_enchanting_power: ChiseledBookshelfPower::Facing,
 });
 
-static CLIENT_CONFIG: RwLock<ClientConfig> = RwLock::new(ClientConfig {
-    render_enchanting_table_contents: ItemRenderType::Floating,
-    keep_enchantment_screen_book: false,
-    chiseled_bookshelf_tooltip: ChiseledBookshelfTooltip::Enabled,
-    chiseled_bookshelf_tooltip_offset_x: 0,
-    chiseled_bookshelf_tooltip_offset_y: 0,
-});
-
 pub fn server_config() -> ServerConfig {
     SERVER_CONFIG
         .read()
@@ -347,23 +258,9 @@ pub fn set_synced_server_config(cfg: ServerConfig) {
         .unwrap_or_else(PoisonError::into_inner) = cfg;
 }
 
-pub fn client_config_file() -> ClientConfig {
-    CLIENT_CONFIG
-        .read()
-        .unwrap_or_else(PoisonError::into_inner)
-        .clone()
-}
-
-pub fn set_client_config_file(cfg: ClientConfig) {
-    *CLIENT_CONFIG
-        .write()
-        .unwrap_or_else(PoisonError::into_inner) = cfg;
-}
-
-/// Effective client config: reads Options > Mods settings when present, falling back to the
-/// `easymagic-client.toml` file values.
+/// Effective client config read from Options -> Mods -> Easy Magic settings.
 pub fn effective_client_config(host: &dyn ClientHost) -> ClientConfig {
-    let mut cfg = client_config_file();
+    let mut cfg = ClientConfig::default();
     if let Some(v) = host.setting_bool(SETTING_KEEP_BOOK) {
         cfg.keep_enchantment_screen_book = v;
     }
@@ -388,11 +285,6 @@ pub fn register_mod_configs(configs: &mut Vec<Config>) {
         MOD_ID,
         ConfigKind::Server,
         ServerConfig::default_toml(),
-    ));
-    configs.push(Config::new(
-        MOD_ID,
-        ConfigKind::Client,
-        ClientConfig::default_toml(),
     ));
 }
 
@@ -524,11 +416,5 @@ mod tests {
         assert_eq!(parsed.reroll_experience_points_cost, 0);
         assert!(parsed.rerolling_takes_enchantment_levels);
         assert!(parsed.dedicated_reroll_catalyst_active());
-    }
-
-    #[test]
-    fn default_client_toml_parses_to_default() {
-        let parsed = ClientConfig::parse_toml(ClientConfig::default_toml());
-        assert_eq!(parsed, ClientConfig::default());
     }
 }

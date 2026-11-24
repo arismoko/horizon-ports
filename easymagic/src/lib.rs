@@ -6,8 +6,8 @@ mod server;
 mod storage;
 
 use crate::config::{
-    ClientConfig, MOD_ID, ServerConfig, register_mod_configs, register_settings,
-    set_client_config_file, set_server_config, set_synced_server_config,
+    MOD_ID, ServerConfig, register_mod_configs, register_settings, server_config,
+    set_server_config, set_synced_server_config,
 };
 use crate::enchant::invalidate_catalog;
 use crate::payloads::{
@@ -81,43 +81,28 @@ impl Hooks for EasyMagic {
     }
 
     fn config_loading(&self, _ctx: &dyn ConfigContext, event: &mut ConfigLoadingEvent<'_>) {
-        if event.config.mod_id != MOD_ID {
+        if event.config.mod_id != MOD_ID || event.config.kind != ConfigKind::Server {
             return;
         }
-        match event.config.kind {
-            ConfigKind::Server => {
-                let parsed = ServerConfig::parse_toml(&event.config.text);
-                set_server_config(parsed.clone());
-                set_synced_server_config(parsed);
-            }
-            ConfigKind::Client => {
-                set_client_config_file(ClientConfig::parse_toml(&event.config.text));
-            }
-            _ => {}
-        }
+        let parsed = ServerConfig::parse_toml(&event.config.text);
+        set_server_config(parsed.clone());
+        set_synced_server_config(parsed);
     }
 
     fn config_reloading(&self, host: HostSide<'_>, event: &mut ConfigReloadingEvent<'_>) {
-        if event.config.mod_id != MOD_ID {
+        if event.config.mod_id != MOD_ID || event.config.kind != ConfigKind::Server {
             return;
         }
-        match event.config.kind {
-            ConfigKind::Server => {
-                let parsed = ServerConfig::parse_toml(&event.config.text);
-                set_server_config(parsed.clone());
-                set_synced_server_config(parsed);
-                if let HostSide::Server(server) = host {
-                    broadcast_server_config(server);
-                }
-            }
-            ConfigKind::Client => {
-                set_client_config_file(ClientConfig::parse_toml(&event.config.text));
-            }
-            _ => {}
+        let parsed = ServerConfig::parse_toml(&event.config.text);
+        set_server_config(parsed.clone());
+        set_synced_server_config(parsed);
+        if let HostSide::Server(server) = host {
+            broadcast_server_config(server);
         }
     }
 
     fn server_started(&self, _host: &mut dyn ServerHost, _event: &mut ServerStartedEvent) {
+        set_synced_server_config(server_config());
         invalidate_catalog();
     }
 

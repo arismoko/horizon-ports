@@ -1,12 +1,10 @@
 use crate::config::{MOD_ID, server_config};
-use crate::enchant::{is_enchanting_catalyst, is_reroll_catalyst, is_stack_enchantable};
+use crate::enchant::{is_enchanting_catalyst, is_reroll_catalyst, is_stack_enchanted_or_book};
 use mod_api::{
     AttachmentCodec, AttachmentError, AttachmentStore, AttachmentType, BlockSide, Compound,
-    Direction, Holder, Host, ItemResource, ItemStack, JavaString, LevelRef, NeighbourUpdate,
-    Overanswered, ResourceHandler, ServerHost, Tag, TransactionContext, TransactionError,
+    Direction, Holder, Host, ItemResource, ItemStack, JavaString, LevelRef, Overanswered,
+    ResourceHandler, ServerHost, Tag, TransactionContext, TransactionError,
 };
-use std::collections::HashMap;
-use std::sync::{LazyLock, Mutex, PoisonError};
 
 pub const ATTACH_TABLE_CONTENTS: &str = "easymagic:table_contents";
 pub const ATTACH_PLAYER_SEED: &str = "easymagic:enchantment_seed";
@@ -118,52 +116,19 @@ pub const PLAYER_SEED: AttachmentType<i32> = AttachmentType {
     sync: false,
 };
 
-type MirrorKey = (String, [i32; 3]);
-
-static MIRROR: LazyLock<Mutex<HashMap<MirrorKey, TableContents>>> = LazyLock::new(Mutex::default);
-
-pub fn clear_mirror() {
-    MIRROR
-        .lock()
-        .unwrap_or_else(PoisonError::into_inner)
-        .clear();
-}
-
-pub fn update_mirror(dimension: &str, pos: [i32; 3], contents: &TableContents) {
-    let mut map = MIRROR.lock().unwrap_or_else(PoisonError::into_inner);
-    let key = (dimension.to_owned(), pos);
-    if contents.is_empty() {
-        map.remove(&key);
-    } else {
-        map.insert(key, contents.clone());
-    }
-}
-
-pub fn take_mirror(dimension: &str, pos: [i32; 3]) -> Option<TableContents> {
-    MIRROR
-        .lock()
-        .unwrap_or_else(PoisonError::into_inner)
-        .remove(&(dimension.to_owned(), pos))
-}
-
-/// Reads stored table contents from the block entity attachment (when in the active dimension)
-/// or mirror fallback.
+/// Reads stored table contents from the transactional block entity attachment.
 pub fn read_table_contents(
     host: &mut dyn ServerHost,
     dimension: &str,
     pos: [i32; 3],
 ) -> TableContents {
-    if host.dimension() == dimension
-        && let Ok(Some(saved)) = TABLE_CONTENTS.get_existing(host, Holder::BlockEntity(pos))
-    {
-        update_mirror(dimension, pos, &saved);
-        return saved;
+    if host.dimension() != dimension {
+        return TableContents::default();
     }
-    MIRROR
-        .lock()
-        .unwrap_or_else(PoisonError::into_inner)
-        .get(&(dimension.to_owned(), pos))
-        .cloned()
+    TABLE_CONTENTS
+        .get_existing(host, Holder::BlockEntity(pos))
+        .ok()
+        .flatten()
         .unwrap_or_default()
 }
 
@@ -179,21 +144,21 @@ pub fn read_table_contents_level<S: AttachmentStore + ?Sized>(
         .unwrap_or_default()
 }
 
-/// Writes stored table contents to the block entity attachment and mirror cache.
+/// Writes stored table contents to the transactional block entity attachment.
 pub fn write_table_contents(
     host: &mut dyn ServerHost,
     dimension: &str,
     pos: [i32; 3],
     contents: &TableContents,
 ) {
-    if host.dimension() == dimension {
-        if contents.is_empty() {
-            let _ = TABLE_CONTENTS.remove(host, Holder::BlockEntity(pos));
-        } else {
-            let _ = TABLE_CONTENTS.set(host, Holder::BlockEntity(pos), contents.clone());
-        }
+    if host.dimension() != dimension {
+        return;
     }
-    update_mirror(dimension, pos, contents);
+    if contents.is_empty() {
+        let _ = TABLE_CONTENTS.remove(host, Holder::BlockEntity(pos));
+    } else {
+        let _ = TABLE_CONTENTS.set(host, Holder::BlockEntity(pos), contents.clone());
+    }
 }
 
 /// Clears stored contents and drops all items at `pos` in `level`.
@@ -203,18 +168,15 @@ pub fn drop_and_clear_table_contents(
     dimension: &str,
     pos: [i32; 3],
 ) {
-    let from_attachment = if host.dimension() == dimension {
-        let saved = TABLE_CONTENTS
-            .get_existing(host, Holder::BlockEntity(pos))
-            .ok()
-            .flatten();
-        let _ = TABLE_CONTENTS.remove(host, Holder::BlockEntity(pos));
-        saved
-    } else {
-        None
-    };
-    let from_mirror = take_mirror(dimension, pos);
-    let contents = from_attachment.or(from_mirror).unwrap_or_default();
+    if host.dimension() != dimension {
+        return;
+    }
+    let contents = TABLE_CONTENTS
+        .get_existing(host, Holder::BlockEntity(pos))
+        .ok()
+        .flatten()
+        .unwrap_or_default();
+    let _ = TABLE_CONTENTS.remove(host, Holder::BlockEntity(pos));
     if contents.is_empty() {
         return;
     }
@@ -331,7 +293,7 @@ impl EnchantingTableItemHandler {
 
     fn can_extract_from_face(&self, host: &dyn Host, slot: usize, stack: &ItemStack) -> bool {
         match self.side.side {
-            Some(Direction::Down) => slot == 0 && !is_stack_enchantable(host, stack),
+            Some(Direction::Down) => slot == 0 && is_stack_enchanted_or_book(host, stack),
             None => true,
             Some(_) => false,
         }
@@ -416,8 +378,12 @@ impl ResourceHandler<ItemResource> for EnchantingTableItemHandler {
         let Some(dim) = self.dimension_name(host) else {
             return Ok(0);
         };
+        if host.dimension() != dim {
+            return Ok(0);
+        }
 
         let mut contents = read_table_contents(host, &dim, self.side.pos);
+        let prev_signal = comparator_signal(&contents);
         let mut stacks = contents.to_stacks(&*host);
         let max_cap = self.capacity(host, index, Some(resource));
         if max_cap == 0 {
@@ -454,17 +420,9 @@ impl ResourceHandler<ItemResource> for EnchantingTableItemHandler {
 
         contents = TableContents::from_stacks(&*host, &stacks);
         write_table_contents(host, &dim, self.side.pos, &contents);
-        if slot == 1
-            && let Some(state) = self.side.level.block_state(&*host, self.side.pos)
-        {
-            let _ = self.side.level.update_neighbors(
-                host,
-                self.side.pos,
-                state,
-                NeighbourUpdate::OutputSignal,
-            );
-        }
-        crate::server::mark_table_dirty(&dim, self.side.pos);
+        // Comparator and viewer sync run post-commit in on_server_tick_post so an aborted
+        // transaction never publishes notifications or side effects.
+        crate::server::mark_table_dirty(&dim, self.side.pos, prev_signal);
         Ok(moved)
     }
 
@@ -488,8 +446,12 @@ impl ResourceHandler<ItemResource> for EnchantingTableItemHandler {
         let Some(dim) = self.dimension_name(host) else {
             return Ok(0);
         };
+        if host.dimension() != dim {
+            return Ok(0);
+        }
 
         let contents = read_table_contents(host, &dim, self.side.pos);
+        let prev_signal = comparator_signal(&contents);
         let mut stacks = contents.to_stacks(&*host);
         let Some(existing) = stacks[slot].clone() else {
             return Ok(0);
@@ -509,17 +471,7 @@ impl ResourceHandler<ItemResource> for EnchantingTableItemHandler {
 
         let updated = TableContents::from_stacks(&*host, &stacks);
         write_table_contents(host, &dim, self.side.pos, &updated);
-        if slot == 1
-            && let Some(state) = self.side.level.block_state(&*host, self.side.pos)
-        {
-            let _ = self.side.level.update_neighbors(
-                host,
-                self.side.pos,
-                state,
-                NeighbourUpdate::OutputSignal,
-            );
-        }
-        crate::server::mark_table_dirty(&dim, self.side.pos);
+        crate::server::mark_table_dirty(&dim, self.side.pos, prev_signal);
         Ok(taken)
     }
 }

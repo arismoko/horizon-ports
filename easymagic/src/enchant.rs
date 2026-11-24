@@ -1,8 +1,8 @@
 use crate::config::{ChiseledBookshelfPower, EnchantmentHint, ServerConfig};
 use crate::payloads::EnchantClue;
 use mod_api::{
-    BlockHit, BlockKey, BlockState, Host, Identifier, ItemKey, ItemResource, ItemStack, LevelRef,
-    PackType, RegistryEntry, Tag,
+    BlockHit, BlockKey, BlockShapeKind, BlockState, Host, Identifier, ItemKey, ItemResource,
+    ItemStack, LevelRef, PackType, RegistryEntry, Tag,
 };
 use serde_json::Value;
 use std::collections::HashMap;
@@ -107,51 +107,84 @@ impl LegacyRandom {
 }
 
 /// Vanilla `Player.getXpNeededForNextLevel(level)`.
-pub fn xp_needed_for_next_level(level: i32) -> i32 {
-    if level >= 30 {
-        112 + (level - 30) * 9
-    } else if level >= 15 {
-        37 + (level - 15) * 5
+/// Matches vanilla `Player.getXpNeededForNextLevel`, widened to `i64` so high `i32` levels never
+/// overflow.
+pub fn xp_needed_for_next_level(level: i32) -> i64 {
+    let l = i64::from(level);
+    if l >= 30 {
+        112 + (l - 30) * 9
+    } else if l >= 15 {
+        37 + (l - 15) * 5
     } else {
-        7 + level * 2
+        7 + l * 2
     }
 }
 
 /// Exact total experience points corresponding to `level` (progress = 0), matching
-/// `PlayerExperienceHelper.getExperienceFromLevels`.
-pub fn experience_from_levels(level: i32) -> i32 {
+/// `PlayerExperienceHelper.getExperienceFromLevels` without `i32` or `f32` overflow.
+pub fn experience_from_levels(level: i32) -> i128 {
     if level <= 0 {
-        0
-    } else if level < 17 {
-        level * level + 6 * level
-    } else if level < 32 {
-        (2.5_f32 * (level * level) as f32 - 40.5_f32 * level as f32 + 360.0_f32) as i32
+        return 0;
+    }
+    let l = i128::from(level);
+    if l < 17 {
+        l * l + 6 * l
+    } else if l < 32 {
+        (5 * l * l - 81 * l + 720) / 2
     } else {
-        (4.5_f32 * (level * level) as f32 - 162.5_f32 * level as f32 + 2220.0_f32) as i32
+        (9 * l * l - 325 * l + 4440) / 2
     }
 }
 
 /// Exact total experience points for a player from their level and progress bar, matching
-/// `PlayerExperienceHelper.getTotalExperience`.
-pub fn total_experience(level: i32, progress: f32) -> i32 {
-    let level = level.max(0);
-    let progress = progress.clamp(0.0, 1.0);
-    experience_from_levels(level) + (xp_needed_for_next_level(level) as f32 * progress) as i32
+/// `PlayerExperienceHelper.getTotalExperience` without `i32` overflow.
+pub fn total_experience(level: i32, progress: f32) -> i128 {
+    if level < 0 {
+        return 0;
+    }
+    experience_from_levels(level)
+        + (xp_needed_for_next_level(level) as f64 * f64::from(progress)) as i128
 }
 
-/// Compute `(new_level, new_points_in_level, new_total)` after subtracting `cost` experience points.
-pub fn subtract_experience_points(level: i32, progress: f32, cost: i32) -> (i32, i32, i32) {
-    let remaining = (total_experience(level, progress) - cost.max(0)).max(0);
-    let mut level = 0i32;
-    let mut acc = 0i32;
-    loop {
-        let needed = xp_needed_for_next_level(level);
-        if acc + needed > remaining {
-            return (level, remaining - acc, remaining);
-        }
-        acc += needed;
-        level += 1;
+/// Compute `(new_level, new_points_in_level, new_total)` after subtracting `cost` experience
+/// points, stepping backward from `(level, progress)` as vanilla `Player.giveExperiencePoints`
+/// does for negative amounts.
+pub fn subtract_experience_points(
+    level: i32,
+    progress: f32,
+    total: i32,
+    cost: i32,
+) -> (i32, i32, i32) {
+    if cost <= 0 {
+        let pts = if level >= 0 {
+            (xp_needed_for_next_level(level) as f64 * f64::from(progress)) as i64
+        } else {
+            0
+        };
+        return (level, i32::try_from(pts.max(0)).unwrap_or(i32::MAX), total);
     }
+    if level < 0 {
+        return (0, 0, 0);
+    }
+    let mut lvl = level;
+    let mut remaining_cost = i64::from(cost);
+    let mut pts_in_level =
+        ((xp_needed_for_next_level(lvl) as f64 * f64::from(progress)) as i64).max(0);
+    let mut new_total = total.saturating_sub(cost).max(0);
+    while remaining_cost > pts_in_level {
+        remaining_cost -= pts_in_level;
+        if lvl == 0 {
+            return (0, 0, 0);
+        }
+        lvl -= 1;
+        pts_in_level = xp_needed_for_next_level(lvl);
+    }
+    pts_in_level -= remaining_cost;
+    if lvl == 0 && pts_in_level == 0 {
+        new_total = 0;
+    }
+    let new_pts = i32::try_from(pts_in_level).unwrap_or(i32::MAX);
+    (lvl, new_pts, new_total)
 }
 
 #[derive(Clone, Debug)]
@@ -389,12 +422,24 @@ pub fn item_in_tag(host: &dyn Host, item: ItemKey, tag: &str) -> bool {
 
 pub fn is_enchanting_catalyst(host: &dyn Host, item: ItemKey) -> bool {
     item_in_tag(host, item, ENCHANTING_CATALYSTS_TAG)
-        || item.id(host) == Some("minecraft:lapis_lazuli")
 }
 
 pub fn is_reroll_catalyst(host: &dyn Host, item: ItemKey) -> bool {
     item_in_tag(host, item, REROLL_CATALYSTS_TAG)
-        || item.id(host) == Some("minecraft:amethyst_shard")
+}
+
+/// Matches vanilla `ItemStack.isEnchanted() || stack.is(Items.ENCHANTED_BOOK)`.
+pub fn is_stack_enchanted_or_book(host: &dyn Host, stack: &ItemStack) -> bool {
+    if stack.item().id(host) == Some("minecraft:enchanted_book") {
+        return true;
+    }
+    let Some(comp_id) = mod_api::ComponentId::new("minecraft:enchantments") else {
+        return false;
+    };
+    matches!(
+        ItemResource::of(stack).value(host, &comp_id),
+        Some(Tag::Compound(levels)) if !levels.is_empty()
+    )
 }
 
 /// Reads the effective `minecraft:enchantable` value (vanilla `Enchantable.value`) for `stack`.
@@ -698,7 +743,9 @@ pub fn is_valid_transmitter(
         return true;
     }
     if lenient {
-        let boxes = host.block_collision(mid);
+        let Some(boxes) = level.block_shape(host, mid_state, mid, BlockShapeKind::Collision) else {
+            return false;
+        };
         return !is_full_collision_block(&boxes);
     }
     false
@@ -1031,10 +1078,34 @@ mod tests {
         assert_eq!(experience_from_levels(32), 1628);
 
         assert_eq!(total_experience(30, 0.0), 1395);
-        let (lvl, pts, tot) = subtract_experience_points(30, 0.0, 5);
+        let (lvl, pts, tot) = subtract_experience_points(30, 0.0, 1395, 5);
         assert_eq!(tot, 1390);
         assert_eq!(lvl, 29);
-        assert_eq!(pts, xp_needed_for_next_level(29) - 5);
+        assert_eq!(i64::from(pts), xp_needed_for_next_level(29) - 5);
+
+        // High levels must not overflow i32 or loop from 0.
+        assert_eq!(
+            experience_from_levels(100_000),
+            (9 * 100_000_i128 * 100_000 - 325 * 100_000 + 4440) / 2
+        );
+        let (hi_lvl, hi_pts, hi_tot) = subtract_experience_points(100_000, 0.0, 50_000, 5);
+        assert_eq!(hi_lvl, 99_999);
+        assert_eq!(i64::from(hi_pts), xp_needed_for_next_level(99_999) - 5);
+        assert_eq!(hi_tot, 49_995);
+
+        // Near/at i32::MAX must not panic or overflow.
+        assert_eq!(
+            xp_needed_for_next_level(i32::MAX),
+            112 + (i64::from(i32::MAX) - 30) * 9
+        );
+        assert!(total_experience(i32::MAX, 0.0) > i128::from(i32::MAX));
+        let (max_lvl, _max_pts, max_tot) = subtract_experience_points(i32::MAX, 0.0, 10, 5);
+        assert_eq!(max_lvl, i32::MAX - 1);
+        assert_eq!(max_tot, 5);
+
+        // Underflowing below level 0 zeroes level, points, and total.
+        assert_eq!(subtract_experience_points(0, 0.0, 10, 5), (0, 0, 0));
+        assert_eq!(subtract_experience_points(1, 0.0, 7, 7), (0, 0, 0));
     }
 
     #[test]

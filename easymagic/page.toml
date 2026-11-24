@@ -8,7 +8,7 @@ Easy Magic makes enchanting smoother without breaking vanilla balance:
 - **Lenient and chiseled bookshelves**: torches, carpets, and other non-full blocks no longer block bookshelves, and chiseled bookshelves contribute enchanting power (1 per 3 stored books) plus particles.
 - **Chiseled bookshelf tooltips**: look at any book stored in a chiseled bookshelf to see its full tooltip on the HUD (`DISABLED`, `CROUCHING`, or `ENABLED`).
 
-Server options are configured in `config/easymagic-server.toml` and synced to clients. Client options are available in `config/easymagic-client.toml` and **Options → Mods → Easy Magic**.
+Server options are configured in `config/easymagic-server.toml` and synced to clients. Client options are available in **Options → Mods → Easy Magic**.
 
 Needed on both the server and the client.
 
@@ -16,6 +16,7 @@ Differences from the original:
 
 - Items on an enchanting table are not drawn on the table in the world (the `FLAT` and `FLOATING` settings), because the mod API can't yet draw for a vanilla block entity ([sunrise-org/sunrise#5531](https://github.com/sunrise-org/sunrise/issues/5531)).
 - With `keep_enchantment_screen_book`, the screen draws a still book where vanilla's opens and turns its pages, because the mod API can't yet draw an animated vanilla model in a screen ([sunrise-org/sunrise#5532](https://github.com/sunrise-org/sunrise/issues/5532)). The reroll click region and its tooltip work as in the original.
+- Unaltered enchanting tables (when `convert_vanilla_enchanting_table_when_interacting = false` or listed in `#easymagic:unaltered_enchanting_tables`) keep vanilla's bookshelf rules and particles instead of lenient and chiseled bookshelf power ([sunrise-org/sunrise#5374](https://github.com/sunrise-org/sunrise/issues/5374)).
 
 A port of Easy Magic by Fuzs, under the MPL-2.0 licence.
 """

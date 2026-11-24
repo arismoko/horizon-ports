@@ -5,7 +5,8 @@ use crate::config::{
 use crate::enchant::{
     BOOKSHELF_OFFSETS, ENCHANTMENT_POWER_TRANSMITTER_TAG, chiseled_bookshelf_hit_slot,
     enchantment_translation_key, generate_rune_phrase, is_stack_enchantable,
-    is_valid_particle_bookshelf, parse_block_state_property, total_experience,
+    is_unaltered_enchanting_table, is_valid_particle_bookshelf, parse_block_state_property,
+    total_experience,
 };
 use crate::payloads::{CluesPayload, EnchantClue, ShelfItemPayload, ShelfQueryPayload, channels};
 use crate::server::REROLL_BUTTON_ID;
@@ -219,7 +220,7 @@ fn can_use_reroll_client(
     let enough_xp = if server.rerolling_takes_enchantment_levels {
         exp_level >= xp_cost
     } else {
-        total_experience(exp_level, exp_progress) >= xp_cost
+        total_experience(exp_level, exp_progress) >= i128::from(xp_cost)
     };
     catalyst_count >= catalyst_cost && enough_xp
 }
@@ -689,14 +690,14 @@ fn tooltip_enchanting_screen(
                     push_cost_line(
                         &mut cost_lines,
                         req,
-                        lapis_count as i32,
+                        i128::from(lapis_count),
                         "container.enchant.lapis.one",
                         "container.enchant.lapis.many",
                     );
                     push_cost_line(
                         &mut cost_lines,
                         req,
-                        exp_level,
+                        i128::from(exp_level),
                         "container.enchant.level.one",
                         "container.enchant.level.many",
                     );
@@ -744,7 +745,7 @@ fn tooltip_enchanting_screen(
                 push_cost_line(
                     &mut cost_lines,
                     server_cfg.reroll_catalyst_cost,
-                    cat_have,
+                    i128::from(cat_have),
                     one,
                     many,
                 );
@@ -754,7 +755,7 @@ fn tooltip_enchanting_screen(
                     (
                         "container.enchant.level.one",
                         "container.enchant.level.many",
-                        exp_level,
+                        i128::from(exp_level),
                     )
                 } else {
                     (
@@ -782,7 +783,7 @@ fn tooltip_enchanting_screen(
 fn push_cost_line(
     out: &mut Vec<(Text, u32)>,
     required: i32,
-    current: i32,
+    current: i128,
     single_key: &str,
     many_key: &str,
 ) {
@@ -794,7 +795,7 @@ fn push_cost_line(
     } else {
         Text::translate(many_key, vec![Text::literal(required.to_string())])
     };
-    let color = if current >= required {
+    let color = if current >= i128::from(required) {
         COLOR_GRAY
     } else {
         COLOR_RED
@@ -825,6 +826,11 @@ pub fn animate_enchanting_table(host: &mut dyn ClientHost, event: &mut AnimateTi
         return;
     };
     let cfg = synced_server_config();
+    if !cfg.convert_vanilla_enchanting_table_when_interacting
+        || is_unaltered_enchanting_table(&*host, event.state.block())
+    {
+        return;
+    }
     let pos = [event.pos.x, event.pos.y, event.pos.z];
     let opts = ParticleOptions::simple(particle_key);
 
