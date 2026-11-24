@@ -1,0 +1,20 @@
+summary = "Run faster on path blocks and stone bricks; a data pack can give any block its own speed."
+description = """
+Players and mobs move faster on some blocks: ×1.35 on dirt paths and ×1.15 on stone bricks. The speed is kept through a jump and dropped while flying or gliding, and a block's item shows its speed in the tooltip.
+
+The speeds come from the data map `blockrunner:block_speeds` and six block tags, from very slow (×0.45) to very quick (×1.55). A data pack can add blocks to the tags or give any block a speed from 0 to 8; `/reload` applies it.
+
+Settings: the tooltip line, and Steady Field of View (on), which keeps the view from widening on faster blocks.
+
+Needed on both the server and the client.
+
+Differences from the original:
+
+- On the client, the speed reaches the player after the server's next movement-speed update; the original also sets it on the player's own side at once (sunrise-org/sunrise#5343).
+- Steady Field of View takes the effect scale from the value the game passes to mods, which has no separate scale (sunrise-org/sunrise#5344).
+- The server sends its speed table to players through the mod's own channel until Sunrise sends data maps to clients (sunrise-org/sunrise#1097).
+- A block with a speed ignores the slowness of soul sand and honey blocks only, not a modded block's own speed factor (sunrise-org/sunrise#5345).
+
+A port of Block Runner by Fuzs, under the MPL-2.0 licence.
+"""
+categories = ["game-mechanics"]

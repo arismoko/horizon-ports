@@ -1,0 +1,14 @@
+# Block Runner for Sunrise: native code in src/, with the original's tags and data map in src/data/.
+id = "blockrunner"
+name = "Block Runner"
+version = "0.5.0"
+description = "Run faster on path blocks and stone bricks; any block can get its own speed."
+authors = ["Fuzs", "arismoko"]
+license = "MPL-2.0"
+credits = "Ported to Minecraft 26.3 by lavoide, and to Sunrise by arismoko."
+homepage = "https://github.com/arismoko/sunrise-ports"
+side = "both"
+
+[native]
+game = "26.3"
+sunrise = "f8aa80e4c40cf1a5d30e85d13937f3fcf06d8237"
