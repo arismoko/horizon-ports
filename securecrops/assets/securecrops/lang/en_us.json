@@ -1,0 +1,9 @@
+{
+  "gamerule.category.securecrops.secure_crops": "Secure Crops",
+  "gamerule.securecrops.secure_farmland_and_crops": "Secure Farmland and Crops",
+  "gamerule.securecrops.secure_farmland_and_crops.description": "If farmland has crops, secure farmland and crops",
+  "gamerule.securecrops.secure_farmland_break_crops": "Secure Farmland but break Crops",
+  "gamerule.securecrops.secure_farmland_break_crops.description": "If farmland has crops, secure farmland but trample crops",
+  "gamerule.securecrops.secure_farmland_if_empty": "Secure Farmland if empty",
+  "gamerule.securecrops.secure_farmland_if_empty.description": "If farmland is empty, secure farmland"
+}

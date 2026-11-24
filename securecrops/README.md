@@ -1,7 +1,15 @@
-# Secure Crops for Horizon
+# Secure Crops for Sunrise
 
-Farmland isn't trampled by players who land softly.
+Three game rules, all off by default, that keep farmland from being trampled:
 
-A port of [Secure Crops](https://github.com/zekk051/secure-crops) 2.0.0 by zekk051 to [Horizon](https://github.com/horizon-rust/horizon) 26.3, under the original's licence (MIT, in `LICENSE`; see `NOTICE`).
+- `securecrops:secure_farmland_and_crops`: farmland with a crop on it stays, and so does the crop.
+- `securecrops:secure_farmland_break_crops`: farmland with a crop on it stays; the crop breaks and drops.
+- `securecrops:secure_farmland_if_empty`: farmland with nothing on it stays.
 
-This folder is the package source: one native mod on Horizon's mod API only (no game module, no mixins). Release [`securecrops-v0.4.0`](https://github.com/lavoide/horizon-ports/releases/tag/securecrops-v0.4.0) holds `securecrops.hmod`, built from this folder with Horizon's exact-build SDK `dd67b76ff23e28c6d8e21859df600d31572f81a0` (Horizon Mixins `e59da9094f0c2fdda6c627fe9eff22dec6a906f0`). Earlier versions, if any, are in this folder's history.
+A port of [Secure Crops](https://github.com/zekk051/secure-crops) 2.0.1 by zekk051 to [Sunrise](https://playsunrise.net) (Minecraft Java 26.3), written in Rust on Sunrise's mod API, under the original's licence (MIT, in `LICENSE`; see `NOTICE`).
+
+## Differences from the original
+
+- With "break crops", the crop breaks at the end of the same tick, with no breaker entity (sunrise-org/sunrise#5372).
+- The rules aren't listed on the Create World screen (sunrise-org/sunrise#5373).
+- Rule ids follow 26.3's namespaced form instead of `secureFarmlandAndCrops` and the like.

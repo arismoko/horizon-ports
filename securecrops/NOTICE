@@ -1,11 +1,10 @@
-Secure Crops for Horizon 26.3 (version 0.4.0)
+Secure Crops for Sunrise (version 0.5.0)
 
-A port of Secure Crops 2.0.0 by zekk051.
+A port of Secure Crops 2.0.1 by zekk051.
 Original source: https://github.com/zekk051/secure-crops
-Original licence: MIT
+Original licence: MIT (the release's licence; the source repository also carries CC0-1.0)
 
-Ported to Horizon by lavoide: the rules are re-implemented in Rust on Horizon's mod API (no Java
-code is included). This port is distributed under the same licence as the original (MIT); the licence text is in LICENSE. Built
-against Horizon's exact-build SDK dd67b76ff23e28c6d8e21859df600d31572f81a0.
-
-The 2.0.0 jar names MIT and ships no licence file; LICENSE is the MIT text with the author's name.
+Ported to Minecraft 26.3 by lavoide, and to Sunrise by arismoko: the rules are re-implemented in
+Rust on Sunrise's mod API (no Java code is included). The translations in assets/ and icon.png
+are the original's. This port is distributed under the original's licence (MIT); the licence text
+is in LICENSE.
