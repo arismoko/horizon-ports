@@ -23,3 +23,7 @@ Differences from the original:
 """
 categories = ["utility"]
 
+
+[[screenshots]]
+path = "page/farm.png"
+caption = "A wheat field mid-harvest: the harvested half is replanted at once, beside the ripe half."
