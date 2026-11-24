@@ -98,6 +98,7 @@ impl Runtime {
             self.has_rendered_first_frame = false;
             self.smooth_volume.on_state_change(&self.config, next);
             VOLUME_TABLE.store(self.smooth_volume.snapshot());
+            publish_debug_state(next, &self.config);
         }
         next
     }
@@ -360,7 +361,6 @@ impl Hooks for DynamicFps {
         rt.minimized = event.minimized;
 
         let state = rt.update_state(now_ms);
-        publish_debug_state(state, &rt.config);
 
         event.limit = limit_for(event.limit, state, &rt.config, rt.has_rendered_first_frame);
     }
@@ -403,7 +403,6 @@ impl Hooks for DynamicFps {
         let state = rt.update_state(now_ms);
         rt.smooth_volume.tick(&rt.config, state);
         VOLUME_TABLE.store(rt.smooth_volume.snapshot());
-        publish_debug_state(state, &rt.config);
 
         let battery_toast = rt.prepare_battery_toast(host);
         drop(guard);
