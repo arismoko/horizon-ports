@@ -162,16 +162,11 @@ fn send_client_sync(host: &mut dyn ServerHost, player: PlayerRef) {
 }
 
 fn sync_config_to_all(host: &mut dyn ServerHost) {
-    let Some(level) = host.level(host.dimension()) else {
-        return;
-    };
-    let mut players = Vec::new();
-    let _ = level.visit_online_players(host, &mut |p| {
-        players.push(p);
-        ControlFlow::Continue(())
-    });
-    for player in players {
-        send_client_sync(host, player);
+    if let Some(ch) = SYNC_CHANNEL.get() {
+        let payload = ClientSyncPayload {
+            bytes: server_config().client_sync().encode(),
+        };
+        let _ = ch.send_to_all(host, &payload);
     }
 }
 
