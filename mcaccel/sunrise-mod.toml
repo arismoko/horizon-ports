@@ -1,0 +1,15 @@
+# Minecraft Accelerated for Sunrise: native code in src/, the blocks' data in data/, models,
+# textures and translations in assets/.
+id = "mcaccel"
+name = "Minecraft Accelerated"
+version = "0.5.0"
+description = "Shears carve nine faces into carved pumpkins, jack o'lanterns and soul jack o'lanterns."
+authors = ["Mari", "arismoko"]
+license = "CC0-1.0"
+credits = "Ported to Horizon by lavoide, and to Sunrise by arismoko."
+homepage = "https://github.com/arismoko/sunrise-ports"
+side = "both"
+
+[native]
+game = "26.3"
+sunrise = "3d34bbe63d71bb24c098c1e4021ef866be12fe2d"
