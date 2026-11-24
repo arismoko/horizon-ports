@@ -1,0 +1,14 @@
+# Sooty Chimneys for Sunrise: native code in src/, blocks' data in data/, models and textures in assets/.
+id = "sootychimneys"
+name = "Sooty Chimneys"
+version = "0.6.0"
+description = "Spiritual successor to campfires!"
+authors = ["mortuusars", "arismoko"]
+license = "MIT"
+credits = "Ported to Horizon by lavoide, and to Sunrise by arismoko."
+homepage = "https://github.com/arismoko/sunrise-ports"
+side = "both"
+
+[native]
+game = "26.3"
+sunrise = "3d34bbe63d71bb24c098c1e4021ef866be12fe2d"

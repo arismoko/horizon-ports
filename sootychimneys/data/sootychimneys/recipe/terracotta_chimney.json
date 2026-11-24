@@ -1,5 +1,5 @@
 {
-  "group": "terracotta_chimney",
+  "type": "minecraft:crafting_shaped",
   "key": {
     "C": "#minecraft:coals",
     "T": "minecraft:terracotta"
@@ -11,6 +11,5 @@
   ],
   "result": {
     "id": "sootychimneys:terracotta_chimney"
-  },
-  "type": "minecraft:crafting_shaped"
+  }
 }

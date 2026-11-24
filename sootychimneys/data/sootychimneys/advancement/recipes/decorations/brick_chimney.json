@@ -5,9 +5,7 @@
       "conditions": {
         "items": [
           {
-            "items": [
-              "minecraft:brick"
-            ]
+            "items": "minecraft:brick"
           }
         ]
       },
@@ -15,15 +13,15 @@
     },
     "has_the_recipe": {
       "conditions": {
-        "recipe": "sootychimneys:brick_chimney"
+        "recipes": "sootychimneys:brick_chimney"
       },
       "trigger": "minecraft:recipe_unlocked"
     }
   },
   "requirements": [
     [
-      "has_brick",
-      "has_the_recipe"
+      "has_the_recipe",
+      "has_brick"
     ]
   ],
   "rewards": {

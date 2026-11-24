@@ -1,6 +1,6 @@
 {
   "model": {
-    "model": "sootychimneys:item/dirty_iron_chimney",
-    "type": "minecraft:model"
+    "type": "minecraft:model",
+    "model": "sootychimneys:block/dirty_iron_chimney"
   }
 }

@@ -1,0 +1,23 @@
+summary = "Chimneys that smoke in the wind, get sooty while they work, and are scraped clean with an axe."
+description = """
+Seven chimneys, brick, stone brick, mud brick, cobblestone, terracotta, copper and iron, put out smoke while they work. Stack them to build a taller stack: only the top one smokes, as signal smoke, and so does a chimney over a smoke-boosting block.
+
+- Right-click a chimney with an empty hand to block it or open it again. A redstone signal puts it out, and so does an unlit chimney under it.
+- Smoke drifts with the wind, which picks up with rain and thunder and changes from day to day.
+- Working chimneys slowly get dirty. Scrape a dirty chimney with an axe to clean it; it may drop black dye as it comes clean.
+- `sootychimneys-local.toml` sets how much smoke there is, how fast chimneys get dirty, and how strong the wind is.
+
+The chimneys are at the end of the Functional Blocks tab. Install it on the server and the clients.
+
+Differences from the original:
+
+- Placing a chimney doesn't set it up at once: it becomes stacked, lit or unlit when a neighbour next changes ([sunrise-org/sunrise#5302](https://github.com/sunrise-org/sunrise/issues/5302)).
+- The wind doesn't bend campfire smoke yet; the `WindAffectsCampfire` setting is kept but has no effect ([sunrise-org/sunrise#5382](https://github.com/sunrise-org/sunrise/issues/5382)).
+- Breaking a dirty chimney doesn't puff a cloud of soot ([sunrise-org/sunrise#5383](https://github.com/sunrise-org/sunrise/issues/5383)).
+- The wind doesn't change between day and night yet: every hour counts as day ([sunrise-org/sunrise#5385](https://github.com/sunrise-org/sunrise/issues/5385)).
+- Scraping a chimney shows its scrape sound, soot and arm swing to other players, but not to the player who scrapes ([sunrise-org/sunrise#5063](https://github.com/sunrise-org/sunrise/issues/5063)).
+- The optional JEI and Create integrations aren't part of this port.
+
+A port of Sooty Chimneys by mortuusars, under the MIT licence.
+"""
+categories = ["decoration"]

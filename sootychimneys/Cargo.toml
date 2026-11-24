@@ -1,10 +1,13 @@
 [package]
 name = "mod-sootychimneys"
-version = "0.1.0"
+version = "0.6.0"
 edition = "2024"
+license = "MIT"
+description = "Sooty Chimneys for Sunrise: chimneys that smoke in the wind and get sooty"
+# Ported from: Sooty Chimneys 1.3.5 (mortuusars/sootychimneys, MIT).
+# Cargo's name and version are not the mod's identity: sunrise-mod.toml is.
+publish = false
 
 [dependencies]
-# The pinned SDK's API crate, fetched into .horizon/sdk/ by any `cargo horizon-mod` command (the
-# launcher builds against its own copy of the same build). Any other registry dependency must be
-# pinned with `horizon-launcher native-lock .` before building.
-horizon-mod-api = { path = ".horizon/sdk/api/crates/horizon-mod-api" }
+# The pinned SDK's API crate, fetched into .sunrise/sdk/ by any `cargo sunrise-mod` command.
+sunrise-mod-api = { path = ".sunrise/sdk/api/crates/sunrise-mod-api" }

@@ -1,6 +1,6 @@
 {
   "model": {
-    "model": "sootychimneys:item/brick_chimney",
-    "type": "minecraft:model"
+    "type": "minecraft:model",
+    "model": "sootychimneys:block/brick_chimney"
   }
 }

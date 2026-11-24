@@ -1,7 +1,14 @@
-# Sooty Chimneys (assets) for Horizon
+# Sooty Chimneys for Sunrise
 
-Chimneys that smoke, with wind, soot and scraping.
+Seven chimneys that smoke in the wind, get sooty while they work, and are scraped clean with an axe.
 
-A port of [Sooty Chimneys](https://github.com/mortuusars/sootychimneys) 1.3.4 by mortuusars to [Horizon](https://github.com/horizon-rust/horizon) 26.3, under the original's licence (MIT, in `LICENSE`; see `NOTICE`).
+A port of [Sooty Chimneys](https://github.com/mortuusars/sootychimneys) 1.3.5 by mortuusars to [Sunrise](https://playsunrise.net) (Minecraft Java 26.3), written in Rust on Sunrise's mod API, under the original's licence (MIT, in `LICENSE`; see `NOTICE`).
 
-This folder is the package source: one native mod on Horizon's mod API only (no game module, no mixins). Release [`sootychimneys-v0.5.0`](https://github.com/lavoide/horizon-ports/releases/tag/sootychimneys-v0.5.0) holds `sootychimneys.hmod`, built from this folder with Horizon's exact-build SDK `dd67b76ff23e28c6d8e21859df600d31572f81a0` (Horizon Mixins `e59da9094f0c2fdda6c627fe9eff22dec6a906f0`). Earlier versions, if any, are in this folder's history.
+## Differences from the original
+
+- Placing a chimney doesn't set it up at once: it becomes stacked, lit or unlit when a neighbour next changes (sunrise-org/sunrise#5302).
+- The wind doesn't bend campfire smoke yet; the `WindAffectsCampfire` setting is kept but has no effect (sunrise-org/sunrise#5382).
+- Breaking a dirty chimney doesn't puff a cloud of soot (sunrise-org/sunrise#5383).
+- The wind doesn't change between day and night yet: every hour counts as day (sunrise-org/sunrise#5385).
+- Scraping a chimney shows its scrape sound, soot and arm swing to other players, but not to the player who scrapes (sunrise-org/sunrise#5063).
+- The optional JEI and Create integrations aren't part of this port.

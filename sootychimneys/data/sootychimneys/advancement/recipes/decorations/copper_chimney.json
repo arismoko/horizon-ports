@@ -5,9 +5,7 @@
       "conditions": {
         "items": [
           {
-            "items": [
-              "minecraft:copper_ingot"
-            ]
+            "items": "#c:ingots/copper"
           }
         ]
       },
@@ -15,15 +13,15 @@
     },
     "has_the_recipe": {
       "conditions": {
-        "recipe": "sootychimneys:copper_chimney"
+        "recipes": "sootychimneys:copper_chimney"
       },
       "trigger": "minecraft:recipe_unlocked"
     }
   },
   "requirements": [
     [
-      "has_copper",
-      "has_the_recipe"
+      "has_the_recipe",
+      "has_copper"
     ]
   ],
   "rewards": {

@@ -5,9 +5,7 @@
       "conditions": {
         "items": [
           {
-            "items": [
-              "minecraft:iron_ingot"
-            ]
+            "items": "#c:nuggets/iron"
           }
         ]
       },
@@ -15,15 +13,15 @@
     },
     "has_the_recipe": {
       "conditions": {
-        "recipe": "sootychimneys:iron_chimney"
+        "recipes": "sootychimneys:iron_chimney"
       },
       "trigger": "minecraft:recipe_unlocked"
     }
   },
   "requirements": [
     [
-      "has_iron",
-      "has_the_recipe"
+      "has_the_recipe",
+      "has_iron"
     ]
   ],
   "rewards": {

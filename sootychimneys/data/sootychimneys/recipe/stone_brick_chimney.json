@@ -1,5 +1,5 @@
 {
-  "group": "stone_brick_chimney",
+  "type": "minecraft:crafting_shaped",
   "key": {
     "B": "minecraft:stone_bricks",
     "C": "#minecraft:coals"
@@ -11,6 +11,5 @@
   ],
   "result": {
     "id": "sootychimneys:stone_brick_chimney"
-  },
-  "type": "minecraft:crafting_shaped"
+  }
 }
