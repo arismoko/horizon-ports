@@ -1,6 +1,0 @@
-{
-  "template": "minecraft:soul_soil",
-  "properties": {
-    "random_ticks": true
-  }
-}

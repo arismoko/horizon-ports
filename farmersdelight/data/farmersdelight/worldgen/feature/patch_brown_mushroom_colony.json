@@ -1,9 +1,0 @@
-{
-  "type": "minecraft:simple_block",
-  "to_place": {
-    "id": "farmersdelight:brown_mushroom_colony",
-    "properties": {
-      "age": "3"
-    }
-  }
-}

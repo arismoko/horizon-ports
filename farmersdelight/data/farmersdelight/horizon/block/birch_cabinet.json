@@ -1,6 +1,0 @@
-{
-  "template": "minecraft:barrel",
-  "properties": {
-    "sounds": "minecraft:barrel"
-  }
-}
