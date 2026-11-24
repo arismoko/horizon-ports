@@ -51,8 +51,9 @@ static TOKEN: OnceLock<ToServer<Share>> = OnceLock::new();
 /// Left Ctrl and the chat key were down at the last tick (the original's `sharedStack`).
 static HELD: AtomicBool = AtomicBool::new(false);
 static SHARING: Mutex<Option<Pending>> = Mutex::new(None);
-/// The item hover the chat drew this frame, for its tooltip to find.
-static HOVERED: Mutex<Option<(String, u32, Option<Tag>)>> = Mutex::new(None);
+/// The item and count of the hover the chat is drawing, for the tooltip it draws next (the
+/// original's `hoveredStack`, used once).
+static HOVERED: Mutex<Option<(String, u32)>> = Mutex::new(None);
 /// Each player's share, kept for their next chat message.
 static SHARES: LazyLock<Mutex<HashMap<u128, Share>>> = LazyLock::new(Default::default);
 
@@ -273,9 +274,7 @@ impl Hooks for Mod {
                 id,
                 count,
                 components,
-            } if !hidden(components.as_ref()) => {
-                Some((id.clone(), *count, patch(components.clone())))
-            }
+            } if !hidden(components.as_ref()) => Some((id.clone(), *count)),
             _ => None,
         };
         mod_api::Flow::Continue
@@ -287,11 +286,13 @@ impl Hooks for Mod {
         host: &dyn ClientHost,
         event: &mut RenderTooltipGatherComponentsEvent<'_>,
     ) -> mod_api::Flow {
-        let mut hovered = lock(&HOVERED);
-        if hovered.is_none() || hover_parts(host, event.stack) != *hovered {
+        let Some(hovered) = lock(&HOVERED).take() else {
+            return mod_api::Flow::Continue;
+        };
+        let drawn = hover_parts(host, event.stack).map(|(id, count, _)| (id, count));
+        if drawn != Some(hovered) {
             return mod_api::Flow::Continue;
         }
-        hovered.take();
         if let Some(TooltipElement::Text(text, color)) = event.elements.first() {
             let argb = if *color == u32::MAX {
                 0xFFFF_FFFF
