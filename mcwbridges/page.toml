@@ -14,8 +14,8 @@ Needed on both the server and the client.
 
 Differences from the original:
 
-- Mirroring rope bridges inside structure templates (`Bridge_Block_Rope.mirror`) is not overridden because the mod API has no `BlockPart::mirror` hook (gap: pending issue). Structure rotation is supported.
-- External `setBlock` placement of bridges outside player/dispenser placement or bridge quick-extend does not run a custom `onPlace` self-reconnection hook because the mod API has no writable `BlockPart::on_place` hook (gap: pending issue).
+- Mirroring rope bridges inside structure templates (`Bridge_Block_Rope.mirror`) is not overridden because the mod API has no `BlockPart::mirror` hook (gap: sunrise-org/sunrise#5314). Structure rotation is supported.
+- External `setBlock` placement of bridges outside player/dispenser placement or bridge quick-extend does not run a custom `onPlace` self-reconnection hook because the mod API has no writable `BlockPart::on_place` hook (gap: sunrise-org/sunrise#5302).
 
 Ported to Sunrise under the MIT licence (declarations and behaviour only).
 """
