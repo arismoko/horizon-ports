@@ -1,0 +1,14 @@
+# Comforts for Sunrise: sleeping bags, hammocks, and rope & nail.
+id = "comforts"
+name = "Comforts"
+version = "0.5.0"
+description = "Adds sleeping bags and hammocks for portability and daytime napping without resetting your spawn point."
+authors = ["Illusive Soulworks", "arismoko"]
+license = "LGPL-3.0-or-later"
+credits = "Block models and initial port assets by lavoide; ported to Sunrise by arismoko."
+homepage = "https://github.com/arismoko/sunrise-ports"
+side = "both"
+
+[native]
+game = "26.3"
+sunrise = "3d34bbe63d71bb24c098c1e4021ef866be12fe2d"

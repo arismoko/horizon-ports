@@ -1,0 +1,20 @@
+{
+  "type": "comforts:conditional_shaped",
+  "category": "misc",
+  "group": "comforts:hammock",
+  "key": {
+    "#": "minecraft:light_gray_wool",
+    "S": "#c:strings",
+    "X": "#c:rods/wooden"
+  },
+  "pattern": [
+    " X ",
+    "S#S",
+    " X "
+  ],
+  "result": {
+    "count": 1,
+    "id": "comforts:hammock_light_gray"
+  },
+  "condition": "hammock"
+}

@@ -1,0 +1,31 @@
+summary = "Sleeping bags for nights on the road and hammocks for afternoon naps, without changing your respawn point."
+description = """
+Sleeping bags and hammocks in all 16 dye colours, plus rope and nail, ported from [Comforts](https://github.com/illusivesoulworks/comforts) by Illusive Soulworks to Sunrise (Minecraft Java 26.3).
+
+What it adds:
+
+- **Sleeping bags (16 colours):** Craft from 3 matching wool in a row or dye a white sleeping bag. Right-click to automatically place, sleep through the night, and pack the bag back up on wake-up (sneak right-click places the bag without sleeping). Never changes your respawn point.
+- **Hammocks (16 colours) and Rope & Nail:** Mount two ropes and nails 4 blocks apart (2 empty blocks between them) facing each other on sturdy walls, then right-click a rope with a hammock cloth to hang it. Sleep during the day to skip to dusk without changing your respawn point.
+- **Waterlogging and custom names:** Sleeping bags, hammocks, and ropes and nails can be waterlogged, and custom anvil names are preserved when broken or auto-packed.
+- **Full server & common configuration (`comforts-common.toml`, `comforts-server.toml`):** Auto-use toggle, separate time-of-use modes (`NIGHT`, `DAY`, `DAY_OR_NIGHT`, `USE_WITHOUT_SLEEPING`) for sleeping bags and hammocks, consecutive sleep restriction (`restrictSleeping`, `restMultiplier`), daytime sleeping percentage, day/night wake-time offsets, phantom spawn reset toggles, sleeping bag break chance with Luck scaling, wake-up debuff effects (`sleepingBagEffects`), and recipe toggles (`enableSleepingBagRecipes`, `enableHammockRecipes`, plus automatic `#c:ropes` recipe support).
+- **17 languages** from upstream Comforts 26.x, plus creative tab placement in Colored Blocks and Functional Blocks.
+
+Known differences from the original on Dev `3d34bbe`:
+
+- **Villager recognition and engine bed checks:** Sleeping bags and hammocks work for players via Comforts' sleep lifecycle, but engine-level bed checks (`Game::is_bed`, `LivingRef::start_sleeping`, `bed_wake_pose`) still match only `*_bed` block ids, so villagers do not claim sleeping bags or hammocks on their own (gap: sunrise-org/sunrise#5557).
+- **Daytime sleeping percentage below vanilla & action-bar status:** Raising `daySleepingPercentage` above `players_sleeping_percentage` holds back daytime skips as configured, while lowering it below `players_sleeping_percentage` waits for a `SleepStatus.sleepersNeeded` hook (gap: sunrise-org/sunrise#5558). The daytime action-bar sleep status announcement (`comforts.skipping_day`) is sent when skipping day rather than live on every sleep count change (gap: sunrise-org/sunrise#5376).
+- **Cat bed AI:** Cats walk over sleeping bags and hammocks cleanly (`PathType::Walkable`), while cat lie-on-bed / relax-on-owner goals and the hammock-specific `WalkNodeEvaluator` jump tweak await cat AI hooks (gap: sunrise-org/sunrise#5559).
+- **Player sleep pose offset & auto-sleep arm swing:** Local sleepers sit cleanly on the lowered sleeping bag (`0.1875`) and hammock (`0.0625`) surfaces; remote player model vertical translation (`-0.375` / `-0.5`) and clearing the auto-sleep arm swing animation await client player-render and arm-swing hooks (gap: sunrise-org/sunrise#5560).
+- **Block item display names:** Sleeping bags, hammocks, and rope & nail display raw `block.comforts.<id>` names because Sunrise gives a declared block's item the block's translation key while Comforts' language files use `item.comforts.<id>` (gap: sunrise-org/sunrise#5574).
+
+Ported under the LGPL-3.0-or-later licence. Original mod by Illusive Soulworks; block models and initial port assets credit lavoide.
+"""
+categories = ["equipment", "utility"]
+
+[[screenshots]]
+path = "page/camp-overview.png"
+caption = "A red hammock strung between two oak log posts with rope and nail, beside a red sleeping bag on the grass."
+
+[[screenshots]]
+path = "page/hammock-and-bag-closeup.png"
+caption = "Close-up of a red hammock suspended from two ropes and nails on oak logs, next to a red sleeping bag."
