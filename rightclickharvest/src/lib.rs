@@ -12,11 +12,12 @@ pub mod rules;
 use std::sync::Mutex;
 use std::sync::atomic::{AtomicBool, Ordering};
 
+use mod_api::text::TextStyle;
 use mod_api::{
     BlockClick, ClientHost, Config as ModConfig, ConfigContext, ConfigKind, ConfigLoadingEvent,
-    EquipmentSlot, Flow, Hand, Hooks, HostBlockStates, HostSide, InteractionResult, ItemStack,
-    LevelRef, LivingRef, PlayerRef, RegisterConfigsEvent, RightClickBlockEvent, ServerHost,
-    SoundPlay, StatType, Text,
+    ConfigPath, EquipmentSlot, Flow, Hand, Hooks, HostBlockStates, HostSide, InteractionResult,
+    ItemStack, LevelRef, LivingRef, PlayerRef, RegisterConfigsEvent, RightClickBlockEvent,
+    ServerHost, SoundPlay, StatType, Text,
 };
 use rules::{Config, Gate, Kind, Player, Tiers};
 
@@ -27,10 +28,36 @@ static SETTINGS: Mutex<Config> = Mutex::new(Config {
     harvest_in_radius: true,
     hunger: rules::Hunger::None,
     experience: rules::Experience::None,
+    warned: false,
 });
 
-/// Whether the player has been told to hold a hoe (`hasUserBeenWarnedForNotUsingHoe`).
+/// Whether the hoe warning was shown in this session, in case the config file could not be written.
 static WARNED: AtomicBool = AtomicBool::new(false);
+
+/// The config file `register_configs` declares (`ConfigKind::Common`).
+const CONFIG_FILE: &str = "rightclickharvest-common.toml";
+
+/// Records `hasUserBeenWarnedForNotUsingHoe = true` in the config file, as the original's
+/// `CONFIG.save()` does; the reload that follows reads it back.
+fn save_warned(host: &dyn mod_api::Host) {
+    let Ok(path) = ConfigPath::new(CONFIG_FILE) else {
+        return;
+    };
+    let files = host.config_files();
+    let text = files
+        .read(&path)
+        .ok()
+        .and_then(|bytes| String::from_utf8(bytes).ok())
+        .unwrap_or_else(|| rules::DEFAULT_CONFIG.to_owned());
+    let _ = files.write(&path, rules::with_warned(&text).as_bytes());
+}
+
+/// A green part of the warning, as the original styles its two arguments.
+fn green(text: Text) -> Text {
+    let mut style = TextStyle::default();
+    style.color = Some("green".to_owned());
+    text.with_style(style)
+}
 
 fn settings() -> Config {
     *SETTINGS.lock().unwrap_or_else(|e| e.into_inner())
@@ -423,15 +450,19 @@ impl Hooks for Mod {
                     true
                 }
                 Predicted::Warn => {
-                    // `hasUserBeenWarnedForNotUsingHoe`: told once, then left alone.
-                    if !WARNED.swap(true, Ordering::Relaxed) {
+                    // `hasUserBeenWarnedForNotUsingHoe`: told once, saved, then left alone.
+                    if !settings().warned && !WARNED.swap(true, Ordering::Relaxed) {
                         let _ = host.chat_line(Text::translate(
                             "text.rightclickharvest.use_a_hoe_warning",
                             vec![
-                                Text::translate("config.rightclickharvest.requireHoe", vec![]),
-                                Text::literal("false"),
+                                green(Text::translate(
+                                    "config.rightclickharvest.requireHoe",
+                                    vec![],
+                                )),
+                                green(Text::literal("false")),
                             ],
                         ));
+                        save_warned(&*host);
                     }
                     false
                 }

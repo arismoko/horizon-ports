@@ -37,6 +37,8 @@ pub struct Config {
     pub harvest_in_radius: bool,
     pub hunger: Hunger,
     pub experience: Experience,
+    /// `hasUserBeenWarnedForNotUsingHoe`: the hoe warning was shown once and is not shown again.
+    pub warned: bool,
 }
 
 impl Default for Config {
@@ -46,12 +48,13 @@ impl Default for Config {
             harvest_in_radius: true,
             hunger: Hunger::None,
             experience: Experience::None,
+            warned: false,
         }
     }
 }
 
 /// The file's text when it does not exist yet.
-pub const DEFAULT_CONFIG: &str = "# Only allow harvesting certain crops (e.g. wheat, carrots) if the player is holding a hoe.\nrequireHoe = false\n# Make hoes of different tiers harvest multiple blocks in a radius.\nharvestInRadius = true\n# The food usage when harvesting crops: none, low, normal or high.\nhungerLevel = \"none\"\n# Whether XP should be taken or given for harvesting: none, cost or reward.\nexperienceType = \"none\"\n";
+pub const DEFAULT_CONFIG: &str = "# Only allow harvesting certain crops (e.g. wheat, carrots) if the player is holding a hoe.\nrequireHoe = false\n# Make hoes of different tiers harvest multiple blocks in a radius.\nharvestInRadius = true\n# The food usage when harvesting crops: none, low, normal or high.\nhungerLevel = \"none\"\n# Whether XP should be taken or given for harvesting: none, cost or reward.\nexperienceType = \"none\"\n# Modpack developers, set this to true to stop RCH telling users that they probably need to equip a hoe to harvest crops (if requireHoe is set to true). This message will only be displayed once.\nhasUserBeenWarnedForNotUsingHoe = false\n";
 
 impl Config {
     /// The settings in a config file's text: `key = value` lines, the last of a key winning,
@@ -87,11 +90,35 @@ impl Config {
                         _ => Experience::None,
                     }
                 }
+                "hasUserBeenWarnedForNotUsingHoe" => config.warned = value == "true",
                 _ => {}
             }
         }
         config
     }
+}
+
+/// The config text with `hasUserBeenWarnedForNotUsingHoe` set to true: the key's line is
+/// replaced where it is, or added at the end, and every other line is kept as written.
+pub fn with_warned(text: &str) -> String {
+    const LINE: &str = "hasUserBeenWarnedForNotUsingHoe = true";
+    let mut found = false;
+    let mut out: Vec<&str> = text
+        .lines()
+        .map(|line| match line.split_once('=') {
+            Some((key, _)) if key.trim() == "hasUserBeenWarnedForNotUsingHoe" => {
+                found = true;
+                LINE
+            }
+            _ => line,
+        })
+        .collect();
+    if !found {
+        out.push(LINE);
+    }
+    let mut joined = out.join("\n");
+    joined.push('\n');
+    joined
 }
 
 /// What a block is to the harvester.
@@ -287,6 +314,19 @@ mod tests {
     #[test]
     fn the_config_reads_its_keys_and_defaults_the_rest() {
         assert_eq!(Config::parse(DEFAULT_CONFIG), Config::default());
+        let saved = with_warned(DEFAULT_CONFIG);
+        assert!(Config::parse(&saved).warned);
+        assert_eq!(
+            Config::parse(&saved),
+            Config {
+                warned: true,
+                ..Config::default()
+            }
+        );
+        assert_eq!(
+            with_warned("requireHoe = true"),
+            "requireHoe = true\nhasUserBeenWarnedForNotUsingHoe = true\n"
+        );
         let text = "requireHoe = true\nharvestInRadius = false # off\nhungerLevel = \"High\"\nexperienceType = \"reward\"\n";
         assert_eq!(
             Config::parse(text),
@@ -295,6 +335,7 @@ mod tests {
                 harvest_in_radius: false,
                 hunger: Hunger::High,
                 experience: Experience::Reward,
+                warned: false,
             }
         );
         assert_eq!(Config::parse("hungerLevel = \"bogus\""), Config::default());

@@ -16,10 +16,10 @@ A port of [Right Click Harvest](https://github.com/JamCoreModding/right-click-ha
 
 ## Differences from the original
 
-- A crop the port does not know the seed of (a modded crop) drops everything; vanilla crops give one seed or crop less, as the original does.
-- A hoe is an item in `#minecraft:hoes` or one of the three tier tags; the original's extra test for a block-transformer component that tills is not read, as the mod API does not expose that component's contents.
-- The warning about holding a hoe is shown once for each game session, not saved, and its words are not coloured.
-- Other mods' claim protection (the original asks the loader's break and place events) and the original's `AfterHarvest` event for other mods are not available; there is no in-game config screen.
+- A crop the port does not know the seed of (a modded crop) drops everything; vanilla crops give one seed or crop less, as the original does ([sunrise-org/sunrise#5289](https://github.com/sunrise-org/sunrise/issues/5289)).
+- A hoe is an item in `#minecraft:hoes` or one of the three tier tags; the original's extra test for a block-transformer component that tills is not read, as the mod API does not expose that component's contents ([sunrise-org/sunrise#5099](https://github.com/sunrise-org/sunrise/issues/5099)).
+- Other mods' claim protection (the original asks the loader's break and place events, [sunrise-org/sunrise#5288](https://github.com/sunrise-org/sunrise/issues/5288)) and the original's `AfterHarvest` event for other mods ([sunrise-org/sunrise#5137](https://github.com/sunrise-org/sunrise/issues/5137)) are not available.
+- There is no in-game config screen; the options are in `config/rightclickharvest-common.toml` ([sunrise-org/sunrise#1174](https://github.com/sunrise-org/sunrise/issues/1174)).
 
 ## Building
 
