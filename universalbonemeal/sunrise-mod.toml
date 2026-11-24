@@ -1,7 +1,7 @@
 # Universal Bone Meal for Sunrise: native code in src/, data in data/.
 id = "universalbonemeal"
 name = "Universal Bone Meal"
-version = "0.5.0"
+version = "0.5.1"
 description = "Bone meal grows cactus, sugar cane, vines, nether wart, chorus, coral, flowers and more."
 authors = ["Fuzs", "arismoko"]
 license = "MPL-2.0"
