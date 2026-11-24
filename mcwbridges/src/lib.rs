@@ -18,13 +18,13 @@ use mod_api::{
     self, AnimateTickEvent, BlockKey, BlockPart, BlockSignalEvent, BlockState, BlockUpdateFlags,
     ClientHost, Direction, Hand, Hooks, Host, HostBlockStates, InteractionResult,
     IsSignalSourceEvent, ItemKey, ItemStack, LevelHost, LevelRef, LevelSide, LevelTicksHost,
-    LevelWriteHost, LivingRef, NeighborChangedEvent, NeighbourUpdate, OnDestroyedByPlayerEvent,
-    ParticleKey, ParticleOptions, PlacementSource, PlayerRef, Registrar, RegistrationContext,
-    RotateEvent, ServerHost, SoundSource, StateForPlacementEvent, UpdateShapeEvent, UseItemOnEvent,
-    UseWithoutItemEvent, WorldgenHost,
+    LivingRef, NeighbourUpdate, OnDestroyedByPlayerEvent, ParticleKey, ParticleOptions,
+    PlacementSource, PlayerRef, Registrar, RegistrationContext, RotateEvent, ServerHost,
+    SoundSource, StateForPlacementEvent, UpdateShapeEvent, UseItemOnEvent, UseWithoutItemEvent,
+    WorldgenHost,
 };
 use rules::{
-    Horizontal, bridge_connection, bridge_cycle, is_full_cube, property, rope_connection,
+    Horizontal, bridge_connection, bridge_cycle, property, rope_connection,
     rope_connection_is_locked, rope_cycle, rope_rotate, stair_connection, torch_facing_on_bridge,
     torch_facing_on_rope, torch_facing_on_stair, torch_particle_pos,
 };
@@ -722,13 +722,6 @@ impl BlockPart for BridgeLightPart {
         level
             .state_with_property(event.state, "lightstate", lightstate)
             .or(Some(event.state))
-    }
-
-    fn neighbor_changed(&self, level: &mut dyn LevelWriteHost, event: &mut NeighborChangedEvent) {
-        // Mirror Bridge_Torch.neighborChanged: in the 26.3 NeoForge bytecode,
-        // `pos.above().equals(fromPos)` compared a BlockPos to an Orientation (always false),
-        // so bridge lights remain attached to non-full bridge handrails without popping off.
-        let _ = (level, event, is_full_cube);
     }
 
     fn animate_tick(&self, host: &mut dyn ClientHost, event: &mut AnimateTickEvent<'_>) {

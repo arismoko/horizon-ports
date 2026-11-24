@@ -329,19 +329,6 @@ pub fn torch_particle_pos(pos: [i32; 3], facing: Horizontal, lightstate: &str) -
     }
 }
 
-/// Whether `boxes` covers a full 1×1×1 unit cube (`Block.isShapeFullBlock`).
-pub fn is_full_cube(boxes: &[[f64; 6]]) -> bool {
-    const EPS: f64 = 1e-6;
-    boxes.iter().any(|b| {
-        b[0] <= EPS
-            && b[1] <= EPS
-            && b[2] <= EPS
-            && b[3] >= 1.0 - EPS
-            && b[4] >= 1.0 - EPS
-            && b[5] >= 1.0 - EPS
-    })
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -490,13 +477,6 @@ mod tests {
         assert_eq!(property(s, "connection"), Some("middle_ns"));
         assert_eq!(property(s, "facing"), Some("east"));
         assert_eq!(property(s, "missing"), None);
-    }
-
-    #[test]
-    fn full_cube_detection() {
-        assert!(is_full_cube(&[[0.0, 0.0, 0.0, 1.0, 1.0, 1.0]]));
-        assert!(!is_full_cube(&[[0.0, 0.0, 0.0, 1.0, 0.5, 1.0]]));
-        assert!(!is_full_cube(&[]));
     }
 
     #[test]
