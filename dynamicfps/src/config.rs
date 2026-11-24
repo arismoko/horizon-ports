@@ -908,11 +908,7 @@ impl DynamicFpsConfig {
 /// Register the client config file `config/dynamicfps.toml`.
 pub fn register_mod_configs(configs: &mut Vec<Config>) {
     let default_toml = DynamicFpsConfig::default().to_toml();
-    configs.push(Config::new(
-        CONFIG_FILE_NAME,
-        ConfigKind::Client,
-        &default_toml,
-    ));
+    configs.push(Config::new(MOD_ID, ConfigKind::Client, &default_toml).file(CONFIG_FILE_NAME));
 }
 
 /// Register all in-game settings on Sunrise's Options > Mods > Dynamic FPS page.
@@ -1447,5 +1443,17 @@ frame_rate_target = -1
             "[states.unfocused]\nframe_rate_target = NaN\n[broken\n= 123\nvolume = inf\n",
         );
         assert_eq!(cfg, DynamicFpsConfig::default());
+    }
+
+    #[test]
+    fn register_mod_configs_targets_single_owned_client_file() {
+        let mut configs = Vec::new();
+        register_mod_configs(&mut configs);
+        assert_eq!(configs.len(), 1);
+        let registered = &configs[0];
+        assert_eq!(registered.mod_id, MOD_ID);
+        assert_eq!(registered.kind, ConfigKind::Client);
+        assert_eq!(registered.file, CONFIG_FILE_NAME);
+        assert!(mod_api::ConfigPath::new(&registered.file).is_ok_and(|path| path.owned_by(MOD_ID)));
     }
 }
