@@ -51,12 +51,13 @@ fn extra_pools(table: &str) -> Vec<(&'static str, f32)> {
     pools
 }
 
-/// `LootPool.builder().rolls(1).conditionally(RandomChance(chance)).with(ItemEntry(item))`.
+/// `LootPool.builder().rolls(1).conditionally(RandomChance(chance)).with(ItemEntry(item))`, in
+/// 26.3's form: a condition names its kind under `type`.
 fn pool(item: &str, chance: f32) -> Value {
     json!({
         "rolls": 1,
         "entries": [{ "type": "minecraft:item", "name": format!("{NS}:{item}") }],
-        "conditions": [{ "condition": "minecraft:random_chance", "chance": chance }],
+        "conditions": [{ "type": "minecraft:random_chance", "chance": chance }],
     })
 }
 
@@ -235,10 +236,7 @@ mod tests {
             pool["entries"][0]["name"],
             "obsidianequipmentrework:obsidian_horse_armor"
         );
-        assert_eq!(
-            pool["conditions"][0]["condition"],
-            "minecraft:random_chance"
-        );
+        assert_eq!(pool["conditions"][0]["type"], "minecraft:random_chance");
         assert_eq!(pool["rolls"], 1);
     }
 
