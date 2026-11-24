@@ -12,6 +12,7 @@ Server-side only: works in single player and on servers without requiring client
 Differences from the original:
 
 - Queued positions in unloaded chunks are skipped instead of force-loading chunks.
+- After the first leaf of a tick, the others drop their loot without running block-drop listeners or experience, since the mod API can't yet drop a block's resources without its break effect ([sunrise-org/sunrise#5526](https://github.com/sunrise-org/sunrise/issues/5526)). Leaves give no experience, so only a mod listening to block drops would notice.
 
 A port of Accelerated Decay by ErrorMikey, under the GPL-3.0-only licence.
 """

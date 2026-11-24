@@ -18,6 +18,7 @@ Install it on the server (or in single player); clients do not need the mod to j
 ## Differences from the original
 
 - A queued position whose chunk is currently unloaded is skipped rather than force-loading the chunk; vanilla random ticks handle it once the chunk is visited again.
+- After the first leaf of a tick, the others drop their loot without running block-drop listeners or experience, since the mod API can't yet drop a block's resources without its break effect ([sunrise-org/sunrise#5526](https://github.com/sunrise-org/sunrise/issues/5526)). Leaves give no experience, so only a mod listening to block drops would notice.
 
 ## Building
 

@@ -151,9 +151,16 @@ fn break_decaying_leaf(
         return false;
     }
 
+    // The first break of a tick is the original's whole `Level.destroyBlock`: its particles,
+    // `Block.dropResources` (loot, block-drop listeners, experience), the fluid's block and the
+    // block_destroy game event.
     if sound_and_particles {
-        let _ = level.block_break_effect(host, pos, state);
+        return level
+            .destroy_block(host, pos, true, None, false)
+            .is_ok_and(|broke| broke.is_some());
     }
+    // The others: the loot alone, since the mod API can't run `Block.dropResources` without the
+    // break effect (sunrise-org/sunrise#5526): no block-drop listeners, no experience.
     if let Ok(Some(drops)) = level.block_drops(host, pos, None, None) {
         for stack in drops {
             let _ = level.pop_resource(host, pos, stack);
