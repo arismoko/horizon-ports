@@ -17,3 +17,7 @@ Differences from the original:
 A port of Accelerated Decay by ErrorMikey, under the GPL-3.0-only licence.
 """
 categories = ["game-mechanics", "optimization", "utility"]
+
+[[screenshots]]
+path = "page/decay.png"
+caption = "An oak a moment after its last log was cut: the leaves fall away a few at a time."
