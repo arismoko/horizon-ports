@@ -23,3 +23,15 @@ Differences from the original:
 Ported to Sunrise under the MIT licence (declarations and behaviour only).
 """
 categories = ["decoration"]
+
+[[screenshots]]
+path = "page/bridges-overview.png"
+caption = "Overview of oak rail, bamboo, rope, iron, stone brick, and oak log bridges spanning a water channel with bridge stairs, piers, torches, and lanterns."
+
+[[screenshots]]
+path = "page/bridges-log-stone-piers.png"
+caption = "An oak log bridge supported by waterlogged bridge piers with attached stairs, a lit bridge torch, and a bridge lantern, alongside a stone brick bridge."
+
+[[screenshots]]
+path = "page/bridges-iron-rope-bamboo-rail.png"
+caption = "Close-up of the oak rail, bamboo, rope, iron, and stone brick bridges spanning the water."
