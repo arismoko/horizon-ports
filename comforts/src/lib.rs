@@ -514,6 +514,44 @@ fn check_tired_restriction(host: &mut dyn ServerHost, player: PlayerRef, level: 
     true
 }
 
+/// Mark both halves occupied and place the player onto a Comforts bed with `sleep_timer = 0`.
+///
+/// `LivingRef::start_sleeping` checks `name.ends_with("_bed")` on 3d34bbe
+/// (gap: sunrise-org/sunrise#5557), so we position the player on the bed surface and set
+/// their sleeping position directly; `can_continue_sleeping` then sustains sleep.
+fn place_player_in_comforts_bed(
+    host: &mut dyn ServerHost,
+    player: PlayerRef,
+    level: LevelRef,
+    head: [i32; 3],
+    foot: [i32; 3],
+    kind: BedKind,
+) {
+    let next_head = level
+        .block_state(host, head)
+        .and_then(|s| s.with(&host.block_states(), "occupied", "true").ok());
+    if let Some(next) = next_head {
+        let _ = level.set_block(host, head, next, block_flags());
+    }
+    let next_foot = level
+        .block_state(host, foot)
+        .and_then(|s| s.with(&host.block_states(), "occupied", "true").ok());
+    if let Some(next) = next_foot {
+        let _ = level.set_block(host, foot, next, block_flags());
+    }
+
+    let sleep_pos = [
+        f64::from(head[0]) + 0.5,
+        f64::from(head[1]) + kind.sleep_surface_y(),
+        f64::from(head[2]) + 0.5,
+    ];
+    let _ = player.entity().teleport_to(host, sleep_pos, None);
+    if let Some(living) = host.living(player.entity()) {
+        let _ = living.set_sleeping_pos(host, head);
+    }
+    let _ = player.set_sleep_timer(host, 0);
+}
+
 /// Dry-run or full sleep attempt on a Comforts bed (`BaseComfortsBlock.trySleep`).
 /// Returns `Ok(())` when sleep is allowed (and started if `!dry_run`), or `Err(Some(key))`
 /// when refused with a user-facing translation key.
@@ -573,35 +611,7 @@ fn try_sleep_in_comforts_bed(
     }
     write_sleep_data(host, uuid, data);
 
-    // Mark bed head (and foot) occupied=true.
-    let next_head = level
-        .block_state(host, head)
-        .and_then(|s| s.with(&host.block_states(), "occupied", "true").ok());
-    if let Some(next) = next_head {
-        let _ = level.set_block(host, head, next, block_flags());
-    }
-    let next_foot = level
-        .block_state(host, foot)
-        .and_then(|s| s.with(&host.block_states(), "occupied", "true").ok());
-    if let Some(next) = next_foot {
-        let _ = level.set_block(host, foot, next, block_flags());
-    }
-
-    // Put player to sleep without resetting respawn point.
-    // Note: LivingRef::start_sleeping checks `name.ends_with("_bed")` on 3d34bbe
-    // (gap: sunrise-org/sunrise#5557), so we place the player onto the bed surface
-    // and set their sleeping position directly; `can_continue_sleeping` then sustains
-    // sleep, counts `sleep_timer` to 100, and fires `sleep_finished_time` / `player_bed_leave`.
-    let sleep_pos = [
-        f64::from(head[0]) + 0.5,
-        f64::from(head[1]) + kind.sleep_surface_y(),
-        f64::from(head[2]) + 0.5,
-    ];
-    let _ = player.entity().teleport_to(host, sleep_pos, None);
-    if let Some(living) = host.living(player.entity()) {
-        let _ = living.set_sleeping_pos(host, head);
-    }
-    let _ = player.set_sleep_timer(host, 0);
+    place_player_in_comforts_bed(host, player, level, head, foot, kind);
     player.award_stat(host, StatType::Custom, SLEEP_IN_BED, 1);
 
     Ok(())
@@ -664,6 +674,16 @@ fn use_comforts_bed(
     let block = event.state.block();
     if head_state.block() != block {
         return InteractionResult::Consume;
+    }
+
+    if server_config().time_use_for(kind) == TimeUse::UseWithoutSleeping {
+        let uuid = player.uuid();
+        let mut data = read_sleep_data(host, uuid);
+        data.sleep_time = level.clock_time(host).unwrap_or(0);
+        data.sleeping_kind = Some(kind);
+        write_sleep_data(host, uuid, data);
+        place_player_in_comforts_bed(host, player, level, head, foot, kind);
+        return InteractionResult::SuccessServer;
     }
 
     if level
@@ -1404,6 +1424,27 @@ impl ItemPart for SleepingBagItemPart {
                     let _ = player.set_inventory_slot(host, slot, Some(next_stack));
                 }
             }
+        }
+
+        // Lie down immediately without sleeping when configured as USE_WITHOUT_SLEEPING,
+        // before checking bed_destroy_on_use (matches BaseComfortsBlock.useWithoutItem).
+        if cfg.time_use_for(BedKind::SleepingBag) == TimeUse::UseWithoutSleeping {
+            let uuid = player.uuid();
+            let mut data = read_sleep_data(host, uuid);
+            data.sleep_time = level.clock_time(host).unwrap_or(0);
+            data.sleeping_kind = Some(BedKind::SleepingBag);
+            data.auto_sleep_pos = Some(head_pos);
+            data.auto_sleep_custom_name = custom_name_tag(event.stack);
+            write_sleep_data(host, uuid, data);
+            place_player_in_comforts_bed(
+                host,
+                player,
+                level,
+                head_pos,
+                place_pos,
+                BedKind::SleepingBag,
+            );
+            return Some(InteractionResult::SuccessServer);
         }
 
         // Explode if the dimension explodes beds, otherwise immediately sleep.
