@@ -21,3 +21,11 @@ Known differences from the original on Dev `3d34bbe`:
 Ported under the LGPL-3.0-or-later licence. Original mod by Illusive Soulworks; block models and initial port assets credit lavoide.
 """
 categories = ["equipment", "utility"]
+
+[[screenshots]]
+path = "page/camp-overview.png"
+caption = "A red hammock strung between two oak log posts with rope and nail, beside a red sleeping bag on the grass."
+
+[[screenshots]]
+path = "page/hammock-and-bag-closeup.png"
+caption = "Close-up of a red hammock suspended from two ropes and nails on oak logs, next to a red sleeping bag."
