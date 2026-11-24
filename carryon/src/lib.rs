@@ -40,10 +40,10 @@ use mod_api::{
     HostSide, IPayloadContext, IPayloadHandler, InteractionResult, ItemDisplayContext, ItemKey,
     ItemStack, KeyRegistration, LeftClickBlockEvent, LivingDeathEvent, LivingIncomingDamageEvent,
     LivingRef, MobCategory, MouseScrollingEvent, PayloadBytes, PayloadHandleError, PayloadId,
-    PlacementContext, PlayerRef, PlayerSwitchHotbarSlotPreEvent, RegisterCommandsEvent, Registrar,
-    RegistrationContext, RemovalReason, RenderHandEvent, RenderPlayerPostEvent,
-    RightClickBlockEvent, ServerHost, ServerTickEvent, ServerTickPhase, SettingSpec, SoundSource,
-    Tag, Text,
+    PlacementContext, PlacementSource, PlayerRef, PlayerSwitchHotbarSlotPreEvent,
+    RegisterCommandsEvent, Registrar, RegistrationContext, RemovalReason, RenderHandEvent,
+    RenderPlayerPostEvent, RightClickBlockEvent, ServerHost, ServerTickEvent, ServerTickPhase,
+    SettingSpec, SoundSource, Tag, Text,
 };
 
 use config::{Lists, Settings, permitted};
@@ -1043,9 +1043,11 @@ impl Mod {
                     direction_of(face),
                     None,
                 );
-                context.yaw = yaw;
-                context.pitch = pitch;
-                context.sneaking = sneaking;
+                context.source = PlacementSource::Player {
+                    yaw,
+                    pitch,
+                    sneaking,
+                };
                 let vanilla = block_key
                     .and_then(|key| {
                         level
