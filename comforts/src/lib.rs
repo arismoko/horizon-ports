@@ -33,11 +33,11 @@ use mod_api::{
 use recipes::{ConditionalShapedKind, ConditionalShapelessKind, SHAPED_ID, SHAPELESS_ID};
 use rules::{
     BedKind, COLORS, ClientSyncConfig, CommonConfig, DEFAULT_COMMON, DEFAULT_SERVER,
-    MAP_COLOR_WOOL, MOD_ID, SLEEP_EFFECT_THRESHOLD_TICKS, ServerConfig, SleepData, TimeUse,
-    can_sleep_for_time, compute_break_chance, compute_tired_time, compute_wake_time,
-    direction_name, hammock_layout_from_rope, hammock_positions, horizontal_step,
-    is_bright_outside, look_at_yaw, offset, parse_direction, sleepers_needed, stand_up_offsets,
-    within_bed_reach,
+    HammockProbeCell, MAP_COLOR_WOOL, MOD_ID, SLEEP_EFFECT_THRESHOLD_TICKS, ServerConfig,
+    SleepData, TimeUse, can_sleep_for_time, compute_break_chance, compute_tired_time,
+    compute_wake_time, direction_name, hammock_layout_from_rope, hammock_placement_error_key,
+    hammock_positions, horizontal_step, is_bright_outside, look_at_yaw, offset, parse_direction,
+    sleepers_needed, stand_up_offsets, within_bed_reach,
 };
 
 const ATTACH_SLEEP_DATA: &str = "comforts:sleep_data";
@@ -1478,6 +1478,32 @@ impl ItemPart for SleepingBagItemPart {
     }
 }
 
+fn probe_hammock_cell(
+    host: &dyn Host,
+    level: LevelRef,
+    rope_pos: [i32; 3],
+    dir: Direction,
+    supporting: bool,
+    dist: i32,
+) -> HammockProbeCell {
+    let pos = offset(rope_pos, horizontal_step(dir), dist);
+    let Some(state) = level.block_state(host, pos) else {
+        return HammockProbeCell::Solid;
+    };
+    let meta = host.block_states();
+    if !supporting
+        && state.block() == keys().rope_and_nail
+        && prop_dir(&meta, state, "facing") == Some(dir.opposite())
+        && !prop_bool(&meta, state, "supporting")
+    {
+        HammockProbeCell::PartnerRope
+    } else if meta.replaceable(state).unwrap_or(false) {
+        HammockProbeCell::Clear
+    } else {
+        HammockProbeCell::Solid
+    }
+}
+
 struct HammockItemPart {
     color: usize,
 }
@@ -1516,58 +1542,29 @@ impl ItemPart for HammockItemPart {
                 prop_dir(&meta, rope_state, "facing")?,
             )
         };
-        if supporting {
-            let _ = player.action_bar(
-                host,
-                Text::translate("item.comforts.hammock.no_space", vec![]),
-            );
-            return Some(InteractionResult::Fail);
-        }
 
         let (foot_pos, head_pos, partner_pos) = hammock_layout_from_rope(rope_pos, dir);
+        let has_partner = probe_hammock_cell(host, level, rope_pos, dir, supporting, 3)
+            == HammockProbeCell::PartnerRope;
 
-        // Check partner rope at distance 3 facing opposite.
-        let partner_state = level.block_state(host, partner_pos);
-        let partner_valid = partner_state.is_some_and(|s| {
-            let meta = host.block_states();
-            s.block() == keys().rope_and_nail
-                && prop_dir(&meta, s, "facing") == Some(dir.opposite())
-                && !prop_bool(&meta, s, "supporting")
-        });
-
-        if !partner_valid {
-            // Check if a facing partner rope exists farther out (4..=6) to give the specific message.
-            let step = horizontal_step(dir);
-            let mut found_too_far = false;
-            for dist in 4..=6 {
-                let probe = offset(rope_pos, step, dist);
-                if let Some(s) = level.block_state(host, probe) {
-                    let meta = host.block_states();
-                    if s.block() == keys().rope_and_nail
-                        && prop_dir(&meta, s, "facing") == Some(dir.opposite())
-                    {
-                        found_too_far = true;
-                        break;
-                    }
-                }
-            }
-            let key = if found_too_far {
-                "item.comforts.hammock.ropes_too_far"
-            } else {
-                "item.comforts.hammock.missing_rope"
-            };
+        if !has_partner {
+            let key = hammock_placement_error_key(false, |d| {
+                probe_hammock_cell(host, level, rope_pos, dir, supporting, d)
+            });
             let _ = player.action_bar(host, Text::translate(key, vec![]));
             return Some(InteractionResult::Fail);
         }
 
         // Check both middle cells are replaceable.
         if !is_replaceable(host, level, foot_pos) || !is_replaceable(host, level, head_pos) {
-            let _ = player.action_bar(
-                host,
-                Text::translate("item.comforts.hammock.no_space", vec![]),
-            );
+            let key = hammock_placement_error_key(true, |d| {
+                probe_hammock_cell(host, level, rope_pos, dir, supporting, d)
+            });
+            let _ = player.action_bar(host, Text::translate(key, vec![]));
             return Some(InteractionResult::Fail);
         }
+
+        let partner_state = level.block_state(host, partner_pos);
 
         let block_key = keys().hammocks[self.color];
         let foot_water = level

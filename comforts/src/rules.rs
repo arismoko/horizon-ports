@@ -705,6 +705,60 @@ pub fn hammock_layout_from_rope(
     )
 }
 
+/// Result of probing one cell along a rope's facing direction (`HammockItem.findNearestPartnerRope`).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum HammockProbeCell {
+    /// Air or replaceable block.
+    Clear,
+    /// Unsupporting partner `rope_and_nail` facing opposite the clicked rope.
+    PartnerRope,
+    /// Any other non-replaceable block (stops the scan).
+    Solid,
+}
+
+/// Scan `start..=max_dist` for the nearest unobstructed partner rope (`HammockItem.findNearestPartnerRope`).
+///
+/// Returns `Some(dist)` for a partner rope, `Some(0)` if a non-replaceable obstacle blocks the
+/// line, or `None` if every scanned cell was clear/replaceable.
+pub fn find_nearest_partner_rope(
+    start: i32,
+    max_dist: i32,
+    mut probe: impl FnMut(i32) -> HammockProbeCell,
+) -> Option<i32> {
+    for dist in start.max(1)..=max_dist {
+        match probe(dist) {
+            HammockProbeCell::Clear => {}
+            HammockProbeCell::PartnerRope => return Some(dist),
+            HammockProbeCell::Solid => return Some(0),
+        }
+    }
+    None
+}
+
+/// Resolve the hammock placement error translation key when a partner rope is missing or the
+/// space between ropes is blocked (`HammockItem.hangHammock`).
+pub fn hammock_placement_error_key(
+    has_partner_at_3: bool,
+    mut probe: impl FnMut(i32) -> HammockProbeCell,
+) -> &'static str {
+    if has_partner_at_3 {
+        return match find_nearest_partner_rope(1, 2, probe) {
+            Some(d) if d > 0 => "item.comforts.hammock.no_space",
+            _ => "item.comforts.hammock.missing_rope",
+        };
+    }
+
+    let nearest = find_nearest_partner_rope(1, 2, &mut probe)
+        .or_else(|| find_nearest_partner_rope(3, 12, &mut probe));
+
+    match nearest {
+        Some(0) | None => "item.comforts.hammock.missing_rope",
+        Some(d) if d > 3 => "item.comforts.hammock.ropes_too_far",
+        Some(d) if d > 0 => "item.comforts.hammock.no_space",
+        _ => "item.comforts.hammock.missing_rope",
+    }
+}
+
 /// Given one half of a hammock (`pos`, `facing`, `is_head`), return:
 /// - `partner_half_pos`
 /// - `own_rope_pos` (the rope directly behind this half)
@@ -1365,5 +1419,67 @@ sleepingBagEffects = ["minecraft:slowness;30;2", "weakness;9999;10", "bad_entry"
             false,
             false
         ));
+    }
+
+    #[test]
+    fn hammock_partner_rope_scan_and_error_messages_match_upstream() {
+        let cell_at = |partner: Option<i32>, solid: Option<i32>| {
+            move |dist: i32| {
+                if Some(dist) == partner {
+                    HammockProbeCell::PartnerRope
+                } else if Some(dist) == solid {
+                    HammockProbeCell::Solid
+                } else {
+                    HammockProbeCell::Clear
+                }
+            }
+        };
+
+        // Too close (1..=2) reports no_space before scanning outward.
+        assert_eq!(
+            hammock_placement_error_key(false, cell_at(Some(1), None)),
+            "item.comforts.hammock.no_space"
+        );
+        assert_eq!(
+            hammock_placement_error_key(false, cell_at(Some(2), None)),
+            "item.comforts.hammock.no_space"
+        );
+        // Unobstructed partner at 4..=12 reports ropes_too_far.
+        assert_eq!(
+            hammock_placement_error_key(false, cell_at(Some(4), None)),
+            "item.comforts.hammock.ropes_too_far"
+        );
+        assert_eq!(
+            hammock_placement_error_key(false, cell_at(Some(12), None)),
+            "item.comforts.hammock.ropes_too_far"
+        );
+        // Beyond 12 blocks reports missing_rope.
+        assert_eq!(
+            hammock_placement_error_key(false, cell_at(Some(13), None)),
+            "item.comforts.hammock.missing_rope"
+        );
+        // Solid block before a farther partner rope stops the scan and reports missing_rope.
+        assert_eq!(
+            hammock_placement_error_key(false, cell_at(Some(6), Some(4))),
+            "item.comforts.hammock.missing_rope"
+        );
+        assert_eq!(
+            hammock_placement_error_key(false, cell_at(Some(5), Some(1))),
+            "item.comforts.hammock.missing_rope"
+        );
+        // No partner rope at all reports missing_rope.
+        assert_eq!(
+            hammock_placement_error_key(false, cell_at(None, None)),
+            "item.comforts.hammock.missing_rope"
+        );
+        // Partner at 3 but blocked in 1..=2: too-close partner -> no_space, solid obstacle -> missing_rope.
+        assert_eq!(
+            hammock_placement_error_key(true, cell_at(Some(2), None)),
+            "item.comforts.hammock.no_space"
+        );
+        assert_eq!(
+            hammock_placement_error_key(true, cell_at(None, Some(1))),
+            "item.comforts.hammock.missing_rope"
+        );
     }
 }
