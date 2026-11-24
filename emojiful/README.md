@@ -1,9 +1,7 @@
-# Emojiful for Horizon
+# Emojiful
 
-`:short_name:` in chat shows the emoji (Twemoji).
+:short_name: in chat shows the emoji (Twemoji), with completions as you type.
 
-A port of [Emojiful](https://github.com/InnovativeOnlineIndustries/Emojiful) 4.2.0 by HorizonStudio (Innovative Online Industries) to [Horizon](https://github.com/horizon-rust/horizon) 26.3, under the original's licence (MIT, in `LICENSE`). The emoji images are [Twemoji](https://github.com/jdecked/twemoji) (CC-BY 4.0, in `LICENSE-GRAPHICS`); see `NOTICE`.
+A port of [Emojiful](https://github.com/InnovativeOnlineIndustries/Emojiful) by HorizonStudio, under the original's licence (MIT, in `LICENSE`; see `NOTICE`).
 
-This folder is the package source: one native mod with its emoji font (`horizon-mod.toml`, `src/`, `assets/`), on Horizon's mod API only. Release [`emojiful-v0.4.0`](https://github.com/lavoide/horizon-ports/releases/tag/emojiful-v0.4.0) holds `emojiful.hmod`, built from this folder with Horizon's exact-build SDK `dd67b76ff23e28c6d8e21859df600d31572f81a0` (Horizon Mixins `e59da9094f0c2fdda6c627fe9eff22dec6a906f0`).
-
-Earlier versions (a native `.hnmod` plus the `emojiful_twemoji` resource pack, on Horizon `fdc87ae`) are in this folder's history.
+Its port to Sunrise is blocked on mod-API gaps: [#382](https://github.com/sunrise-org/sunrise/issues/382), [#5294](https://github.com/sunrise-org/sunrise/issues/5294). Until then this folder holds an earlier port's source, written for an older mod format; it does not build with `cargo sunrise-mod`, and there is no Sunrise release.

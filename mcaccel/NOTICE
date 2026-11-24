@@ -4,7 +4,7 @@ A port of Minecraft Accelerated 1.0.0 by Mari.
 Original source: https://github.com/Cookieglue/PumpkinsAccelerated
 Original licence: CC0-1.0
 
-Ported to Horizon by lavoide, and to Sunrise by arismoko: the shears' carving is re-implemented in
+Ported to Minecraft 26.3 by lavoide, and to Sunrise by arismoko: the shears' carving is re-implemented in
 Rust on Sunrise's mod API (no Java code is included). The recipes, loot tables, advancements and
 block tag in data/, and the models, textures, translations and icon in assets/ are the original
 release's. This port is distributed under the original's licence (CC0-1.0); the licence text is in

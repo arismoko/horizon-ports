@@ -4,7 +4,7 @@ A port of Better Days 4.1.1.7 by wendall911.
 Original source: https://github.com/wendall911/BetterDays
 Original licence: LGPL-3.0-or-later
 
-Ported to Horizon by lavoide and to Sunrise by arismoko: the rules are re-implemented in Rust on
+Ported to Minecraft 26.3 by lavoide and to Sunrise by arismoko: the rules are re-implemented in Rust on
 Sunrise's mod API (no Java code is included). This port is distributed under the same licence as
 the original (LGPL-3.0-or-later); the licence text is in LICENSE. The in-bed clock uses the
 original's mod icon as its own icon.

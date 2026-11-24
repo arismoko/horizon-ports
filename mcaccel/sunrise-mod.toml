@@ -6,7 +6,7 @@ version = "0.5.1"
 description = "Shears carve nine faces into carved pumpkins, jack o'lanterns and soul jack o'lanterns."
 authors = ["Mari", "arismoko"]
 license = "CC0-1.0"
-credits = "Ported to Horizon by lavoide, and to Sunrise by arismoko."
+credits = "Ported to Minecraft 26.3 by lavoide, and to Sunrise by arismoko."
 homepage = "https://github.com/arismoko/sunrise-ports"
 side = "both"
 

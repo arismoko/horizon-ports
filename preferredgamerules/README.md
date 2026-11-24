@@ -30,7 +30,7 @@ cargo sunrise-mod check
 cargo sunrise-mod build    # target/sunrise-mod/preferredgamerules.smod
 ```
 
-This version is made for the Sunrise Dev build `dev-2026-11-24-f8aa80e`.
+`sunrise-mod.toml` pins the Sunrise build this version is made for.
 
 ## Licence and credits
 

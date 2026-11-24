@@ -1,7 +1,7 @@
-# Grind Enchantments for Horizon
+# Grind Enchantments
 
 Grindstones move enchantments to books.
 
-A port of [Grind Enchantments](https://github.com/mschae23/grind-enchantments) 3.1.4 by mschae23 to [Horizon](https://github.com/horizon-rust/horizon) 26.3, under the original's licence (LGPL-3.0-or-later, in `LICENSE`; see `NOTICE`).
+A port of [Grind Enchantments](https://github.com/mschae23/grind-enchantments) by mschae23, under the original's licence (LGPL-3.0-or-later, in `LICENSE`; see `NOTICE`).
 
-This folder is the package source: one native mod. Its code uses Horizon's mod API and engine mixins (listed in `horizon-mod.toml`). Release [`grindenchantments-v0.4.1`](https://github.com/lavoide/horizon-ports/releases/tag/grindenchantments-v0.4.1) holds `grindenchantments.hmod`, built from this folder with Horizon's exact-build SDK `dd67b76ff23e28c6d8e21859df600d31572f81a0` (Horizon Mixins `e59da9094f0c2fdda6c627fe9eff22dec6a906f0`). Earlier versions, if any, are in this folder's history.
+Its port to Sunrise is blocked on mod-API gaps: [#5391](https://github.com/sunrise-org/sunrise/issues/5391), [#5392](https://github.com/sunrise-org/sunrise/issues/5392), [#5393](https://github.com/sunrise-org/sunrise/issues/5393). Until then this folder holds an earlier port's source, written for an older mod format; it does not build with `cargo sunrise-mod`, and there is no Sunrise release.

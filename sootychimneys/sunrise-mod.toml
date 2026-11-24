@@ -5,7 +5,7 @@ version = "0.6.0"
 description = "Spiritual successor to campfires!"
 authors = ["mortuusars", "arismoko"]
 license = "MIT"
-credits = "Ported to Horizon by lavoide, and to Sunrise by arismoko."
+credits = "Ported to Minecraft 26.3 by lavoide, and to Sunrise by arismoko."
 homepage = "https://github.com/arismoko/sunrise-ports"
 side = "both"
 

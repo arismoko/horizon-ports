@@ -1,11 +1,10 @@
-Preferred Gamerules for Horizon 26.3 (version 0.4.0)
+Preferred Gamerules for Sunrise
 
 A port of Preferred Gamerules 1.1.1 by Estecka.
 Original source: https://github.com/Estecka/mc-Preferred-Gamerules
 Original licence: MIT
 
-Ported to Horizon by lavoide: the rules are re-implemented in Rust on Horizon's mod API (no Java
-code is included). This port is distributed under the same licence as the original (MIT); the licence text is in LICENSE. Built
-against Horizon's exact-build SDK dd67b76ff23e28c6d8e21859df600d31572f81a0.
+Ported to Minecraft 26.3 by lavoide: the rules are re-implemented in Rust (no Java
+code is included). This port is distributed under the same licence as the original (MIT); the licence text is in LICENSE.
 
-Ported to Sunrise by arismoko (version 0.5.0), on the Sunrise mod API, under the same licence.
+Ported to Sunrise by arismoko, on Sunrise's mod API, under the same licence.

@@ -1,7 +1,7 @@
-# Convenient Name Tags for Horizon
+# Convenient Name Tags
 
 Name tags drop on death, can be sheared off and renamed.
 
-A port of [Convenient Name Tags](https://www.curseforge.com/projects/662763) 1.1.0 by Mim1q to [Horizon](https://github.com/horizon-rust/horizon) 26.3, under the original's licence (Apache-2.0, in `LICENSE`; see `NOTICE`).
+A port of [Convenient Name Tags](https://www.curseforge.com/projects/662763) by Mim1q, under the original's licence (Apache-2.0, in `LICENSE`; see `NOTICE`).
 
-This folder is the package source: one native mod. Its code uses Horizon's mod API and engine mixins (listed in `horizon-mod.toml`). Release [`convenientnametags-v0.4.1`](https://github.com/lavoide/horizon-ports/releases/tag/convenientnametags-v0.4.1) holds `convenientnametags.hmod`, built from this folder with Horizon's exact-build SDK `dd67b76ff23e28c6d8e21859df600d31572f81a0` (Horizon Mixins `e59da9094f0c2fdda6c627fe9eff22dec6a906f0`). Earlier versions, if any, are in this folder's history.
+Its port to Sunrise is blocked on mod-API gaps: [#5380](https://github.com/sunrise-org/sunrise/issues/5380). Until then this folder holds an earlier port's source, written for an older mod format; it does not build with `cargo sunrise-mod`, and there is no Sunrise release.

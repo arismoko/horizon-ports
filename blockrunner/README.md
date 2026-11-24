@@ -61,7 +61,7 @@ cargo sunrise-mod check
 cargo sunrise-mod build    # target/sunrise-mod/blockrunner.smod
 ```
 
-This version is made for the Sunrise Dev build `dev-2026-11-24-f8aa80e`. The mod is needed on both the server and the client.
+`sunrise-mod.toml` pins the Sunrise build this version is made for. The mod is needed on both the server and the client.
 
 ## Licence and credits
 

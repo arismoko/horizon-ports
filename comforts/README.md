@@ -1,12 +1,7 @@
-# Comforts for Horizon
+# Comforts
 
 Sleeping bags and hammocks.
 
-A port of [Comforts](https://github.com/illusivesoulworks/comforts) 6.4.0+1.20.1 by Illusive Soulworks to [Horizon](https://github.com/horizon-rust/horizon) 26.3, under the original's licence (LGPL-3.0-or-later).
+A port of [Comforts](https://github.com/illusivesoulworks/comforts) by Illusive Soulworks, under the original's licence (LGPL-3.0-or-later, in `LICENSE`; see `NOTICE`).
 
-Files (release [`comforts-v0.1.1`](https://github.com/lavoide/horizon-ports/releases/tag/comforts-v0.1.1)), each folder unpacked from its file:
-
-- `comforts_native-0.1.1.hnmod` (native source mod): `native/`
-- `comforts-0.1.1.hmod` (content mod): `content/`
-
-Pinned to Horizon `fdc87ae` and Horizon Mixins `e8cd0aa`.
+It has not been ported to Sunrise yet. Until then this folder holds an earlier port's source, written for an older mod format; it does not build with `cargo sunrise-mod`, and there is no Sunrise release.

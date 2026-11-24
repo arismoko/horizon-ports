@@ -4,7 +4,7 @@ A port of Block Runner 26.3.0 by Fuzs.
 Original source: https://github.com/Fuzss/blockrunner
 Original licence: MPL-2.0
 
-Ported to Horizon by lavoide (version 0.4.0), and to Sunrise by arismoko (version 0.5.0): the
+Ported to Minecraft 26.3 by lavoide (version 0.4.0), and to Sunrise by arismoko (version 0.5.0): the
 behaviour is re-implemented in Rust on Sunrise's mod API (no Java code is included). This port is
 distributed under the same licence as the original (MPL-2.0); the licence text is in LICENSE.
 
