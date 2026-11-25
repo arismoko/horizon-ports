@@ -33,6 +33,16 @@ pub const MENU_ID: &str = "easyanvils:anvil";
 const LEVEL_EVENT_ANVIL_BROKEN: i32 = 1029;
 /// Vanilla `LevelEvent.SOUND_ANVIL_USED`.
 const LEVEL_EVENT_ANVIL_USED: i32 = 1030;
+/// Vanilla `FriendlyByteBuf.MAX_STRING_LENGTH` (used by `ServerboundRenameItemPacket` via
+/// `FriendlyByteBuf.readUtf()`). Easy Anvils uses vanilla's `ServerboundRenameItemPacket`
+/// unchanged.
+const MAX_PACKET_NAME_CHARS: usize = 32_767;
+/// Vanilla `Utf8String.read` / `ByteBufUtil.utf8MaxBytes(FriendlyByteBuf.MAX_STRING_LENGTH)`
+/// (`32767 * 3`).
+const MAX_PACKET_NAME_BYTES: usize = MAX_PACKET_NAME_CHARS * 3;
+/// Vanilla `AnvilMenu.MAX_NAME_LENGTH` (also used by Easy Anvils' `ModAnvilMenu.setItemName`
+/// via `FormattedStringUtil.stringLength(itemName) <= 50`).
+const MAX_NAME_LENGTH: usize = 50;
 
 static ANVIL_KEYS: OnceLock<[BlockKey; 3]> = OnceLock::new();
 static BLOCK_PARTICLE: OnceLock<ParticleKey> = OnceLock::new();
@@ -342,6 +352,21 @@ pub fn try_repair_anvil(
     true
 }
 
+/// Validates an incoming rename string against vanilla's `ServerboundRenameItemPacket` /
+/// `FriendlyByteBuf.readUtf()` length cap (`FriendlyByteBuf.MAX_STRING_LENGTH` = 32767 UTF-16
+/// code units, `32767 * 3` UTF-8 bytes) and `AnvilMenu.validateName` / Easy Anvils'
+/// `ModAnvilMenu.setItemName` 50-character limit (`AnvilMenu.MAX_NAME_LENGTH`).
+fn validate_rename_name(name: &str, allow_formatting: bool) -> Option<String> {
+    if name.len() > MAX_PACKET_NAME_BYTES || name.encode_utf16().count() > MAX_PACKET_NAME_CHARS {
+        return None;
+    }
+    let filtered = filter_text(name, allow_formatting);
+    if visible_length(&filtered, allow_formatting) > MAX_NAME_LENGTH {
+        return None;
+    }
+    Some(filtered.trim().to_owned())
+}
+
 /// Handles `easyanvils:rename_item` sent by the client's rename box.
 pub fn handle_rename_item(
     payload: RenameItemPayload,
@@ -359,11 +384,10 @@ pub fn handle_rename_item(
     }
 
     let cfg = server_config();
-    let filtered = filter_text(&payload.name, cfg.renaming_supports_formatting);
-    if visible_length(&filtered, cfg.renaming_supports_formatting) > 50 {
+    let Some(trimmed) = validate_rename_name(&payload.name, cfg.renaming_supports_formatting)
+    else {
         return Ok(());
-    }
-    let trimmed = filtered.trim().to_owned();
+    };
 
     {
         let mut map = VIEWERS.lock().unwrap_or_else(PoisonError::into_inner);
@@ -886,5 +910,79 @@ pub fn on_server_tick_post(host: &mut dyn ServerHost, level: LevelRef) {
                 v.can_pickup = pickup;
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn validate_rename_name_enforces_packet_byte_bound() {
+        // 32,768 repetitions of '€' (3 UTF-8 bytes each) = 98,304 bytes > MAX_PACKET_NAME_BYTES.
+        let over_bytes = "€".repeat(MAX_PACKET_NAME_CHARS + 1);
+        assert!(over_bytes.len() > MAX_PACKET_NAME_BYTES);
+        assert_eq!(validate_rename_name(&over_bytes, true), None);
+        assert_eq!(validate_rename_name(&over_bytes, false), None);
+
+        // 49,151 '§' chars (2 UTF-8 bytes each) = 98,302 bytes > MAX_PACKET_NAME_BYTES.
+        let over_section_bytes = "§".repeat(MAX_PACKET_NAME_BYTES / 2 + 1);
+        assert!(over_section_bytes.len() > MAX_PACKET_NAME_BYTES);
+        assert_eq!(validate_rename_name(&over_section_bytes, true), None);
+    }
+
+    #[test]
+    fn validate_rename_name_enforces_packet_utf16_bound() {
+        // 16,383 "§a" pairs + "x" = 32,767 UTF-16 code units (exact FriendlyByteBuf.MAX_STRING_LENGTH)
+        // with 1 visible character when formatting is enabled.
+        let mut at_limit = "§a".repeat(MAX_PACKET_NAME_CHARS / 2);
+        at_limit.push('x');
+        assert_eq!(at_limit.encode_utf16().count(), MAX_PACKET_NAME_CHARS);
+        assert_eq!(
+            validate_rename_name(&at_limit, true),
+            Some(at_limit.clone())
+        );
+
+        // 16,384 "§a" pairs = 32,768 UTF-16 code units > MAX_PACKET_NAME_CHARS, even though
+        // visible_length is 0 and byte length (49,152) is below MAX_PACKET_NAME_BYTES.
+        let over_pairs = "§a".repeat(MAX_PACKET_NAME_CHARS / 2 + 1);
+        assert!(over_pairs.len() <= MAX_PACKET_NAME_BYTES);
+        assert_eq!(over_pairs.encode_utf16().count(), MAX_PACKET_NAME_CHARS + 1);
+        assert_eq!(validate_rename_name(&over_pairs, true), None);
+
+        // Supplementary characters count as 2 UTF-16 code units each (16,384 * 2 = 32,768 > 32,767).
+        let over_surrogates = "😀".repeat(MAX_PACKET_NAME_CHARS / 2 + 1);
+        assert!(over_surrogates.len() <= MAX_PACKET_NAME_BYTES);
+        assert_eq!(
+            over_surrogates.encode_utf16().count(),
+            MAX_PACKET_NAME_CHARS + 1
+        );
+        assert_eq!(validate_rename_name(&over_surrogates, true), None);
+    }
+
+    #[test]
+    fn validate_rename_name_enforces_visible_name_length() {
+        let fifty = "a".repeat(MAX_NAME_LENGTH);
+        assert_eq!(validate_rename_name(&fifty, false), Some(fifty.clone()));
+        assert_eq!(validate_rename_name(&fifty, true), Some(fifty.clone()));
+
+        let fifty_one = "a".repeat(MAX_NAME_LENGTH + 1);
+        assert_eq!(validate_rename_name(&fifty_one, false), None);
+        assert_eq!(validate_rename_name(&fifty_one, true), None);
+
+        // Formatting pair does not count toward MAX_NAME_LENGTH when formatting is enabled,
+        // but when disabled '§' is stripped leaving '6' + 50 'a's = 51 characters.
+        let formatted_fifty = format!("§6{fifty}");
+        assert_eq!(
+            validate_rename_name(&formatted_fifty, true),
+            Some(formatted_fifty.clone())
+        );
+        assert_eq!(validate_rename_name(&formatted_fifty, false), None);
+
+        // Trims surrounding whitespace and filters disallowed control characters.
+        assert_eq!(
+            validate_rename_name("  §6Sword\n\x7f  ", true),
+            Some("§6Sword".to_owned())
+        );
     }
 }
