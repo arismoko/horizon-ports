@@ -6,10 +6,11 @@
 mod config;
 mod math;
 mod render;
+mod screen;
 
 use crate::config::{
-    BridgingConfig, CONFIG_FILE_NAME, MOD_ID, SET_ENABLE_BRIDGING, SourcePerspective,
-    register_mod_configs, register_settings,
+    BridgingConfig, CONFIG_FILE_NAME, MOD_ID, SET_ENABLE_BRIDGING, SettingKeys, SourcePerspective,
+    register_config_file, register_settings,
 };
 use crate::math::{
     Direction, NEAR_ZERO, aabb_intersects_block, clamp_point_within_reach, compute_view_block_path,
@@ -19,14 +20,15 @@ use crate::render::{RenderSnapshot, render_crosshair_indicator, render_world_out
 use mod_api::text::TextStyle;
 use mod_api::{
     BlockClass, BlockHighlightEvent, BlockHit, BlockKey, BlockPos, ClientHost, ClientPickEvent,
-    ClientTickPostEvent, ConfigContext, ConfigKind, ConfigLoadingEvent, ConfigPath,
-    ConfigReloadingEvent, CrosshairTarget, Flow, Hand, Hooks, Host, HostBlockStates, HostSide,
-    InteractionAttempt, InteractionKey, InteractionKeyMappingTriggeredEvent, ItemKey,
-    KeyConflictContext, KeyRegistration, LevelRef, ModKeyMappingRef, PlayerRef,
-    RegisterConfigsEvent, Registrar, RegistrationContext, RenderGuiPostEvent, RenderLevelStage,
-    RenderLevelStageEvent, SettingChangedEvent, Text,
+    ClientTickPostEvent, ConfigEvent, ConfigSnapshot, CrosshairTarget, Flow, Hand, Hooks, Host,
+    HostBlockStates, HostSide, InteractionAttempt, InteractionKey,
+    InteractionKeyMappingTriggeredEvent, ItemKey, KeyConflictContext, KeyRegistration, LevelRef,
+    ModKeyMappingRef, PlayerRef, Registrar, RegistrationContext, RenderGuiPostEvent,
+    ScreenInitPostEvent, ScreenRenderPostEvent, SettingChangedEvent, SettingValue,
+    SubmitCustomGeometryEvent, Text,
 };
-use std::sync::{Mutex, MutexGuard};
+use std::sync::atomic::AtomicUsize;
+use std::sync::{Arc, Mutex, MutexGuard};
 
 const KEY_TOGGLE_BRIDGING: &str = "toggle_bridging";
 const DEFAULT_BLOCK_REACH: f64 = 4.5;
@@ -49,6 +51,8 @@ struct ActiveBridgingPick {
 
 struct Runtime {
     config: BridgingConfig,
+    /// Owner-bound keys of the registered settings.
+    keys: SettingKeys,
     settings_synced: bool,
     key_toggle_bridging: Option<ModKeyMappingRef>,
     /// Player Y fractional part while standing on ground (`BridgingStateTracker.lastKnownYFrac`).
@@ -67,6 +71,7 @@ impl Runtime {
     fn new() -> Self {
         Self {
             config: BridgingConfig::default(),
+            keys: SettingKeys::default(),
             settings_synced: false,
             key_toggle_bridging: None,
             last_known_y_frac: 0.0,
@@ -77,71 +82,123 @@ impl Runtime {
         }
     }
 
-    fn sync_initial_settings(&mut self, host: &dyn ClientHost) {
-        if self.settings_synced {
-            return;
-        }
-        self.settings_synced = true;
-        self.config.write_to_host_settings(host);
-    }
-
-    fn persist_config_file(&self, host: &dyn ClientHost) {
-        if let Ok(path) = ConfigPath::new(CONFIG_FILE_NAME) {
-            let _ = host
-                .config_files()
-                .write(&path, self.config.to_toml().as_bytes());
-        }
-    }
-
-    fn poll_toggle_key(&mut self, host: &mut dyn ClientHost) {
-        if self.key_toggle_bridging.is_none() {
-            self.key_toggle_bridging = host.mod_key_mapping(MOD_ID, KEY_TOGGLE_BRIDGING).ok();
-        }
-        let Some(key) = self.key_toggle_bridging else {
-            return;
-        };
-
-        let mut toggled = false;
-        while key.consume_click(host).unwrap_or(false) {
-            self.config.enable_bridging_assist = !self.config.enable_bridging_assist;
-            toggled = true;
-        }
-
-        if toggled {
-            let enabled = self.config.enable_bridging_assist;
-            host.set_setting(
-                MOD_ID,
-                SET_ENABLE_BRIDGING,
-                if enabled { "true" } else { "false" },
-            );
-            self.persist_config_file(host);
-            let _ = host.set_overlay_message(build_toggle_message(enabled), false);
-        }
+    /// Write `config/bridgingmod.toml` beside the game's other configs.
+    fn persist_config_file(&self, host: &dyn Host) {
+        let path = host.config_dir().join(CONFIG_FILE_NAME);
+        let _ = std::fs::write(path, self.config.to_toml());
     }
 }
 
+fn lock_runtime(runtime: &Mutex<Runtime>) -> MutexGuard<'_, Runtime> {
+    runtime.lock().unwrap_or_else(|e| e.into_inner())
+}
+
 struct BridgingMod {
-    runtime: Mutex<Runtime>,
+    runtime: Arc<Mutex<Runtime>>,
+    /// The config screen tab that is showing.
+    screen_tab: Arc<AtomicUsize>,
 }
 
 impl Default for BridgingMod {
     fn default() -> Self {
         Self {
-            runtime: Mutex::new(Runtime::new()),
+            runtime: Arc::new(Mutex::new(Runtime::new())),
+            screen_tab: Arc::new(AtomicUsize::new(0)),
         }
     }
 }
 
 impl BridgingMod {
     fn lock(&self) -> MutexGuard<'_, Runtime> {
-        self.runtime.lock().unwrap_or_else(|e| e.into_inner())
+        lock_runtime(&self.runtime)
+    }
+
+    /// Push the loaded config into the settings store once. Each write notifies
+    /// `setting_changed`, which takes the runtime lock, so none is held across the writes.
+    fn sync_initial_settings(&self, host: &mut dyn ClientHost) {
+        let (config, keys) = {
+            let mut rt = self.lock();
+            if rt.settings_synced {
+                return;
+            }
+            rt.settings_synced = true;
+            (rt.config.clone(), rt.keys.clone())
+        };
+        config.write_to_host_settings(host, &keys);
+    }
+
+    fn poll_toggle_key(&self, host: &mut dyn ClientHost) {
+        let key = {
+            let mut rt = self.lock();
+            if rt.key_toggle_bridging.is_none() {
+                rt.key_toggle_bridging = host.mod_key_mapping(MOD_ID, KEY_TOGGLE_BRIDGING).ok();
+            }
+            rt.key_toggle_bridging
+        };
+        let Some(key) = key else {
+            return;
+        };
+
+        let mut clicks = 0_u32;
+        while key.consume_click(host).unwrap_or(false) {
+            clicks = clicks.saturating_add(1);
+        }
+        if clicks == 0 {
+            return;
+        }
+
+        let (enabled, setting) = {
+            let mut rt = self.lock();
+            if clicks % 2 == 1 {
+                rt.config.enable_bridging_assist = !rt.config.enable_bridging_assist;
+            }
+            rt.persist_config_file(&*host);
+            (
+                rt.config.enable_bridging_assist,
+                rt.keys.get(SET_ENABLE_BRIDGING),
+            )
+        };
+        if let Some(setting) = setting {
+            let _ = host.set_setting(setting, SettingValue::Toggle(enabled));
+        }
+        let _ = host.set_overlay_message(build_toggle_message(enabled), false);
     }
 }
 
 #[mod_api::sunrise_mod]
 impl Hooks for BridgingMod {
     fn register(&self, r: &mut dyn Registrar, _cx: &RegistrationContext) {
-        register_settings(r);
+        let keys = register_settings(r);
+        self.lock().keys = keys;
+
+        let runtime = Arc::clone(&self.runtime);
+        let listener =
+            move |event: ConfigEvent<'_>, snapshot: &ConfigSnapshot| -> Result<(), String> {
+                match event {
+                    ConfigEvent::Loading(_) => {
+                        lock_runtime(&runtime).config = BridgingConfig::parse_toml(&snapshot.text);
+                    }
+                    ConfigEvent::Reloading(HostSide::Client(client)) => {
+                        let (config, keys) = {
+                            let mut rt = lock_runtime(&runtime);
+                            rt.config = BridgingConfig::parse_toml(&snapshot.text);
+                            rt.settings_synced = true;
+                            (rt.config.clone(), rt.keys.clone())
+                        };
+                        config.write_to_host_settings(client, &keys);
+                    }
+                    _ => {}
+                }
+                Ok(())
+            };
+        register_config_file(r, Arc::new(listener));
+
+        // The Mods screen's Config button opens the tabbed screen below, starting on its first tab.
+        let tab = Arc::clone(&self.screen_tab);
+        let _ = r.register_config_screen(Arc::new(move |_host: &dyn ClientHost| {
+            tab.store(0, std::sync::atomic::Ordering::Relaxed);
+            true
+        }));
 
         r.register_key_mapping(
             KeyRegistration::new(KEY_TOGGLE_BRIDGING, "key.keyboard.comma")
@@ -151,42 +208,26 @@ impl Hooks for BridgingMod {
         );
     }
 
-    fn register_configs(&self, _ctx: &dyn ConfigContext, event: &mut RegisterConfigsEvent<'_>) {
-        register_mod_configs(event.configs);
-    }
-
-    fn config_loading(&self, _ctx: &dyn ConfigContext, event: &mut ConfigLoadingEvent<'_>) {
-        if event.config.mod_id != MOD_ID || event.config.kind != ConfigKind::Client {
-            return;
-        }
-        let parsed = BridgingConfig::parse_toml(&event.config.text);
+    fn setting_changed(&self, host: &dyn Host, event: &mut SettingChangedEvent<'_>) {
         let mut rt = self.lock();
-        rt.config = parsed;
-    }
-
-    fn config_reloading(&self, host: HostSide<'_>, event: &mut ConfigReloadingEvent<'_>) {
-        if event.config.mod_id != MOD_ID || event.config.kind != ConfigKind::Client {
-            return;
-        }
-        let parsed = BridgingConfig::parse_toml(&event.config.text);
-        let mut rt = self.lock();
-        rt.config = parsed;
-        rt.settings_synced = true;
-        if let HostSide::Client(client) = host {
-            rt.config.write_to_host_settings(client);
-        }
-    }
-
-    fn setting_changed(&self, host: &mut dyn ClientHost, event: &mut SettingChangedEvent<'_>) {
-        if event.mod_id != MOD_ID {
-            return;
-        }
-        let mut rt = self.lock();
-        let changed = rt.config.apply_single_setting(host, event.key);
-        rt.sync_initial_settings(host);
-        if changed {
+        if rt.config.apply_single_setting(event.key, event.value) {
             rt.persist_config_file(host);
         }
+    }
+
+    fn screen_init_post(&self, host: &dyn ClientHost, event: &mut ScreenInitPostEvent<'_>) {
+        if event.screen.mod_screen != Some(MOD_ID) || !host.on(MOD_ID) {
+            return;
+        }
+        let keys = self.lock().keys.clone();
+        screen::mount(event.widgets, event.screen.rect, &self.screen_tab, &keys);
+    }
+
+    fn screen_render_post(&self, host: &dyn ClientHost, event: &mut ScreenRenderPostEvent<'_>) {
+        if event.screen.mod_screen != Some(MOD_ID) {
+            return;
+        }
+        screen::render_title(host, event.draw);
     }
 
     fn client_tick_post(&self, host: &mut dyn ClientHost, _event: &mut ClientTickPostEvent) {
@@ -204,13 +245,15 @@ impl Hooks for BridgingMod {
             }
         });
 
-        let mut rt = self.lock();
-        rt.sync_initial_settings(host);
-        rt.client_tick = rt.client_tick.saturating_add(1);
-        if let Some(frac) = ground_y_frac {
-            rt.last_known_y_frac = frac;
+        {
+            let mut rt = self.lock();
+            rt.client_tick = rt.client_tick.saturating_add(1);
+            if let Some(frac) = ground_y_frac {
+                rt.last_known_y_frac = frac;
+            }
         }
-        rt.poll_toggle_key(host);
+        self.sync_initial_settings(host);
+        self.poll_toggle_key(host);
     }
 
     fn client_pick(&self, host: &mut dyn ClientHost, event: &mut ClientPickEvent<'_>) {
@@ -218,9 +261,9 @@ impl Hooks for BridgingMod {
             return;
         }
 
+        self.sync_initial_settings(host);
         let (config, last_known_y_frac) = {
-            let mut rt = self.lock();
-            rt.sync_initial_settings(host);
+            let rt = self.lock();
             (rt.config.clone(), rt.last_known_y_frac)
         };
 
@@ -396,8 +439,12 @@ impl Hooks for BridgingMod {
         Flow::Continue
     }
 
-    fn render_level_stage(&self, host: &dyn ClientHost, event: &mut RenderLevelStageEvent<'_>) {
-        if !host.on(MOD_ID) || event.stage != RenderLevelStage::AfterLevel {
+    fn submit_custom_geometry(
+        &self,
+        host: &dyn ClientHost,
+        event: &mut SubmitCustomGeometryEvent<'_>,
+    ) {
+        if !host.on(MOD_ID) {
             return;
         }
         let (snapshot, config) = {

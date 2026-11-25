@@ -3,8 +3,7 @@
 use crate::config::BridgingConfig;
 use crate::math::Direction;
 use mod_api::client::hud_layout::Blend;
-use mod_api::{ClientHost, DrawContext, GuiDraw, HudMode, WorldDepth, WorldDrawContext, WorldLine};
-use std::borrow::Cow;
+use mod_api::{ClientHost, DrawContext, HudMode, WorldDepth, WorldDrawContext, WorldLine};
 
 /// Size in GUI pixels of the directional crosshair indicator sprites (`CrosshairRenderingMixin.ICON_SIZE`).
 const ICON_SIZE: i32 = 32;
@@ -150,17 +149,16 @@ pub fn render_crosshair_indicator(
         y += 15;
     }
 
-    let ops = [GuiDraw::Sprite {
-        sprite: Cow::Borrowed(alignment.sprite_name()),
-        x,
-        y,
-        w: ICON_SIZE,
-        h: ICON_SIZE,
-        region: None,
-        color: 0xFFFF_FFFF,
-        blend: Blend::Crosshair,
-    }];
-    let _ = draw.gui_paint(&ops);
+    let sprite = alignment.sprite_name();
+    let _ = draw.draw_gui(&mut |canvas| {
+        canvas.blit_sprite(
+            sprite,
+            [x as f32, y as f32, ICON_SIZE as f32, ICON_SIZE as f32],
+            None,
+            0xFFFF_FFFF,
+            Blend::Crosshair,
+        )
+    });
 }
 
 #[cfg(test)]
