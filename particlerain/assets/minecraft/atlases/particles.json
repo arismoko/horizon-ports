@@ -1,0 +1,12 @@
+{
+  "sources": [
+    {
+      "type": "minecraft:directory",
+      "source": "particle",
+      "prefix": "particle/"
+    },
+    {
+      "type": "particlerain:weather_sprites"
+    }
+  ]
+}

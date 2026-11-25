@@ -1,0 +1,14 @@
+Particle Rain for Sunrise 26.3 (version 0.5.0)
+
+A port of Particle Rain by PigCart.
+Original source: https://github.com/PigCart/particle-rain
+Original licence: MIT
+
+Ported to Sunrise by arismoko: the weather particle system, wind simulation, sprite
+splitting/generation, sound controls, commands, F3 debug entries, and configuration are
+implemented in Rust on Sunrise's typed mod API (no Java code is included). This port is
+distributed under the same licence as the original (MIT); the licence text is in LICENSE.
+
+The mod icon (`icon.png`), particle textures (`assets/particlerain/textures/particle/`),
+weather sounds (`assets/particlerain/sounds/weather/` and `sounds.json`), and translations
+(`assets/particlerain/lang/`) are carried from the original MIT-licensed repository.
