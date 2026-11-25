@@ -19,3 +19,7 @@ Differences from the original:
 A port of Clutter by EmilSG, under the MIT licence.
 """
 categories = ["decoration"]
+
+[[screenshots]]
+path = "page/world.png"
+caption = "Player seated on an oak bench with Clutter furniture"

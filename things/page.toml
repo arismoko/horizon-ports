@@ -24,3 +24,7 @@ Differences from the original:
 A port of Things by glisco, under the MIT licence.
 """
 categories = ["equipment", "utility"]
+
+[[screenshots]]
+path = "page/world.png"
+caption = "Things items and trinkets in game"
