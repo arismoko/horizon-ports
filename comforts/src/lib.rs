@@ -9,21 +9,20 @@ mod rules;
 
 use std::collections::{BTreeMap, HashMap};
 use std::ops::ControlFlow;
-use std::sync::{LazyLock, Mutex, MutexGuard, OnceLock};
+use std::sync::{Arc, LazyLock, Mutex, MutexGuard, OnceLock, RwLock};
 
 use mod_api::{
-    ActiveEffect, AttachmentCodec, AttachmentType, Block, BlockFace, BlockKey, BlockMetadata,
-    BlockPart, BlockPathTypeEvent, BlockProperties, BlockShapes, BlockState, BlockStateProperty,
-    BlockUpdateFlags, BlocksEvent, BuildCreativeModeTabContentsEvent, CanContinueSleepingEvent,
-    CanPlayerSleepEvent, CanSurviveEvent, ClientHost, ClockAdjustment, Compound,
-    Config as ModConfig, ConfigContext, ConfigKind, ConfigLoadingEvent, ConfigReloadingEvent,
-    CreativeTabPlacement, CreativeTabVisibility, Direction, EntityTypeKey, ExplosionInteraction,
-    ExplosionSettings, Flow, FluidKey, FluidState, Hand, Holder, Hooks, Host, HostBlockStates,
-    HostSide, Identifier, InteractionResult, ItemKey, ItemPart, ItemStack, JavaString, LevelHost,
-    LevelRef, LevelSide, LevelTicksHost, LivingRef, MobCategory, NoteInstrument,
-    OnDestroyedByPlayerEvent, PathType, PayloadId, PlacementSource, PlayerBedEnterEvent,
-    PlayerBedLeaveEvent, PlayerCloneEvent, PlayerLoggedInEvent, PlayerRef, PlayerSetSpawnEvent,
-    PlayerTickPostEvent, RegisterConfigsEvent, Registrar, RegistrationContext,
+    ActiveEffect, AttachmentCodec, AttachmentDescriptor, AttachmentKey, Block, BlockFace, BlockKey,
+    BlockMetadata, BlockPart, BlockPathTypeEvent, BlockProperties, BlockShapes, BlockState,
+    BlockStateProperty, BlockUpdateFlags, BlocksEvent, BuildCreativeModeTabContentsEvent,
+    CanContinueSleepingEvent, CanPlayerSleepEvent, CanSurviveEvent, ClientHost, ClockAdjustment,
+    Compound, ConfigEvent, ConfigKind, ConfigSnapshot, ConfigSpec, CreativeTabPlacement,
+    CreativeTabVisibility, Direction, EntityTypeKey, ExplosionInteraction, ExplosionSettings, Flow,
+    FluidKey, FluidState, Hand, Holder, Hooks, Host, HostBlockStates, HostSide, Identifier,
+    InteractionResult, ItemKey, ItemPart, ItemStack, JavaString, LevelHost, LevelRef, LevelSide,
+    LevelTicksHost, LivingRef, MobCategory, NoteInstrument, OnDestroyedByPlayerEvent, PathType,
+    PayloadId, PlacementSource, PlayerBedEnterEvent, PlayerBedLeaveEvent, PlayerLoggedInEvent,
+    PlayerRef, PlayerSetSpawnEvent, PlayerTickPostEvent, Registrar, RegistrationContext,
     ScreenKeyPressedPostEvent, ServerHost, SetPlacedByEvent, SleepFinishedTimeEvent, SleepProblem,
     SleepSkipNightEvent, SoundSource, StatType, StateConstraint, StateForPlacementEvent,
     SupportType, Tag, TagKey, Text, ToClient, TooltipEvent, UpdateShapeEvent, UseOnEvent,
@@ -56,18 +55,13 @@ struct ClientSyncPayload {
     bytes: [u8; 3],
 }
 
-/// Persisted per-player Comforts sleep data (`comforts:sleep_data`), copied across death.
-const SLEEP_DATA: AttachmentType<SleepData> = AttachmentType {
-    namespace: MOD_ID,
-    name: "sleep_data",
-    default: SleepData::default,
-    codec: Some(AttachmentCodec {
-        encode: |v| Ok(v.to_compound()),
-        decode: |c| Ok(SleepData::from_compound(c)),
-    }),
-    copy_on_death: true,
-    sync: false,
-};
+/// Issued key of the persisted per-player Comforts sleep data (`comforts:sleep_data`),
+/// registered in `Hooks::register`. Copied across death by the descriptor's policy.
+static SLEEP_DATA: RwLock<Option<AttachmentKey<SleepData>>> = RwLock::new(None);
+
+fn sleep_data_key() -> Option<AttachmentKey<SleepData>> {
+    SLEEP_DATA.read().unwrap_or_else(|e| e.into_inner()).clone()
+}
 
 /// Registry keys resolved once at registration.
 pub(crate) struct Keys {
@@ -137,10 +131,7 @@ fn client_sync_config() -> ClientSyncConfig {
     *lock(&CLIENT_SYNC)
 }
 
-fn apply_config(mod_id: &str, kind: ConfigKind, text: &str) {
-    if mod_id != MOD_ID {
-        return;
-    }
+fn apply_config(kind: ConfigKind, text: &str) {
     match kind {
         ConfigKind::Common => *lock(&COMMON_CONFIG) = CommonConfig::parse(text),
         ConfigKind::Server => {
@@ -171,15 +162,19 @@ fn sync_config_to_all(host: &mut dyn ServerHost) {
 }
 
 fn read_sleep_data(host: &mut dyn ServerHost, uuid: u128) -> SleepData {
-    SLEEP_DATA
-        .get_existing(host, Holder::Player(uuid))
-        .ok()
-        .flatten()
+    sleep_data_key()
+        .and_then(|key| {
+            key.get_existing(host, Holder::Player(uuid), |value| value.cloned())
+                .ok()
+                .flatten()
+        })
         .unwrap_or_default()
 }
 
 fn write_sleep_data(host: &mut dyn ServerHost, uuid: u128, data: SleepData) {
-    let _ = SLEEP_DATA.set(host, Holder::Player(uuid), data);
+    if let Some(key) = sleep_data_key() {
+        let _ = key.set(host, Holder::Player(uuid), data);
+    }
 }
 
 fn block_flags() -> BlockUpdateFlags {
@@ -503,7 +498,7 @@ fn check_tired_restriction(host: &mut dyn ServerHost, player: PlayerRef, level: 
 
 /// Mark both halves occupied and place the player onto a Comforts bed with `sleep_timer = 0`.
 ///
-/// `LivingRef::start_sleeping` checks `name.ends_with("_bed")` on 3d34bbe
+/// `LivingRef::start_sleeping` checks `name.ends_with("_bed")` on bdad86d
 /// (gap: sunrise-org/sunrise#5557), so we position the player on the bed surface and set
 /// their sleeping position directly; `can_continue_sleeping` then sustains sleep.
 fn place_player_in_comforts_bed(
@@ -553,10 +548,10 @@ fn try_sleep_in_comforts_bed(
 ) -> Result<(), Option<&'static str>> {
     let cfg = server_config();
     let time_use = cfg.time_use_for(kind);
-    let dim = level.dimension_type(host);
-    let bed_can_sleep = dim
-        .as_ref()
-        .map_or("when_dark", |d| d.bed_can_sleep.as_str());
+    let bed_can_sleep = level
+        .dimension_type(host)
+        .map_or_else(|| "when_dark".to_owned(), |d| d.bed_can_sleep.to_owned());
+    let bed_can_sleep = bed_can_sleep.as_str();
     let bright = level_is_bright(host, level);
     let thundering = level.is_thundering(host).unwrap_or(false);
 
@@ -725,7 +720,7 @@ fn handle_comforts_wake_up(host: &mut dyn ServerHost, player: PlayerRef, bed_pos
     }
 
     // Free occupied flag and stand player up beside the bed (since engine `bed_wake_pose`
-    // only recognizes `_bed` ids on 3d34bbe). Guard on `block_kind.is_some()` so a bed
+    // only recognizes `_bed` ids on bdad86d). Guard on `block_kind.is_some()` so a bed
     // already broken by someone else while sleeping never duplicates an auto-used bag.
     if let Some(state) = state_at_bed
         && block_kind.is_some()
@@ -845,9 +840,12 @@ struct SleepingBagPart {
 impl BlockPart for SleepingBagPart {
     fn use_without_item(
         &self,
-        host: &mut dyn ServerHost,
+        host: HostSide<'_>,
         event: &mut UseWithoutItemEvent<'_>,
     ) -> Option<InteractionResult> {
+        let HostSide::Server(host) = host else {
+            return None;
+        };
         Some(use_comforts_bed(host, event, BedKind::SleepingBag))
     }
 
@@ -1000,9 +998,12 @@ struct HammockPart {
 impl BlockPart for HammockPart {
     fn use_without_item(
         &self,
-        host: &mut dyn ServerHost,
+        host: HostSide<'_>,
         event: &mut UseWithoutItemEvent<'_>,
     ) -> Option<InteractionResult> {
+        let HostSide::Server(host) = host else {
+            return None;
+        };
         Some(use_comforts_bed(host, event, BedKind::Hammock))
     }
 
@@ -1262,13 +1263,13 @@ struct SleepingBagItemPart {
 
 #[mod_api::sunrise_part]
 impl ItemPart for SleepingBagItemPart {
-    fn tooltip(&self, _host: &dyn ClientHost, event: &mut TooltipEvent<'_>) {
+    fn tooltip(&self, _host: &dyn ClientHost, event: &mut TooltipEvent<'_, '_>) {
         if client_sync_config().auto_use {
-            event.lines.push((
+            let _ = event.lines.push((
                 Text::translate("item.comforts.sleeping_bag.auto_use.tooltip.0", vec![]),
                 GRAY_COLOR,
             ));
-            event.lines.push((
+            let _ = event.lines.push((
                 Text::translate("item.comforts.sleeping_bag.auto_use.tooltip.1", vec![]),
                 GRAY_COLOR,
             ));
@@ -1510,9 +1511,9 @@ struct HammockItemPart {
 
 #[mod_api::sunrise_part]
 impl ItemPart for HammockItemPart {
-    fn tooltip(&self, _host: &dyn ClientHost, event: &mut TooltipEvent<'_>) {
+    fn tooltip(&self, _host: &dyn ClientHost, event: &mut TooltipEvent<'_, '_>) {
         let rope_name = Text::translate("item.comforts.rope_and_nail", vec![]);
-        event.lines.push((
+        let _ = event.lines.push((
             Text::translate("item.comforts.hammock.placement.tooltip", vec![rope_name]),
             GRAY_COLOR,
         ));
@@ -1654,8 +1655,8 @@ struct RopeAndNailItemPart;
 
 #[mod_api::sunrise_part]
 impl ItemPart for RopeAndNailItemPart {
-    fn tooltip(&self, _host: &dyn ClientHost, event: &mut TooltipEvent<'_>) {
-        event.lines.push((
+    fn tooltip(&self, _host: &dyn ClientHost, event: &mut TooltipEvent<'_, '_>) {
+        let _ = event.lines.push((
             Text::translate("item.comforts.rope_and_nail.placement.tooltip", vec![]),
             GRAY_COLOR,
         ));
@@ -1758,7 +1759,43 @@ struct ComfortsMod;
 #[mod_api::sunrise_mod]
 impl Hooks for ComfortsMod {
     fn register(&self, r: &mut dyn Registrar, _: &RegistrationContext) {
-        let _ = r.register_attachment_type(ATTACH_SLEEP_DATA, false);
+        if let Ok(key) = r.register_attachment_type(
+            AttachmentDescriptor::new(ATTACH_SLEEP_DATA, SleepData::default)
+                .serialize(AttachmentCodec {
+                    encode: |v| Ok(v.to_compound()),
+                    decode: |c| Ok(SleepData::from_compound(c)),
+                })
+                .copy_on_death(),
+        ) {
+            *SLEEP_DATA.write().unwrap_or_else(|e| e.into_inner()) = Some(key);
+        }
+
+        for (kind, default) in [
+            (ConfigKind::Common, DEFAULT_COMMON),
+            (ConfigKind::Server, DEFAULT_SERVER),
+        ] {
+            let listener =
+                move |event: ConfigEvent<'_>, snapshot: &ConfigSnapshot| -> Result<(), String> {
+                    match event {
+                        ConfigEvent::Loading(_) => apply_config(kind, &snapshot.text),
+                        ConfigEvent::Reloading(host) => {
+                            apply_config(kind, &snapshot.text);
+                            if kind == ConfigKind::Server
+                                && let HostSide::Server(server) = host
+                            {
+                                sync_config_to_all(server);
+                            }
+                        }
+                        _ => {}
+                    }
+                    Ok(())
+                };
+            if let Err(err) =
+                r.register_config(ConfigSpec::new(kind, default), Some(Arc::new(listener)))
+            {
+                eprintln!("comforts: config registration refused: {err:?}");
+            }
+        }
 
         let mut items_by_id = HashMap::new();
         let mut tags_by_id = HashMap::new();
@@ -1944,48 +1981,9 @@ impl Hooks for ComfortsMod {
         let _ = event.register(rope);
     }
 
-    fn register_configs(&self, _: &dyn ConfigContext, event: &mut RegisterConfigsEvent<'_>) {
-        event
-            .configs
-            .push(ModConfig::new(MOD_ID, ConfigKind::Common, DEFAULT_COMMON));
-        event
-            .configs
-            .push(ModConfig::new(MOD_ID, ConfigKind::Server, DEFAULT_SERVER));
-    }
-
-    fn config_loading(&self, _: &dyn ConfigContext, event: &mut ConfigLoadingEvent<'_>) {
-        apply_config(
-            event.config.mod_id.as_str(),
-            event.config.kind,
-            &event.config.text,
-        );
-    }
-
-    fn config_reloading(&self, host: HostSide, event: &mut ConfigReloadingEvent<'_>) {
-        apply_config(
-            event.config.mod_id.as_str(),
-            event.config.kind,
-            &event.config.text,
-        );
-        if event.config.mod_id == MOD_ID
-            && event.config.kind == ConfigKind::Server
-            && let HostSide::Server(server) = host
-        {
-            sync_config_to_all(server);
-        }
-    }
-
     fn player_logged_in(&self, host: &mut dyn ServerHost, event: &mut PlayerLoggedInEvent<'_>) {
         if let Some(player) = host.player(event.player) {
             send_client_sync(host, player);
-        }
-    }
-
-    fn player_clone(&self, host: &mut dyn ServerHost, event: &mut PlayerCloneEvent<'_>) {
-        if event.was_death
-            && let Ok(Some(data)) = event.original.existing_attachment(&SLEEP_DATA)
-        {
-            write_sleep_data(host, event.player, data);
         }
     }
 
@@ -2057,10 +2055,10 @@ impl Hooks for ComfortsMod {
         }
         let cfg = server_config();
         let time_use = cfg.time_use_for(kind);
-        let dim = level.dimension_type(host);
-        let bed_can_sleep = dim
-            .as_ref()
-            .map_or("when_dark", |d| d.bed_can_sleep.as_str());
+        let bed_can_sleep = level
+            .dimension_type(host)
+            .map_or_else(|| "when_dark".to_owned(), |d| d.bed_can_sleep.to_owned());
+        let bed_can_sleep = bed_can_sleep.as_str();
         let bright = level_is_bright(host, level);
         let thundering = level.is_thundering(host).unwrap_or(false);
         let allowed = can_sleep_for_time(time_use, bed_can_sleep, bright, thundering);
@@ -2268,7 +2266,7 @@ impl Hooks for ComfortsMod {
 
     fn build_creative_mode_tab_contents(
         &self,
-        host: HostSide,
+        _host: HostSide,
         event: &mut BuildCreativeModeTabContentsEvent<'_>,
     ) {
         let is_colored = event.tab == "minecraft:colored_blocks";
@@ -2276,22 +2274,16 @@ impl Hooks for ComfortsMod {
         if !is_colored && !is_functional {
             return;
         }
-        let host: &dyn Host = match &host {
-            HostSide::Server(h) => &**h,
-            HostSide::Client(h) => &**h,
-        };
         let k = keys();
         for item in k.sleeping_bag_items.iter().chain(k.hammock_items.iter()) {
-            let _ = event.edit.insert(
-                host,
+            let _ = event.output.insert(
                 CreativeTabPlacement::Last,
                 ItemStack::of(*item),
                 CreativeTabVisibility::Both,
             );
         }
         if is_functional {
-            let _ = event.edit.insert(
-                host,
+            let _ = event.output.insert(
                 CreativeTabPlacement::Last,
                 ItemStack::of(k.rope_and_nail_item),
                 CreativeTabVisibility::Both,
