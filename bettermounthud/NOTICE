@@ -1,0 +1,13 @@
+Better Mount HUD for Sunrise 26.3 (version 0.5.0)
+
+A port of Better Mount HUD (1.3.1) by Lortseam, with contributions from AndreAugustoDev,
+GrinlexGH, alxstack, whqwert, Riflusso and Abelpro678.
+Original source: https://github.com/Lortseam/better-mount-hud
+Original licence: GPL-3.0-only
+
+Ported to Sunrise by arismoko: the HUD layouts are written in Rust on Sunrise's typed mod
+API from the original's observable behaviour (no Java code is included). This port is
+distributed under the same licence as the original (GPL-3.0-only); the licence text is in
+LICENSE.
+
+Assets carried from the original repository under the GPL-3.0-only licence: icon.png.
