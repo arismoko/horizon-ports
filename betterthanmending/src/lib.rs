@@ -5,7 +5,7 @@
 //! With more than 2 points of experience the use is taken on both sides. On the
 //! server, 20 points go when you have at least 30 and the item lacks at least 40
 //! durability, otherwise 2 points; the item gets back the durability Mending gives
-//! for those points.
+//! for those points (asked of the item's enchantments, so a data pack's change follows).
 use mod_api::{
     EnchantmentEffect, Flow, Hooks, Host, HostSide, InteractionResult, ItemResource, ItemStack,
     LivingRef, PlayerRef, RightClickItemEvent, ServerHost,
@@ -58,14 +58,9 @@ pub fn points_to_spend(xp: i32, damage: u32) -> u32 {
     if xp >= 30 && damage >= 40 { 20 } else { 2 }
 }
 
-/// Vanilla Mending's `minecraft:repair_with_xp` effect: two durability per point.
-/// The original asks `EnchantmentHelper.modifyDurabilityToRepairFromXp`, which a data
-/// pack's change to the effect would follow; the API has no such read (sunrise#5350).
-const MENDING_REPAIR_PER_POINT: u32 = 2;
-
-/// The new damage after spending `points` on an item with `damage`.
-pub fn repaired_damage(damage: u32, points: u32) -> u32 {
-    damage - (points * MENDING_REPAIR_PER_POINT).min(damage)
+/// The new damage after the item is repaired by `repair` durability.
+pub fn repaired_damage(damage: u32, repair: u32) -> u32 {
+    damage - repair.min(damage)
 }
 
 /// Level, points into the bar, and total after taking `points` (`Utilities.addPlayerXP`
@@ -101,8 +96,9 @@ fn will_mend(host: &dyn Host, player: PlayerRef, stack: &ItemStack) -> Option<i3
 fn mend(host: &mut dyn ServerHost, player: PlayerRef, event: &RightClickItemEvent<'_>, xp: i32) {
     let click = event.click;
     let points = points_to_spend(xp, click.stack.damage());
+    let repair = ItemResource::of(click.stack).durability_to_repair_from_xp(host, points as i32);
     let mut stack = click.stack.clone();
-    stack.set_damage(repaired_damage(stack.damage(), points));
+    stack.set_damage(repaired_damage(stack.damage(), repair));
     if !matches!(
         LivingRef::new(player.entity()).set_hand_item(host, click.hand, Some(stack)),
         Ok(true)
@@ -176,8 +172,8 @@ mod tests {
         assert_eq!(points_to_spend(30, 40), 20);
         assert_eq!(points_to_spend(29, 100), 2);
         assert_eq!(points_to_spend(100, 39), 2);
-        assert_eq!(repaired_damage(100, 20), 60);
-        assert_eq!(repaired_damage(3, 2), 0);
+        assert_eq!(repaired_damage(100, 40), 60);
+        assert_eq!(repaired_damage(3, 4), 0);
     }
 
     #[test]
