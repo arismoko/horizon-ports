@@ -1,0 +1,13 @@
+[package]
+name = "mod-enchantmentdescriptions"
+version = "0.5.0"
+edition = "2024"
+license = "LGPL-2.1-only"
+description = "Enchantment Descriptions for Sunrise: a description line under each enchantment in item tooltips"
+# Ported from: Enchantment Descriptions 26.3.0 (Darkhax-Minecraft/Enchantment-Descriptions, LGPL-2.1).
+# Cargo's name and version are not the mod's identity: sunrise-mod.toml is.
+publish = false
+
+[dependencies]
+# The pinned SDK's API crate, fetched into .sunrise/sdk/ by any `cargo sunrise-mod` command.
+sunrise-mod-api = { path = ".sunrise/sdk/api/crates/sunrise-mod-api" }

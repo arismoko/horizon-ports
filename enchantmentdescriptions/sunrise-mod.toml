@@ -1,0 +1,14 @@
+# Enchantment Descriptions for Sunrise: client-only native code in src/ using the typed mod API.
+id = "enchantmentdescriptions"
+name = "Enchantment Descriptions"
+version = "0.5.0"
+description = "Shows what each enchantment does, as a line under its name in item tooltips."
+authors = ["Darkhax", "arismoko"]
+license = "LGPL-2.1-only"
+credits = "Original mod by Darkhax (LGPL-2.1); ported to Sunrise by arismoko."
+homepage = "https://github.com/arismoko/sunrise-ports"
+side = "client"
+
+[native]
+game = "26.3"
+sunrise = "3d34bbe63d71bb24c098c1e4021ef866be12fe2d"
