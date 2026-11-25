@@ -275,6 +275,12 @@ pub struct WindSnapshot {
     is_raining: AtomicBool,
 }
 
+impl Default for WindSnapshot {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl WindSnapshot {
     pub const fn new() -> Self {
         Self {

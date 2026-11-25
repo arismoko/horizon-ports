@@ -65,8 +65,14 @@ impl LeafParticleData {
         ParticleMapCodec::new(
             |fields, _| {
                 let read_f32 = |k: &str, default: f32| match fields.get(&k.into()) {
-                    Some(Tag::Float(v)) if v.is_finite() => *v,
-                    Some(Tag::Double(v)) if v.is_finite() => *v as f32,
+                    Some(Tag::Float(bits)) => {
+                        let v = f32::from_bits(*bits);
+                        if v.is_finite() { v } else { default }
+                    }
+                    Some(Tag::Double(bits)) => {
+                        let v = f64::from_bits(*bits) as f32;
+                        if v.is_finite() { v } else { default }
+                    }
                     _ => default,
                 };
                 let lifespan = match fields.get(&"lifespan".into()) {
@@ -83,10 +89,10 @@ impl LeafParticleData {
             },
             |value, _| {
                 Ok(Compound::from([
-                    ("r".into(), Tag::Float(value.r)),
-                    ("g".into(), Tag::Float(value.g)),
-                    ("b".into(), Tag::Float(value.b)),
-                    ("size".into(), Tag::Float(value.size)),
+                    ("r".into(), Tag::Float(value.r.to_bits())),
+                    ("g".into(), Tag::Float(value.g.to_bits())),
+                    ("b".into(), Tag::Float(value.b.to_bits())),
+                    ("size".into(), Tag::Float(value.size.to_bits())),
                     ("lifespan".into(), Tag::Int(value.lifespan)),
                 ]))
             },
@@ -143,6 +149,12 @@ pub struct ParticleSharedState {
     pub wind: WindSnapshot,
     pub blocks: Mutex<FluidBlockCache>,
     pub lava_splashes: Mutex<Vec<[f64; 3]>>,
+}
+
+impl Default for ParticleSharedState {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl ParticleSharedState {

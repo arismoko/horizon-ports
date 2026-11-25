@@ -11,11 +11,11 @@ Falling Leaves adds gentle, wind-driven falling leaf and snowflake particles to 
 
 Differences from the original:
 
-- Vanilla's built-in leaf particles (`tinted_leaves`, `cherry_leaves`, `pale_oak_leaves`, poplar leaves) cannot be suppressed from `animate_tick` and continue to emit alongside Falling Leaves' custom particles (gap: TBD-suppress-vanilla-animate-tick).
-- Uses `side = "both"` rather than `side = "client"` (and has no `registerParticles = false` mode) because Sunrise requires `side = "both"` for code-defined particle providers (gap: TBD-client-particle-provider).
-- Leaf particle tint uses exact biome-blended `block_tint_color` and vanilla base colors rather than averaging stitched `TextureAtlasSprite` pixels for custom resource-pack or modded untinted leaves (gap: TBD-sprite-average-color).
-- Resource packs cannot add unregistered per-block sprite sets under `assets/fallingleaves/particles/block/<ns>/<path>.json` (gap: TBD-dynamic-particle-sprites).
-- Per-block `leaf_settings` maps and `windless_dimensions` / `leaf_spawners` lists are edited in `config/fallingleaves-client.toml` rather than in-game (gap: TBD-structured-settings-ui).
+- Vanilla's built-in leaf particles (`tinted_leaves`, `cherry_leaves`, `pale_oak_leaves`, poplar leaves) cannot be suppressed from `animate_tick` and continue to emit alongside Falling Leaves' custom particles (gap: sunrise-org/sunrise#5382).
+- Uses `side = "both"` rather than `side = "client"` (and has no `registerParticles = false` mode) because Sunrise requires `side = "both"` for code-defined particle providers (gap: sunrise-org/sunrise#5611).
+- Leaf particle tint uses exact biome-blended `block_tint_color` and vanilla base colors rather than averaging stitched `TextureAtlasSprite` pixels for custom resource-pack or modded untinted leaves (gap: sunrise-org/sunrise#4601).
+- Resource packs cannot add unregistered per-block sprite sets under `assets/fallingleaves/particles/block/<ns>/<path>.json` (gap: sunrise-org/sunrise#5612).
+- Per-block `leaf_settings` maps and `windless_dimensions` / `leaf_spawners` lists are edited in `config/fallingleaves-client.toml` rather than in-game (gap: sunrise-org/sunrise#1174).
 - Fabric Seasons and Serene Seasons compatibility multipliers are omitted because those mods are not present on Sunrise.
 
 A port of Falling Leaves by Fourmisain, BrekiTomasson, and RandomMcSomethin, under the MIT licence.

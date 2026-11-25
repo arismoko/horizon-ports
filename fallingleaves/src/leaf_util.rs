@@ -445,10 +445,12 @@ mod tests {
 
     #[test]
     fn modified_spawn_chance_respects_radius_persistent_and_decay() {
-        let mut cfg = FallingLeavesConfig::default();
-        cfg.starting_spawn_radius = 5;
-        cfg.drop_from_player_placed_blocks = false;
-        cfg.decay_spawn_rate_factor = 2.6;
+        let cfg = FallingLeavesConfig {
+            starting_spawn_radius: 5,
+            drop_from_player_placed_blocks: false,
+            decay_spawn_rate_factor: 2.6,
+            ..FallingLeavesConfig::default()
+        };
         let settings = LeafSettingsEntry::default_for("minecraft:oak_leaves");
 
         // Inside minimal radius -> 0

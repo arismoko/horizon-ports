@@ -972,11 +972,13 @@ mod tests {
 
     #[test]
     fn toml_round_trip_preserves_scalar_and_per_block_settings() {
-        let mut cfg = FallingLeavesConfig::default();
-        cfg.leaf_size = 8;
-        cfg.leaf_spawn_rate = 30;
-        cfg.wind_enabled = false;
-        cfg.leaf_spawners = vec!["minecraft:bamboo[leaves=large]".to_owned()];
+        let mut cfg = FallingLeavesConfig {
+            leaf_size: 8,
+            leaf_spawn_rate: 30,
+            wind_enabled: false,
+            leaf_spawners: vec!["minecraft:bamboo[leaves=large]".to_owned()],
+            ..FallingLeavesConfig::default()
+        };
         cfg.leaf_settings.insert(
             "minecraft:oak_leaves".to_owned(),
             LeafSettingsEntry {

@@ -8,7 +8,7 @@ license = "MIT"
 credits = "Original mod by Fourmisain, BrekiTomasson, and RandomMcSomethin (MIT); ported to Sunrise by arismoko."
 homepage = "https://github.com/arismoko/sunrise-ports"
 # Uses side = "both" because Sunrise's register_particle_type requires side = "both"
-# for code-defined particle providers (gap: TBD-client-particle-provider).
+# for code-defined particle providers (gap: sunrise-org/sunrise#5611).
 side = "both"
 
 [native]
