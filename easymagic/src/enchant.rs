@@ -6,6 +6,7 @@ use mod_api::{
 };
 use serde_json::Value;
 use std::collections::HashMap;
+use std::io::Read;
 use std::ops::ControlFlow;
 use std::sync::{PoisonError, RwLock};
 
@@ -279,9 +280,13 @@ fn build_catalog(host: &dyn Host) -> EnchantmentCatalog {
     let ench_reg = Identifier::parse("minecraft:enchantment").ok();
 
     for res_id in files {
-        let Some(bytes) = host.resource(PackType::ServerData, &res_id) else {
+        let Ok(Some(mut reader)) = host.open_resource(PackType::ServerData, &res_id) else {
             continue;
         };
+        let mut bytes = Vec::new();
+        if reader.read_to_end(&mut bytes).is_err() {
+            continue;
+        }
         let Ok(json) = serde_json::from_slice::<Value>(&bytes) else {
             continue;
         };
