@@ -65,7 +65,6 @@ const HELD: [&str; 7] = [
     "free_look",
 ];
 
-const MAX_SKIPPED_BLOCKS: usize = 16;
 /// Degrees one unit of an `Entity.turn` delta turns the view.
 const TURN_DEGREES: f32 = 0.15;
 /// Sounds this close to the player (blocks) are the player's own.
@@ -306,7 +305,7 @@ fn ray_block(
     let total = math::length(math::sub(to, from));
     let unit = pick::normalized(math::sub(to, from))?;
     let mut start = from;
-    for _ in 0..MAX_SKIPPED_BLOCKS {
+    loop {
         let hit = level.clip(host, start, to, ClipBlock::Outline, ClipFluid::None)?;
         if hit.miss {
             return None;
@@ -329,7 +328,6 @@ fn ray_block(
             return None;
         }
     }
-    None
 }
 
 fn ray_entity(
@@ -648,6 +646,9 @@ impl Hooks for ShoulderSurfing {
     }
 
     fn setting_changed(&self, _host: &dyn Host, event: &mut SettingChangedEvent<'_>) {
+        if event.mod_id != MOD_ID {
+            return;
+        }
         // A write made from a callback that holds the runtime has already stored its value.
         if let Some(mut rt) = rt_try() {
             rt.synced = true;
