@@ -24,3 +24,15 @@ Differences from the original:
 A port of Overflowing Bars by Fuzs, under the MPL-2.0 licence.
 """
 categories = ["utility", "equipment"]
+
+[[screenshots]]
+path = "page/stacked.png"
+caption = "Health past ten hearts, absorption and armor stack in coloured rows with row counts; toughness sits on the right."
+
+[[screenshots]]
+path = "page/layers-off.png"
+caption = "With Allow Layers off the bars pile up as in vanilla."
+
+[[screenshots]]
+path = "page/settings.png"
+caption = "Per-bar options under Options > Mods."
