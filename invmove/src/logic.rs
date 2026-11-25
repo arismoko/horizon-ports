@@ -117,10 +117,12 @@ pub fn sneak_when_disallowed(
 
 /// `KeyboardInput.tick`'s move vector: `[left, forward]`, normalised when both axes are used.
 pub fn move_vector(forward: bool, backward: bool, left: bool, right: bool) -> [f32; 2] {
-    let axis = |positive: bool, negative: bool| match (positive, negative) {
-        (true, false) => 1.0,
-        (false, true) => -1.0,
-        _ => 0.0,
+    let axis = |positive: bool, negative: bool| -> f32 {
+        match (positive, negative) {
+            (true, false) => 1.0,
+            (false, true) => -1.0,
+            _ => 0.0,
+        }
     };
     let v = [axis(left, right), axis(forward, backward)];
     let length = (v[0] * v[0] + v[1] * v[1]).sqrt();
