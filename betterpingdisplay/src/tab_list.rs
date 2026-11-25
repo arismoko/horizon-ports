@@ -142,7 +142,7 @@ pub enum PingDraw {
         color: u32,
     },
     Text {
-        text: Text,
+        text: Box<Text>,
         x: i32,
         y: i32,
         color: u32,
@@ -450,7 +450,7 @@ impl TabListState {
             for line in lines {
                 let w = metrics.text_width(line);
                 out.push(PingDraw::Text {
-                    text: line.clone(),
+                    text: Box::new(line.clone()),
                     x: screen_width / 2 - w / 2,
                     y: yyo,
                     color: WHITE,
@@ -492,7 +492,7 @@ impl TabListState {
             let xo = slot_left + head;
             let spectator = entry.game_mode == GameMode::Spectator;
             out.push(PingDraw::Text {
-                text: entry.display.clone(),
+                text: Box::new(entry.display.clone()),
                 x: xo,
                 y: yo,
                 color: if spectator { SPECTATOR_COLOR } else { WHITE },
@@ -509,7 +509,7 @@ impl TabListState {
                         );
                     } else if let Some(text) = formatted {
                         out.push(PingDraw::Text {
-                            text: text.clone(),
+                            text: Box::new(text.clone()),
                             x: right - *score_width,
                             y: yo,
                             color: WHITE,
@@ -528,7 +528,7 @@ impl TabListState {
                 ping_x += PING_BARS_WIDTH;
             }
             out.push(PingDraw::Text {
-                text: Text::literal(ping_text),
+                text: Box::new(Text::literal(ping_text)),
                 x: ping_x,
                 y: yo,
                 color: ping_color,
@@ -552,7 +552,7 @@ impl TabListState {
             for line in lines {
                 let w = metrics.text_width(line);
                 out.push(PingDraw::Text {
-                    text: line.clone(),
+                    text: Box::new(line.clone()),
                     x: screen_width / 2 - w / 2,
                     y: yyo,
                     color: WHITE,
@@ -607,7 +607,7 @@ impl TabListState {
             };
             let w = metrics.text_width(&text);
             out.push(PingDraw::Text {
-                text,
+                text: Box::new(text),
                 x: (right + left - w) / 2,
                 y: yo,
                 color: color | 0xFF00_0000,
@@ -762,7 +762,7 @@ mod tests {
         let ping_no_bars = draws_no_bars
             .iter()
             .find_map(|d| match d {
-                PingDraw::Text { text, x, color, .. } if *text == Text::literal("42ms") => {
+                PingDraw::Text { text, x, color, .. } if **text == Text::literal("42ms") => {
                     Some((*x, *color))
                 }
                 _ => None,
@@ -782,7 +782,7 @@ mod tests {
         let ping_with_bars = draws_with_bars
             .iter()
             .find_map(|d| match d {
-                PingDraw::Text { text, x, color, .. } if *text == Text::literal("42ms") => {
+                PingDraw::Text { text, x, color, .. } if **text == Text::literal("42ms") => {
                     Some((*x, *color))
                 }
                 _ => None,
@@ -815,7 +815,7 @@ mod tests {
             draws
                 .iter()
                 .find_map(|d| match d {
-                    PingDraw::Text { text, color, .. } if *text == Text::literal(label) => {
+                    PingDraw::Text { text, color, .. } if **text == Text::literal(label) => {
                         Some(*color)
                     }
                     _ => None,
