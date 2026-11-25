@@ -22,6 +22,7 @@ use mod_api::{
     OnDestroyedByPlayerEvent, ParticleKey, ParticleOptions, PlayerRef, ServerHost, StatType, Text,
     UseItemOnEvent, UseWithoutItemEvent,
 };
+use std::cell::Cell;
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{LazyLock, Mutex, OnceLock, PoisonError};
@@ -154,8 +155,30 @@ fn viewer_of(uuid: u128) -> Option<ViewerEntry> {
         .cloned()
 }
 
+thread_local! {
+    /// Allows server-side updates to slot 2 via `ItemPlace::MenuSlot` to bypass
+    /// `menu_slot_rules`'s player-facing `may_place = false` and `may_pickup` gates.
+    static WRITING_OUTPUT_SLOT: Cell<bool> = const { Cell::new(false) };
+}
+
+struct OutputSlotWriteGuard(bool);
+
+impl OutputSlotWriteGuard {
+    fn enter() -> Self {
+        let prev = WRITING_OUTPUT_SLOT.replace(true);
+        Self(prev)
+    }
+}
+
+impl Drop for OutputSlotWriteGuard {
+    fn drop(&mut self) {
+        WRITING_OUTPUT_SLOT.set(self.0);
+    }
+}
+
 /// Replaces all 3 owned slots `[input0, input1, output]` of an open `easyanvils:anvil` menu.
 fn set_menu_all_slots(host: &mut dyn ServerHost, menu: MenuRef, desired: &[Option<ItemStack>; 3]) {
+    let _guard = OutputSlotWriteGuard::enter();
     let _ = host.transaction(|host, tx| {
         for (slot, target) in desired.iter().enumerate() {
             let place = ItemPlace::MenuSlot { menu, slot };
@@ -176,6 +199,7 @@ fn set_menu_all_slots(host: &mut dyn ServerHost, menu: MenuRef, desired: &[Optio
 
 /// Replaces only slot 2 (output preview) of an open `easyanvils:anvil` menu.
 fn set_menu_output_slot(host: &mut dyn ServerHost, menu: MenuRef, output: Option<&ItemStack>) {
+    let _guard = OutputSlotWriteGuard::enter();
     let _ = host.transaction(|host, tx| {
         let place = ItemPlace::MenuSlot { menu, slot: 2 };
         if let Some(current_res) = place.resource(host) {
@@ -567,6 +591,9 @@ impl MenuPart for AnvilMenuPart {
             return;
         }
         if event.slot == 2 {
+            if WRITING_OUTPUT_SLOT.get() {
+                return;
+            }
             event.may_place = false;
             let allowed = event
                 .context
@@ -665,7 +692,7 @@ impl MenuPart for AnvilMenuPart {
             if let Some(sec) = inputs[1].take() {
                 inputs[1] = sec.shrink(viewer.repair_item_count_cost);
             }
-        } else {
+        } else if !viewer.only_renaming {
             inputs[1] = None;
         }
 

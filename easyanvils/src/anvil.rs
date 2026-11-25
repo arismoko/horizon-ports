@@ -248,18 +248,21 @@ fn has_stored_enchantments(host: &dyn Host, stack: &ItemStack) -> bool {
     ItemResource::of(stack).value(host, &comp).is_some()
 }
 
-fn can_store_enchantments(host: &dyn Host, stack: &ItemStack) -> bool {
-    let has_ench = ComponentId::new("minecraft:enchantments")
-        .is_some_and(|c| ItemResource::of(stack).value(host, &c).is_some());
-    has_ench || has_stored_enchantments(host, stack)
-}
-
 fn enchantment_component_name(host: &dyn Host, stack: &ItemStack) -> &'static str {
-    if has_stored_enchantments(host, stack) {
+    if stack.item().id(host) == Some("minecraft:enchanted_book") {
         "minecraft:stored_enchantments"
     } else {
         "minecraft:enchantments"
     }
+}
+
+/// Vanilla `EnchantmentHelper.canStoreEnchantments(ItemStack)`: true when the stack has its
+/// enchantment component (`minecraft:stored_enchantments` for enchanted books, otherwise
+/// `minecraft:enchantments`), including the item's default prototype component unless removed
+/// by a `!` component patch.
+fn can_store_enchantments(host: &dyn Host, stack: &ItemStack) -> bool {
+    let comp_name = enchantment_component_name(host, stack);
+    ComponentId::new(comp_name).is_some_and(|c| ItemResource::of(stack).value(host, &c).is_some())
 }
 
 fn read_enchantments(host: &dyn Host, stack: &ItemStack) -> BTreeMap<String, i32> {
@@ -638,9 +641,11 @@ mod tests {
 
     #[test]
     fn limited_rename_and_repair_caps_below_max_cost() {
-        let mut cfg = ServerConfig::default();
-        cfg.rename_and_repair_costs = RenameAndRepairCost::Limited;
-        cfg.too_expensive_limit = 40;
+        let cfg = ServerConfig {
+            rename_and_repair_costs: RenameAndRepairCost::Limited,
+            too_expensive_limit: 40,
+            ..ServerConfig::default()
+        };
         let (cost, has_out) = compute_final_cost_and_cap(50, 0, 2, false, false, &cfg);
         assert_eq!(cost, 39);
         assert!(has_out);
@@ -648,8 +653,10 @@ mod tests {
 
     #[test]
     fn too_expensive_limit_blocks_survival_but_allows_creative() {
-        let mut cfg = ServerConfig::default();
-        cfg.too_expensive_limit = 40;
+        let cfg = ServerConfig {
+            too_expensive_limit: 40,
+            ..ServerConfig::default()
+        };
         let (cost_surv, out_surv) = compute_final_cost_and_cap(30, 15, 15, false, false, &cfg);
         assert_eq!(cost_surv, 45);
         assert!(!out_surv);

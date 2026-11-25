@@ -14,9 +14,9 @@ Needed on both the server and the client.
 
 Differences from the original:
 
-- Items stored inside an anvil are not drawn on top of the anvil in the world (`render_anvil_contents`), because vanilla anvils cannot yet attach a world-space item renderer on the mod API (gap: TBD-world-item-render).
-- Other mods' custom `anvil_update` recipes are not invoked inside Easy Anvils' custom anvil menu, because a mod menu cannot dispatch `anvil_update` to other mods (gap: TBD-mod-anvil-update-dispatch).
-- Unaltered vanilla anvils (`convert_vanilla_anvil_when_interacting = false` or `#easyanvils:unaltered_anvils`) keep vanilla's 12% break chance, because `anvil_craft_pre` does not expose a break-chance modifier (gap: TBD-unaltered-anvil-break-chance).
+- Items stored inside an anvil are not drawn on top of the anvil in the world (`render_anvil_contents`), because vanilla anvils cannot yet attach a world-space item renderer on the mod API (gap: sunrise-org/sunrise#5609).
+- Other mods' custom `anvil_update` recipes are not invoked inside Easy Anvils' custom anvil menu, because a mod menu cannot dispatch `anvil_update` to other mods (gap: sunrise-org/sunrise#5610).
+- Unaltered vanilla anvils (`convert_vanilla_anvil_when_interacting = false` or `#easyanvils:unaltered_anvils`) keep vanilla's 12% break chance, because `anvil_craft_pre` does not expose a break-chance modifier (gap: sunrise-org/sunrise#5500).
 
 A port of Easy Anvils by Fuzs, under the MPL-2.0 licence.
 """
