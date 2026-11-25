@@ -1,6 +1,6 @@
 [package]
 name = "mod-enchantmentdescriptions"
-version = "0.5.2"
+version = "0.5.3"
 edition = "2024"
 license = "LGPL-2.1-only"
 description = "Enchantment Descriptions for Sunrise: a description line under each enchantment in item tooltips"
