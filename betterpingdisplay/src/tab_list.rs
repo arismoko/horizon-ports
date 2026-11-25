@@ -47,6 +47,7 @@ pub struct TabList {
 }
 
 impl TabList {
+    #[cfg(test)]
     pub fn new(entries: Vec<TabEntry>, header: Option<Text>, footer: Option<Text>) -> Self {
         Self {
             entries,
