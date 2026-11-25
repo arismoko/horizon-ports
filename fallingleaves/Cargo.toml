@@ -1,0 +1,13 @@
+[package]
+name = "mod-fallingleaves"
+version = "0.5.1"
+edition = "2024"
+license = "MIT"
+description = "Falling Leaves for Sunrise: adds wind-driven falling leaf and snowflake particles from leaf blocks"
+# Ported from: Falling Leaves 2.0.8 (Fourmisain/fallingleaves, MIT).
+# Cargo's name and version are not the mod's identity: sunrise-mod.toml is.
+publish = false
+
+[dependencies]
+# The pinned SDK's API crate, fetched into .sunrise/sdk/ by any `cargo sunrise-mod` command.
+sunrise-mod-api = { path = ".sunrise/sdk/api/crates/sunrise-mod-api" }

@@ -1,0 +1,13 @@
+[package]
+name = "mod-cutthrough"
+version = "0.5.1"
+edition = "2024"
+license = "MPL-2.0"
+description = "Cut Through for Sunrise: swing through blocks without a collision shape, like tall grass, to hit mobs behind them"
+# Ported from: Cut Through 26.3.0 (Fuzss/cut-through, MPL-2.0).
+# Cargo's name and version are not the mod's identity: sunrise-mod.toml is.
+publish = false
+
+[dependencies]
+# The pinned SDK's API crate, fetched into .sunrise/sdk/ by any `cargo sunrise-mod` command.
+sunrise-mod-api = { path = ".sunrise/sdk/api/crates/sunrise-mod-api" }
