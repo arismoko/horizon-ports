@@ -5,14 +5,15 @@
 use std::collections::HashMap;
 
 use mod_api::{
-    AttachmentCodec, AttachmentType, BlockEntityPart, BlockEntityPartState, BlockEntityRef,
-    BlockPart, Compound, Host, HostTransaction, ItemStack, LevelRef, ServerHost, Tag,
+    AttachmentKey, BlockEntityPart, BlockEntityPartState, BlockEntityRef, BlockPart, Compound,
+    Host, HostTransaction, ItemStack, LevelRef, ServerHost, Tag,
 };
 
 use crate::contents::{self, custom_data, get_int, put, set_custom_data};
 use crate::crafting;
 use crate::menu::{button, filler};
 use crate::places;
+use crate::states::StateKey;
 use crate::storage_items::{self, Family};
 
 /// The parts one dye item is worth (`DecorationHelper.BLOCK_TOTAL_PARTS`).
@@ -47,20 +48,10 @@ const CELL_MAIN: usize = 9;
 const CELL_ACCENT: usize = 18;
 
 /// The table state: the chosen colours and the parts left in each dye.
-pub static STATE: AttachmentType<Compound> = AttachmentType {
-    namespace: "sophisticatedstorage",
-    name: "decoration_table",
-    default: Compound::new,
-    codec: Some(AttachmentCodec {
-        encode: |c| Ok(c.clone()),
-        decode: |c| Ok(c.clone()),
-    }),
-    copy_on_death: false,
-    sync: false,
-};
+pub static STATE: StateKey = StateKey::new("sophisticatedstorage:decoration_table");
 
 /// The block entity part that keeps [`STATE`].
-pub struct TableEntity;
+pub struct TableEntity(pub AttachmentKey<Compound>);
 
 #[mod_api::sunrise_part]
 impl BlockPart for TableEntity {}
@@ -70,7 +61,10 @@ impl BlockEntityPart for TableEntity {}
 
 impl BlockEntityPartState for TableEntity {
     type Data = Compound;
-    const DATA: &'static AttachmentType<Compound> = &STATE;
+
+    fn state_key(&self) -> &AttachmentKey<Compound> {
+        &self.0
+    }
 }
 
 /// What a player has open: the table's place and its window.
@@ -267,8 +261,7 @@ pub struct Table {
 impl Table {
     pub fn read(host: &dyn Host, be: BlockEntityRef) -> Self {
         let slots = std::array::from_fn(|i| be.item_slot(host, i as u32).ok().flatten());
-        let state =
-            TableEntity::state(host, be).map_or_else(|_| State::default(), |c| State::read(&c));
+        let state = STATE.read(host, be, State::read).unwrap_or_default();
         Self { slots, state }
     }
 
@@ -349,7 +342,7 @@ fn write_slots(
 }
 
 fn edit_state(host: &mut dyn ServerHost, be: BlockEntityRef, f: impl FnOnce(&mut State)) {
-    let _ = TableEntity::edit_state(host, be, |_, c| {
+    let _ = STATE.edit(host, be, |c| {
         let mut s = State::read(c);
         f(&mut s);
         *c = s.write();

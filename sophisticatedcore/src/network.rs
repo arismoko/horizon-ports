@@ -11,15 +11,16 @@ use std::hash::Hash;
 use std::sync::{Arc, LazyLock, Mutex, OnceLock};
 
 use mod_api::{
-    AttachmentCodec, AttachmentType, BlockEntityPart, BlockEntityPartState, BlockPart, Compound,
-    Host, ItemResource, LevelRef, Overanswered, PlayerRef, ResourceHandler, ServerHost, Tag,
-    TransactionContext, TransactionError,
+    AttachmentKey, BlockEntityPart, BlockEntityPartState, BlockPart, Compound, Host, ItemResource,
+    LevelRef, Overanswered, PlayerRef, ResourceHandler, ServerHost, Tag, TransactionContext,
+    TransactionError,
 };
 
 use mod_api::{BlockEntityDrawContext, ClientHost, HostTransaction};
 
 use crate::contents::{Nbt, custom_data, get_bool, get_long, put};
 use crate::places;
+use crate::states::StateKey;
 use crate::storage::{self, Handler};
 use crate::storage_items::{Family, StorageItem};
 use crate::tool::{pack, unpack};
@@ -159,32 +160,13 @@ pub fn find_controller(
 // ---- the block entities ----
 
 /// The controller's state: the positions the tool linked to it.
-pub static CONTROLLER_STATE: AttachmentType<Compound> = AttachmentType {
-    namespace: "sophisticatedstorage",
-    name: "controller",
-    default: Compound::new,
-    codec: Some(AttachmentCodec {
-        encode: |c| Ok(c.clone()),
-        decode: |c| Ok(c.clone()),
-    }),
-    copy_on_death: false,
-    sync: true,
-};
+pub static CONTROLLER_STATE: StateKey = StateKey::new("sophisticatedstorage:controller");
 
 /// A link, input, output or input/output block's state: the controller the tool linked it to.
-pub static NODE_STATE: AttachmentType<Compound> = AttachmentType {
-    namespace: "sophisticatedstorage",
-    name: "network_node",
-    default: Compound::new,
-    codec: Some(AttachmentCodec {
-        encode: |c| Ok(c.clone()),
-        decode: |c| Ok(c.clone()),
-    }),
-    copy_on_death: false,
-    sync: true,
-};
+pub static NODE_STATE: StateKey = StateKey::new("sophisticatedstorage:network_node");
 
-pub struct ControllerEntity;
+/// The block entity part that keeps [`CONTROLLER_STATE`].
+pub struct ControllerEntity(pub AttachmentKey<Compound>);
 
 #[mod_api::sunrise_part]
 impl BlockPart for ControllerEntity {}
@@ -203,10 +185,14 @@ impl BlockEntityPart for ControllerEntity {
 
 impl BlockEntityPartState for ControllerEntity {
     type Data = Compound;
-    const DATA: &'static AttachmentType<Compound> = &CONTROLLER_STATE;
+
+    fn state_key(&self) -> &AttachmentKey<Compound> {
+        &self.0
+    }
 }
 
-pub struct NodeEntity;
+/// The block entity part that keeps [`NODE_STATE`].
+pub struct NodeEntity(pub AttachmentKey<Compound>);
 
 #[mod_api::sunrise_part]
 impl BlockPart for NodeEntity {}
@@ -216,7 +202,10 @@ impl BlockEntityPart for NodeEntity {}
 
 impl BlockEntityPartState for NodeEntity {
     type Data = Compound;
-    const DATA: &'static AttachmentType<Compound> = &NODE_STATE;
+
+    fn state_key(&self) -> &AttachmentKey<Compound> {
+        &self.0
+    }
 }
 
 fn longs(c: &Compound) -> Vec<[i32; 3]> {
@@ -235,8 +224,7 @@ fn longs(c: &Compound) -> Vec<[i32; 3]> {
 /// The positions linked to the controller at `pos`.
 pub fn linked_to(host: &dyn Host, level: LevelRef, pos: [i32; 3]) -> Vec<[i32; 3]> {
     host.block_entity(level, pos)
-        .and_then(|be| ControllerEntity::state(host, be).ok())
-        .map(|c| longs(&c))
+        .and_then(|be| CONTROLLER_STATE.read(host, be, longs))
         .unwrap_or_default()
 }
 
@@ -251,7 +239,7 @@ fn set_linked(
     let Some(be) = host.block_entity(level, controller) else {
         return;
     };
-    let _ = ControllerEntity::edit_state(host, be, |_, c| {
+    let _ = CONTROLLER_STATE.edit(host, be, |c| {
         let mut all = longs(c);
         all.retain(|p| *p != target);
         if on {
@@ -269,8 +257,9 @@ fn set_linked(
 /// The controller the tool linked the link or input/output block at `pos` to.
 fn node_controller(host: &dyn Host, level: LevelRef, pos: [i32; 3]) -> Option<[i32; 3]> {
     let be = host.block_entity(level, pos)?;
-    let c = NodeEntity::state(host, be).ok()?;
-    get_long(&c, CONTROLLER_POS).map(unpack)
+    NODE_STATE
+        .read(host, be, |c| get_long(c, CONTROLLER_POS))?
+        .map(unpack)
 }
 
 fn set_node_controller(
@@ -282,7 +271,7 @@ fn set_node_controller(
     let Some(be) = host.block_entity(level, pos) else {
         return;
     };
-    let _ = NodeEntity::edit_state(host, be, |_, c| match to {
+    let _ = NODE_STATE.edit(host, be, |c| match to {
         Some(p) => put(c, CONTROLLER_POS, Tag::Long(pack(p))),
         None => {
             c.del(CONTROLLER_POS);
@@ -306,7 +295,7 @@ fn role_by(
         let facing = level
             .block_property(host, pos, "facing")
             .unwrap_or_default();
-        let n = step(&facing);
+        let n = step(facing);
         return Role::Link {
             linked: node_controller(host, level, pos),
             behind: [pos[0] - n[0], pos[1] - n[1], pos[2] - n[2]],

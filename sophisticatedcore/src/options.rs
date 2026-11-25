@@ -1,9 +1,10 @@
 //! The options of the three jars' configs that this port's rules use (`sophisticatedbackpacks-server.toml`,
 //! `sophisticatedstorage-server.toml`, `sophisticatedcore-client.toml`), as mod settings with the jars' defaults.
 
+use std::collections::HashMap;
 use std::sync::{OnceLock, RwLock};
 
-use mod_api::{ConfigPath, Host};
+use mod_api::{Host, SettingKey, SettingValue};
 
 use crate::storage_items::{self, Family};
 
@@ -90,6 +91,33 @@ pub const COOKING: [&str; 6] = [
     "auto_smoking_upgrade",
     "auto_blasting_upgrade",
 ];
+
+/// The keys `register` was issued for the settings, by name.
+static KEYS: RwLock<Option<HashMap<String, SettingKey>>> = RwLock::new(None);
+
+/// Keeps the key a registered setting was issued.
+pub fn remember(name: &str, key: SettingKey) {
+    KEYS.write()
+        .unwrap_or_else(|e| e.into_inner())
+        .get_or_insert_with(HashMap::new)
+        .insert(name.to_owned(), key);
+}
+
+/// The live value of the setting `name`, as the text [`read_tune`] and [`Options::read`] parse (a toggle's
+/// `true`/`false`, a range's number, a choice's index); `None` when it isn't registered.
+fn raw(host: &dyn Host, name: &str) -> Option<String> {
+    let key = *KEYS
+        .read()
+        .unwrap_or_else(|e| e.into_inner())
+        .as_ref()?
+        .get(name)?;
+    match host.setting(key).ok()? {
+        SettingValue::Toggle(on) => Some(on.to_string()),
+        SettingValue::Range(v) => Some(v.to_string()),
+        SettingValue::Choice(i) => Some(i.to_string()),
+        _ => None,
+    }
+}
 
 pub enum Kind {
     Toggle(bool),
@@ -203,7 +231,7 @@ fn number(text: Option<&str>, default: f64) -> f64 {
 
 impl Options {
     pub fn read(host: &dyn Host) -> Self {
-        let get = |key: &str| host.setting(MOD, key);
+        let get = |key: &str| raw(host, key);
         Self {
             in_container_items: flag(get(key::IN_CONTAINER_ITEMS).as_deref(), false),
             slowness: flag(get(key::SLOWNESS).as_deref(), false),
@@ -730,7 +758,7 @@ pub fn filter_slots(base: &str, advanced: bool) -> usize {
 
 /// Re-reads the settings into the tables.
 pub fn refresh(host: &dyn Host) {
-    let t = read_tune(&|key| host.setting(MOD, key));
+    let t = read_tune(&|key| raw(host, key));
     if let Ok(mut g) = TUNE.write() {
         *g = Some(t);
     }
@@ -753,18 +781,21 @@ pub struct Lists {
 }
 
 fn read_list(host: &dyn Host, file: &str, help: &str, defaults: &str) -> Vec<String> {
-    let text = match ConfigPath::new(&format!("sophisticatedcore/{file}")) {
-        Ok(path) => {
-            let files = host.config_files();
-            match files.read(&path) {
-                Ok(bytes) => String::from_utf8_lossy(&bytes).into_owned(),
-                Err(_) => {
-                    let _ = files.write(&path, format!("; {help}\n; One id per line; * stands for any run of characters.\n{defaults}").as_bytes());
-                    defaults.to_owned()
-                }
+    let path = host.config_dir().join("sophisticatedcore").join(file);
+    let text = match std::fs::read(&path) {
+        Ok(bytes) => String::from_utf8_lossy(&bytes).into_owned(),
+        Err(_) => {
+            if let Some(dir) = path.parent() {
+                let _ = std::fs::create_dir_all(dir);
             }
+            let _ = std::fs::write(
+                &path,
+                format!(
+                    "; {help}\n; One id per line; * stands for any run of characters.\n{defaults}"
+                ),
+            );
+            defaults.to_owned()
         }
-        Err(_) => defaults.to_owned(),
     };
     text.lines()
         .map(str::trim)

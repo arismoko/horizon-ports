@@ -110,7 +110,7 @@ pub fn click(
     let facing = level
         .block_property(&*host, pos, "facing")
         .unwrap_or_default();
-    if face != storage::dir_vec(&facing) {
+    if face != storage::dir_vec(facing) {
         return false;
     }
     into_storage(host, player, slot, level, pos, sneaking)

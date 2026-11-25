@@ -213,7 +213,7 @@ pub fn write_be(
         .is_ok();
     if ok {
         let _ = be.set_changed(host);
-        host.block_entity_sync(pos);
+        let _ = be.sync(host);
     }
     ok
 }
@@ -1538,7 +1538,7 @@ fn magnet(
                 let _ = item.entity().discard(host);
             }
             Some(rest) => {
-                let _ = item.set_stack(host, rest);
+                let _ = item.set_stack(host, Some(rest));
             }
         }
     }

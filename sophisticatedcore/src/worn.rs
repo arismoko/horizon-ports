@@ -9,7 +9,7 @@ use std::collections::HashMap;
 use std::sync::{Arc, Mutex, OnceLock};
 
 use mod_api::{
-    BlockEntityDrawContext, BlockKey, EntityLayers, EntityRenderLayer, EntityRenderState,
+    BlockEntityDrawContext, BlockState, EntityLayers, EntityRenderLayer, EntityRenderState,
     EquipmentSlot, FrameModel, Host, LayerTarget, LivingRef, PayloadBytes, PayloadId, PlayerModel,
     ServerHost,
 };
@@ -21,11 +21,31 @@ use crate::storage_items::{self, Family};
 pub const VIEW: &str = "sophisticatedcore:worn_view";
 const NONE: u8 = 255;
 
-/// The backpack blocks by tier, kept from registration: a frame has no host to look a block up with.
-static BLOCKS: OnceLock<Vec<(u8, BlockKey)>> = OnceLock::new();
+/// The backpack block ids by tier, kept from registration.
+static BLOCKS: OnceLock<Vec<(u8, String)>> = OnceLock::new();
 
-pub fn set_blocks(blocks: Vec<(u8, BlockKey)>) {
+/// Their north-facing states, looked up once by a client tick: a frame has no host to look a state up with.
+static STATES: OnceLock<Vec<(u8, BlockState)>> = OnceLock::new();
+
+pub fn set_blocks(blocks: Vec<(u8, String)>) {
     let _ = BLOCKS.set(blocks);
+}
+
+pub fn resolve_states(host: &dyn mod_api::ClientHost) {
+    if STATES.get().is_some() {
+        return;
+    }
+    let Some(blocks) = BLOCKS.get() else {
+        return;
+    };
+    let states = blocks
+        .iter()
+        .filter_map(|(tier, id)| {
+            host.block_state_id(&format!("{id}[facing=north]"))
+                .map(|s| (*tier, s))
+        })
+        .collect();
+    let _ = STATES.set(states);
 }
 
 /// The tier drawn per entity id, as the client last heard.
@@ -135,7 +155,8 @@ pub fn register(layers: &mut dyn EntityLayers) {
             eprintln!("[sophisticatedcore] backpack layer: {e}");
         }
     }
-    for kind in layers.entity_types() {
+    let kinds: Vec<String> = layers.entity_types().to_vec();
+    for kind in kinds {
         if kind != "minecraft:player" && layers.is_living(&kind) {
             // The armour stand and the dragon refuse layers; they never wear one.
             let _ = layers.add(LayerTarget::Entity(kind), layer.clone());
@@ -157,7 +178,7 @@ impl EntityRenderLayer for Backpack {
         let Some(tier) = seen().get(&entity.id).copied() else {
             return Ok(());
         };
-        let Some(&(_, block)) = BLOCKS
+        let Some(&(_, state)) = STATES
             .get()
             .and_then(|b| b.iter().find(|(t, _)| *t == tier))
         else {
@@ -184,7 +205,7 @@ impl EntityRenderLayer for Backpack {
         let size = 0.8;
         draw.translate([-0.5 * size, -0.78, -0.125 - 0.71875 * size]);
         draw.scale([size, size, size]);
-        draw.block(block, &[("facing", "north")]);
+        draw.block(state);
         draw.pop();
         Ok(())
     }
