@@ -25,3 +25,15 @@ Differences from the original:
 A port of Traveler's Titles by YUNG, under the LGPL-3.0-only licence.
 """
 categories = ["utility", "decoration"]
+
+[[screenshots]]
+path = "page/biome-title.png"
+caption = "Entering a desert shows its name as a fading title."
+
+[[screenshots]]
+path = "page/dimension-title.png"
+caption = "Entering the Nether shows the dimension title with the biome beneath it."
+
+[[screenshots]]
+path = "page/settings.png"
+caption = "Biome and dimension title timings, colours and sizes under Options > Mods."
