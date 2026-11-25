@@ -15,13 +15,12 @@ InvMove lets you move with your normal movement keys while a screen is open, so 
 
 ## Differences from the original
 
-- The focused text box can't be queried, so movement stops once you type a character in a box and resumes when you click (gap: TBD-text-field-focus).
-- Other gameplay keys (attack, use, ...) only update their key state inside screens, because the game does not poll them there (gap: TBD-screen-keybinds).
-- Screens are identified by id and menu type, not by class or owning mod, so unrecognized screens are grouped by id, menu or mod (gap: TBD-screen-identity).
-- The settings page is a flat list: no subcategories, no dynamic lists of unrecognized screens or allowed keys; `config/invmove.toml` carries those (gap: TBD-flat-settings).
-- The focused button can't be seen, so space/Enter bound to jump is not delivered to buttons whenever jumping is allowed (gap: TBD-button-key-focus).
-- The background tint can be hidden only on the inventory, container, creative, villager, beacon, book and sign screens, and the pause-screen blur only by radius (gap: TBD-screen-background).
-- The addon module API used by InvMoveCompats is not ported (gap: TBD-addon-modules).
+- The focused text box can't be queried, so movement stops once you type a character in a box and resumes when you click (gap: sunrise-org/sunrise#5655).
+- Other gameplay keys (attack, use, ...) only update their key state inside screens, because the game does not poll them there (vanilla and NeoForge have no such moment).
+- The settings page is a flat list: no subcategories, no dynamic lists of unrecognized screens or allowed keys; `config/invmove.toml` carries those (gap: sunrise-org/sunrise#1217, fixed on main, in the next Dev build).
+- The focused button can't be seen, so space/Enter bound to jump is not delivered to buttons whenever jumping is allowed (gap: sunrise-org/sunrise#5656).
+- The background tint can be hidden only on the inventory, container, creative, villager, beacon, book and sign screens, and the pause-screen blur only by radius (gap: sunrise-org/sunrise#5657).
+- The addon module API used by InvMoveCompats is not ported (gap: sunrise-org/sunrise#5137).
 - The original's Debug Display is left out: it does nothing on 26.x in the original either.
 
 A port of InvMove by PieKing1215, under the LGPL-3.0-only licence.

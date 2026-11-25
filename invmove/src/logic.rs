@@ -252,7 +252,12 @@ fn classify_menu(menu: &str) -> Class {
         "minecraft:stonecutter" => "stonecutter",
         "minecraft:smithing" => "smithing",
         "minecraft:merchant" => "villager",
-        other => return Class::Unrecognized(other.to_owned()),
+        other => {
+            return Class::Unrecognized(match other.split_once(':') {
+                Some((namespace, _)) if namespace != "minecraft" => format!("mod:{namespace}"),
+                _ => other.to_owned(),
+            });
+        }
     };
     Class::Known(key)
 }
@@ -519,6 +524,10 @@ mod tests {
         assert_eq!(
             classify("inventory", Some("minecraft:crafter_3x3"), None),
             Class::Unrecognized("minecraft:crafter_3x3".into())
+        );
+        assert_eq!(
+            classify("inventory", Some("create:schematic_table"), None),
+            Class::Unrecognized("mod:create".into())
         );
         assert_eq!(classify("chat", None, None), Class::Fixed);
         assert_eq!(classify("book_edit", None, None), Class::BookEdit);

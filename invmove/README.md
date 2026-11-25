@@ -15,13 +15,12 @@ Walk, jump, sneak and sprint while an inventory or other screen is open. A port 
 
 Each is a limit of the mod API at the pinned Sunrise commit.
 
-- Text box focus is guessed from typing (gap: TBD-text-field-focus).
-- Other gameplay keys only update their key state inside screens (gap: TBD-screen-keybinds).
-- Screens are identified by id and menu type, not class or owning mod (gap: TBD-screen-identity).
-- The settings page is flat; lists live in `config/invmove.toml` (gap: TBD-flat-settings).
-- Space/Enter is cancelled for buttons whenever jump is allowed and bound to it (gap: TBD-button-key-focus).
-- Not every screen's background can be hidden (gap: TBD-screen-background).
-- The addon module API is not ported (gap: TBD-addon-modules).
+- Text box focus is guessed from typing (gap: sunrise-org/sunrise#5655).
+- Other gameplay keys only update their key state inside screens (vanilla and NeoForge have no such moment).
+- The settings page is flat; lists live in `config/invmove.toml` (gap: sunrise-org/sunrise#1217, fixed on main, in the next Dev build).
+- Space/Enter is cancelled for buttons whenever jump is allowed and bound to it (gap: sunrise-org/sunrise#5656).
+- Not every screen's background can be hidden (gap: sunrise-org/sunrise#5657).
+- The addon module API is not ported (gap: sunrise-org/sunrise#5137).
 - The Debug Display option is omitted: it is a no-op on 26.x in the original.
 
 ## Configuration
