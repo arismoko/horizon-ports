@@ -1,6 +1,6 @@
 [package]
 name = "mod-smwyg"
-version = "0.5.1"
+version = "0.5.2"
 edition = "2024"
 license = "MIT"
 description = "Show Me What You Got for Sunrise: show your items in chat"
