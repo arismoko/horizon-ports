@@ -1,7 +1,7 @@
 # Bridging Mod for Sunrise: client-only native code in src/ using the typed mod API.
 id = "bridgingmod"
 name = "Bridging Mod"
-version = "0.5.0"
+version = "0.5.1"
 description = "Bedrock-style reach-around block placement past edges, with crosshair directional indicators, block outlines, and slab alignment."
 authors = ["CG360", "arismoko"]
 license = "MIT"
