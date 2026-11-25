@@ -1,0 +1,16 @@
+# Falling Leaves for Sunrise: native code in src/ using the typed mod API.
+id = "fallingleaves"
+name = "Falling Leaves"
+version = "0.5.0"
+description = "Adds wind-driven falling leaf and snowflake particles from leaf blocks."
+authors = ["Fourmisain", "BrekiTomasson", "RandomMcSomethin", "arismoko"]
+license = "MIT"
+credits = "Original mod by Fourmisain, BrekiTomasson, and RandomMcSomethin (MIT); ported to Sunrise by arismoko."
+homepage = "https://github.com/arismoko/sunrise-ports"
+# Uses side = "both" because Sunrise's register_particle_type requires side = "both"
+# for code-defined particle providers (gap: sunrise-org/sunrise#5611).
+side = "both"
+
+[native]
+game = "26.3"
+sunrise = "3d34bbe63d71bb24c098c1e4021ef866be12fe2d"
