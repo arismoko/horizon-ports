@@ -13,9 +13,9 @@ Server-side only: works in single player and on servers without requiring client
 
 Known differences from the original on Dev `3d34bbe`:
 
-- **Multiple touching clumps in the same tick:** Removing `takeXpDelay` lets players collect orbs on every tick (20/s instead of 10/s), and any single clump is collected completely in one tick. When multiple separate clumps touch a player at once, Sunrise collects one orb per tick rather than all touching orbs in the same tick, and singleplayer `tick_experience` does not fire `pickup_xp` or `player_exp_cooldown_change` (gap: TBD-same-tick-xp-pickup).
-- **Per-source-orb Mending distribution:** Mending repairs damaged items with the clump's full XP total (respecting `xp_repair_ratio` and spilling leftover XP to other damaged Mending items), rather than re-rolling a random damaged Mending item for each original source orb merged into the clump (gap: TBD-same-tick-xp-pickup).
-- **Third-party `ValueEvent` and `RepairEvent` API:** Clumps' mod-to-mod `ValueEvent` and `RepairEvent` callbacks are not yet exposed because Sunrise's mod-to-mod event bus is not in this build (gap: TBD-mod-events).
+- **Multiple touching clumps in the same tick:** Removing `takeXpDelay` lets players collect orbs on every tick (20/s instead of 10/s), and any single clump is collected completely in one tick. When multiple separate clumps touch a player at once, Sunrise collects one orb per tick rather than all touching orbs in the same tick; taking over pickup in `pickup_xp` to collect additional touching orbs cannot run vanilla Mending repair (`ExperienceOrb.repairPlayerItems`) for the XP a mod awards (gap: sunrise-org/sunrise#5593).
+- **Per-source-orb Mending distribution:** Mending repairs damaged items with the clump's full XP total (respecting `xp_repair_ratio` and spilling leftover XP to other damaged Mending items), rather than re-rolling a random damaged Mending item for each original source orb merged into the clump, because no mod can run vanilla Mending repair for the XP it awards (gap: sunrise-org/sunrise#5593).
+- **Third-party `ValueEvent` and `RepairEvent` API:** Clumps' mod-to-mod `ValueEvent` and `RepairEvent` callbacks are not yet exposed because Sunrise's mod-to-mod event bus is not in this build (gap: sunrise-org/sunrise#5137).
 
 Ported under the MIT licence. Original mod and icon by Jaredlll08.
 """
