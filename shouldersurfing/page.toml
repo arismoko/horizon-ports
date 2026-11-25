@@ -28,3 +28,15 @@ Differences from the original:
 A port of Shoulder Surfing Reloaded by Exopandora and contributors, under the MIT licence.
 """
 categories = ["game-mechanics", "utility"]
+
+[[screenshots]]
+path = "page/default.png"
+caption = "Over-the-shoulder third person with the player offset left of the crosshair."
+
+[[screenshots]]
+path = "page/swap.png"
+caption = "Swap shoulder moves the camera to the other side."
+
+[[screenshots]]
+path = "page/settings.png"
+caption = "Camera offset options under Options > Mods."
