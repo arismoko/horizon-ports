@@ -1,7 +1,5 @@
-use mod_api::{Config, ConfigKind, Registrar, SettingSpec, Wire};
+use mod_api::{Registrar, SettingSpec, Wire};
 use std::sync::{PoisonError, RwLock};
-
-pub const MOD_ID: &str = "easyanvils";
 
 pub const SETTING_RENDER_ANVIL_CONTENTS: &str = "render_anvil_contents";
 
@@ -359,14 +357,6 @@ pub fn set_synced_server_config(cfg: ServerConfig) {
     *SYNCED_SERVER_CONFIG
         .write()
         .unwrap_or_else(PoisonError::into_inner) = cfg;
-}
-
-pub fn register_mod_configs(configs: &mut Vec<Config>) {
-    configs.push(Config::new(
-        MOD_ID,
-        ConfigKind::Server,
-        ServerConfig::default_toml(),
-    ));
 }
 
 pub fn register_settings(r: &mut dyn Registrar) {
