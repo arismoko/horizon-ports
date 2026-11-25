@@ -1,9 +1,0 @@
-{
-  "type": "minecraft:smithing_transform",
-  "template": "obsidianequipmentrework:obsidian_upgrade_smithing_template",
-  "base": "minecraft:diamond_spear",
-  "addition": "obsidianequipmentrework:obsidian_ingot",
-  "result": {
-    "id": "obsidianequipmentrework:obsidian_spear"
-  }
-}
