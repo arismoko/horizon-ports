@@ -16,7 +16,7 @@ pub mod rules;
 
 use mod_api::{
     self, AnimateTickEvent, BlockKey, BlockPart, BlockSignalEvent, BlockState, BlockUpdateFlags,
-    ClientHost, Direction, Hand, Hooks, Host, HostBlockStates, InteractionResult,
+    ClientHost, Direction, Hand, Hooks, Host, HostBlockStates, HostSide, InteractionResult,
     IsSignalSourceEvent, ItemKey, ItemStack, LevelHost, LevelRef, LevelSide, LevelTicksHost,
     LivingRef, NeighbourUpdate, OnDestroyedByPlayerEvent, ParticleKey, ParticleOptions,
     PlacementSource, PlayerRef, Registrar, RegistrationContext, RotateEvent, ServerHost,
@@ -195,9 +195,12 @@ impl BlockPart for BridgePart {
 
     fn use_item_on(
         &self,
-        host: &mut dyn ServerHost,
+        host: HostSide<'_>,
         event: &mut UseItemOnEvent<'_>,
     ) -> Option<InteractionResult> {
+        let HostSide::Server(host) = host else {
+            return None;
+        };
         let click = event.click;
         let stack = click.stack?;
         let held = stack.item();
@@ -309,9 +312,12 @@ impl BlockPart for RopeBridgePart {
 
     fn use_item_on(
         &self,
-        host: &mut dyn ServerHost,
+        host: HostSide<'_>,
         event: &mut UseItemOnEvent<'_>,
     ) -> Option<InteractionResult> {
+        let HostSide::Server(host) = host else {
+            return None;
+        };
         let click = event.click;
         let stack = click.stack?;
         let held = stack.item();
@@ -422,9 +428,12 @@ impl BlockPart for BridgeStairPart {
 
     fn use_item_on(
         &self,
-        host: &mut dyn ServerHost,
+        host: HostSide<'_>,
         event: &mut UseItemOnEvent<'_>,
     ) -> Option<InteractionResult> {
+        let HostSide::Server(host) = host else {
+            return None;
+        };
         let click = event.click;
         let stack = click.stack?;
         if stack.item() != self.item {
@@ -481,9 +490,12 @@ pub struct BridgeSupportPart {
 impl BlockPart for BridgeSupportPart {
     fn use_item_on(
         &self,
-        host: &mut dyn ServerHost,
+        host: HostSide<'_>,
         event: &mut UseItemOnEvent<'_>,
     ) -> Option<InteractionResult> {
+        let HostSide::Server(host) = host else {
+            return None;
+        };
         let click = event.click;
         let stack = click.stack?;
         if stack.item() != self.item {
@@ -561,9 +573,12 @@ impl BlockPart for RailBridgePart {
 
     fn use_item_on(
         &self,
-        host: &mut dyn ServerHost,
+        host: HostSide<'_>,
         event: &mut UseItemOnEvent<'_>,
     ) -> Option<InteractionResult> {
+        let HostSide::Server(host) = host else {
+            return None;
+        };
         let click = event.click;
         let text = host.block_state_string(event.state)?;
         let powered = property(&text, "powered") == Some("true");
@@ -598,9 +613,12 @@ impl BlockPart for RailBridgePart {
 
     fn use_without_item(
         &self,
-        host: &mut dyn ServerHost,
+        host: HostSide<'_>,
         event: &mut UseWithoutItemEvent<'_>,
     ) -> Option<InteractionResult> {
+        let HostSide::Server(host) = host else {
+            return None;
+        };
         let click = event.click;
         let text = host.block_state_string(event.state)?;
         if property(&text, "powered") != Some("true") {
