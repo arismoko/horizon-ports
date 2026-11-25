@@ -5,15 +5,14 @@ Enchantment Descriptions adds a short description under every enchantment on an 
 - **Books and gear**: lines appear under each enchantment of an enchanted book, and of enchanted tools and armour (switch that off with **Only On Enchanted Books**).
 - **Any mod's enchantments**: a description is the language's text for `enchantment.<namespace>.<name>.desc` (or `.description`, or `.info`, each also with the level on the end, such as `.desc.3`), so any mod or resource pack can describe its own enchantments. Vanilla's descriptions come in the original's 25 languages.
 - **Where and when**: **Only In Enchanting Table** shows them only while that screen is open; **Hold Shift To Show** hides them until Shift is held and shows a hint line meanwhile (**Show Shift Hint**).
-- **Look**: set the colour in **Options → Mods → Enchantment Descriptions**; text before and after each description, bold, italic, underline, strikethrough, obfuscation and font are in `config/enchdesc.toml`.
+- **Look**: set the colour in **Options → Mods → Enchantment Descriptions**; text before and after each description, bold, italic, underline, strikethrough, obfuscation and font are in `config/enchantmentdescriptions.toml`.
 
 Client-side only: works in single player and on any multiplayer server.
 
 Differences from the original:
 
-- Descriptions are placed by finding each enchantment's own tooltip line by its translation key, so an enchantment whose line is not that key (a data pack enchantment with a custom description key) gets no description (gap: TBD-description-key).
-- **Only In Enchanting Table** recognises the screen by its title (`container.enchant`), so a renamed enchanting table is not recognised (gap: TBD-enchanting-screen).
-- Prefix, suffix, hint text and text styling are set in `config/enchdesc.toml`, not on a settings screen with text fields (gap: TBD-text-settings).
+- Descriptions are placed by finding each enchantment's own tooltip line by its text (its name translated from `enchantment.<namespace>.<name>`, then the level), so an enchantment whose name is not that (a data pack enchantment with a custom description key) gets no description (gap: sunrise-org/sunrise#5639).
+- Prefix, suffix, hint text and text styling are set in `config/enchantmentdescriptions.toml`, not on a settings screen with text fields (gap: sunrise-org/sunrise#1174).
 - Enchantments without a description are not logged.
 
 A port of Enchantment Descriptions by Darkhax, under the LGPL-2.1 licence.

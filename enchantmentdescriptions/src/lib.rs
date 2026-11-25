@@ -6,7 +6,7 @@
 //! Like the original, a description is the language's text for
 //! `enchantment.<namespace>.<name>.desc` (or `.description`, or `.info`, each also with the
 //! level appended), so any mod or resource pack can describe its own enchantments. The line goes
-//! right under the enchantment's own line, which the tooltip hook finds by its translation key.
+//! right under the enchantment's own line, which the tooltip hook finds by its text.
 //! Client only.
 
 mod logic;
@@ -14,18 +14,19 @@ mod logic;
 use std::sync::{Mutex, MutexGuard, PoisonError};
 
 use logic::{
-    DEFAULT_TOML, FileConfig, description_key, is_enchanting_screen, looks_like_json, match_lines,
-    name_key, parse_config,
+    DEFAULT_TOML, FileConfig, description_key, full_name, is_enchanting_menu, looks_like_json,
+    match_lines, name_key, parse_config,
 };
 use mod_api::text::{TextContent, TextStyle};
 use mod_api::{
     ClientHost, ComponentId, Config, ConfigContext, ConfigFile, ConfigKind, ConfigLoadingEvent,
     ConfigReloadingEvent, Hooks, Host, HostSide, ItemResource, ItemTooltipEvent,
-    RegisterConfigsEvent, Registrar, RegistrationContext, SettingSpec, Tag, Text,
+    RegisterConfigsEvent, Registrar, RegistrationContext, ScreenClosingEvent,
+    ScreenRenderPostEvent, SettingSpec, Tag, Text,
 };
 
 const MOD_ID: &str = "enchantmentdescriptions";
-const CONFIG_FILE: &str = "enchdesc.toml";
+const CONFIG_FILE: &str = "enchantmentdescriptions.toml";
 const ACTIVATE_KEY: &str = "enchdesc.activate.message";
 const ENCHANTED_BOOK: &str = "minecraft:enchanted_book";
 const COMPONENTS: [&str; 2] = ["minecraft:enchantments", "minecraft:stored_enchantments"];
@@ -49,6 +50,12 @@ const TOGGLES: [(&str, bool); 5] = [
 ];
 
 static FILE: Mutex<Option<FileConfig>> = Mutex::new(None);
+/// The menu type id of the open screen, kept from the screen hooks for the tooltip hook.
+static MENU: Mutex<Option<String>> = Mutex::new(None);
+
+fn set_menu(menu: Option<&str>) {
+    *MENU.lock().unwrap_or_else(PoisonError::into_inner) = menu.map(str::to_owned);
+}
 
 fn file_config() -> FileConfig {
     let guard: MutexGuard<'_, Option<FileConfig>> =
@@ -89,6 +96,18 @@ fn enchantments(host: &dyn Host, stack: &ItemResource) -> Vec<(String, u32)> {
     found
 }
 
+/// A line's text with its children's, as the player reads it.
+fn plain(text: &Text) -> String {
+    let mut out = String::new();
+    if let TextContent::Literal(value) = &text.content {
+        out.push_str(value);
+    }
+    for child in &text.children {
+        out.push_str(&plain(child));
+    }
+    out
+}
+
 /// A config text: a JSON component when it looks like one, otherwise plain text.
 fn component(host: &dyn ClientHost, text: &str) -> Option<Text> {
     if text.is_empty() {
@@ -124,11 +143,8 @@ fn can_display(host: &dyn ClientHost, item_id: Option<&str>) -> bool {
         return false;
     }
     if toggle(host, ONLY_IN_TABLE, false) {
-        let screen = host.observed_screen_id();
-        let title = host.screen_title();
-        let enchant = host.translate("container.enchant");
-        let id = screen.as_ref().map_or("", |screen| screen.id.as_str());
-        if !is_enchanting_screen(id, title.as_deref(), enchant.as_deref()) {
+        let menu = MENU.lock().unwrap_or_else(PoisonError::into_inner).clone();
+        if !is_enchanting_menu(menu.as_deref()) {
             return false;
         }
     }
@@ -165,11 +181,19 @@ impl Hooks for EnchantmentDescriptions {
     }
 
     fn config_loading(&self, _ctx: &dyn ConfigContext, event: &mut ConfigLoadingEvent<'_>) {
-        set_file_config(&event.config);
+        set_file_config(event.config);
     }
 
     fn config_reloading(&self, _host: HostSide<'_>, event: &mut ConfigReloadingEvent<'_>) {
-        set_file_config(&event.config);
+        set_file_config(event.config);
+    }
+
+    fn screen_render_post(&self, _host: &dyn ClientHost, event: &mut ScreenRenderPostEvent<'_>) {
+        set_menu(event.screen.menu);
+    }
+
+    fn screen_closing(&self, _host: &dyn ClientHost, _event: &mut ScreenClosingEvent<'_>) {
+        set_menu(None);
     }
 
     fn item_tooltip(&self, host: &dyn ClientHost, event: &mut ItemTooltipEvent<'_>) {
@@ -197,29 +221,39 @@ impl Hooks for EnchantmentDescriptions {
             return;
         }
 
-        let line_keys: Vec<Option<String>> = event
+        // The game builds an enchantment's tooltip line as plain text (`Enchantment.getFullname`:
+        // the translated name, then the level's text unless both are one), so lines are matched
+        // by that text, not by a translation key.
+        let line_texts: Vec<Option<String>> = event
             .lines
             .iter()
-            .map(|line| match line {
-                Ok((
-                    Text {
-                        content: TextContent::Translatable { key, .. },
-                        ..
-                    },
-                    _,
-                )) => Some(key),
-                _ => None,
-            })
+            .map(|line| line.ok().map(|(text, _)| plain(&text)))
             .collect();
-        let wanted: Vec<String> = found
+        let infos = host.enchantments();
+        let wanted_keys: Vec<String> = found
             .iter()
             .map(|(id, _)| name_key(id).unwrap_or_default())
             .collect();
+        let wanted: Vec<String> = found
+            .iter()
+            .zip(&wanted_keys)
+            .map(|((id, level), key)| {
+                let max_level = infos
+                    .iter()
+                    .find(|info| info.id == *id)
+                    .map_or(0, |info| info.max_level);
+                let name = host.translate(key).unwrap_or_else(|| key.clone());
+                full_name(name, *level, max_level, |level| {
+                    let key = format!("enchantment.level.{level}");
+                    host.translate(&key).unwrap_or(key)
+                })
+            })
+            .collect();
         let mut insertions: Vec<(usize, Text)> = Vec::new();
-        for (w, line) in match_lines(&line_keys, &wanted) {
+        for (w, line) in match_lines(&line_texts, &wanted) {
             let (_, level) = &found[w];
             let Some(key) =
-                description_key(&wanted[w], *level, |key| host.translate(key).is_some())
+                description_key(&wanted_keys[w], *level, |key| host.translate(key).is_some())
             else {
                 continue;
             };

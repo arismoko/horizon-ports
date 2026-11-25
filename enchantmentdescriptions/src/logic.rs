@@ -1,12 +1,11 @@
 //! The mod's pure rules: description keys, tooltip line matching, the screen test and the
-//! `config/enchdesc.toml` reader. Nothing here touches the game, and no input panics.
+//! `config/enchantmentdescriptions.toml` reader. Nothing here touches the game, and no input panics.
 
 /// The key suffixes tried for a description, in the original's order (`desc`, `description`,
 /// `info`); each is also tried with the level appended (`.desc.3`).
 pub const KEY_TYPES: [&str; 3] = ["desc", "description", "info"];
 
-/// The translation key the vanilla tooltip line of enchantment `id` (`minecraft:sharpness`)
-/// carries, and the base of its description keys: `enchantment.minecraft.sharpness`.
+/// The translation key of the name of enchantment `id` (`minecraft:sharpness`), and the base of its description keys: `enchantment.minecraft.sharpness`.
 pub fn name_key(id: &str) -> Option<String> {
     let (namespace, path) = id.split_once(':').unwrap_or(("minecraft", id));
     if namespace.is_empty() || path.is_empty() {
@@ -31,9 +30,24 @@ pub fn description_key(base: &str, level: u32, has: impl Fn(&str) -> bool) -> Op
     None
 }
 
-/// For each wanted translation key in order, the index of the first tooltip line carrying it
-/// that no earlier wanted key took: `(wanted index, line index)`. `line_keys` holds each
-/// line's own translation key, `None` for any other line.
+/// `Enchantment.getFullname`: the level's text follows the name unless both the level and the
+/// enchantment's maximum level are one.
+pub fn full_name(
+    mut name: String,
+    level: u32,
+    max_level: u32,
+    level_text: impl FnOnce(u32) -> String,
+) -> String {
+    if level != 1 || max_level != 1 {
+        name.push(' ');
+        name.push_str(&level_text(level));
+    }
+    name
+}
+
+/// For each wanted line text in order, the index of the first tooltip line with exactly that
+/// text that no earlier wanted text took: `(wanted index, line index)`. `line_keys` holds each
+/// line's text, `None` for a line that could not be read.
 pub fn match_lines(line_keys: &[Option<String>], wanted: &[String]) -> Vec<(usize, usize)> {
     let mut used = vec![false; line_keys.len()];
     let mut matches = Vec::new();
@@ -50,10 +64,9 @@ pub fn match_lines(line_keys: &[Option<String>], wanted: &[String]) -> Vec<(usiz
     matches
 }
 
-/// Whether a screen is the enchanting table's: a container screen (`inventory`) titled with
-/// the language's `container.enchant`.
-pub fn is_enchanting_screen(id: &str, title: Option<&str>, enchant_title: Option<&str>) -> bool {
-    id == "inventory" && title.is_some() && title == enchant_title
+/// Whether a menu type id is the enchanting table's.
+pub fn is_enchanting_menu(menu: Option<&str>) -> bool {
+    menu == Some("minecraft:enchantment")
 }
 
 /// Whether a config string is a JSON text component (a string, object or list) rather than
@@ -62,7 +75,7 @@ pub fn looks_like_json(text: &str) -> bool {
     matches!(text.trim_start().chars().next(), Some('{' | '[' | '"'))
 }
 
-/// What `config/enchdesc.toml` holds: the parts of the original's config a settings screen
+/// What `config/enchantmentdescriptions.toml` holds: the parts of the original's config a settings screen
 /// cannot express.
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct FileConfig {
@@ -82,7 +95,7 @@ pub struct FileConfig {
     pub font: String,
 }
 
-/// The file written when `config/enchdesc.toml` is missing.
+/// The file written when `config/enchantmentdescriptions.toml` is missing.
 pub const DEFAULT_TOML: &str = r##"# Enchantment Descriptions, extra options.
 # The on/off options and the description colour are in Options > Mods > Enchantment Descriptions.
 #
@@ -114,7 +127,7 @@ enum Value {
     Flag(bool),
 }
 
-/// Reads `config/enchdesc.toml`: `key = "text"`, `key = 'literal'` and `key = true|false`
+/// Reads `config/enchantmentdescriptions.toml`: `key = "text"`, `key = 'literal'` and `key = true|false`
 /// lines, `#` comments. Unknown keys and unreadable lines are skipped.
 pub fn parse_config(text: &str) -> FileConfig {
     let mut config = FileConfig::default();
@@ -216,8 +229,12 @@ mod tests {
     #[test]
     fn description_keys_try_types_in_order_then_levels() {
         let base = "enchantment.minecraft.sharpness";
-        let has =
-            |defined: &'static [&'static str]| move |key: &str| defined.iter().any(|d| *d == key);
+        let has = |defined: &'static [&'static str]| {
+            move |key: &str| {
+                let defined: &[&str] = defined;
+                defined.contains(&key)
+            }
+        };
         assert_eq!(description_key(base, 1, has(&[])), None);
         assert_eq!(
             description_key(base, 1, has(&["enchantment.minecraft.sharpness.desc"])).as_deref(),
@@ -258,17 +275,17 @@ mod tests {
     fn lines_match_once_each_and_in_order() {
         let lines = vec![
             Some("item.name".to_owned()),
-            Some("enchantment.minecraft.sharpness".to_owned()),
+            Some("Sharpness III".to_owned()),
             None,
-            Some("enchantment.minecraft.sharpness".to_owned()),
-            Some("enchantment.minecraft.mending".to_owned()),
+            Some("Sharpness III".to_owned()),
+            Some("Mending".to_owned()),
         ];
         let wanted = vec![
-            "enchantment.minecraft.mending".to_owned(),
-            "enchantment.minecraft.sharpness".to_owned(),
-            "enchantment.minecraft.sharpness".to_owned(),
-            "enchantment.minecraft.sharpness".to_owned(),
-            "enchantment.minecraft.unknown".to_owned(),
+            "Mending".to_owned(),
+            "Sharpness III".to_owned(),
+            "Sharpness III".to_owned(),
+            "Sharpness III".to_owned(),
+            "Unknown".to_owned(),
         ];
         assert_eq!(match_lines(&lines, &wanted), vec![(0, 4), (1, 1), (2, 3)]);
         assert!(match_lines(&[], &wanted).is_empty());
@@ -276,23 +293,19 @@ mod tests {
     }
 
     #[test]
-    fn the_enchanting_screen_is_an_inventory_with_the_enchant_title() {
-        assert!(is_enchanting_screen(
-            "inventory",
-            Some("Enchant"),
-            Some("Enchant")
-        ));
-        assert!(!is_enchanting_screen(
-            "inventory",
-            Some("Chest"),
-            Some("Enchant")
-        ));
-        assert!(!is_enchanting_screen("inventory", None, None));
-        assert!(!is_enchanting_screen(
-            "paused",
-            Some("Enchant"),
-            Some("Enchant")
-        ));
+    fn the_enchanting_menu_is_minecraft_enchantment() {
+        assert!(is_enchanting_menu(Some("minecraft:enchantment")));
+        assert!(!is_enchanting_menu(Some("minecraft:generic_9x3")));
+        assert!(!is_enchanting_menu(None));
+    }
+
+    #[test]
+    fn full_names_carry_the_level_unless_both_are_one() {
+        let level = |n: u32| format!("L{n}");
+        assert_eq!(full_name("Mending".into(), 1, 1, level), "Mending");
+        assert_eq!(full_name("Sharpness".into(), 1, 5, level), "Sharpness L1");
+        assert_eq!(full_name("Sharpness".into(), 3, 5, level), "Sharpness L3");
+        assert_eq!(full_name("Odd".into(), 2, 1, level), "Odd L2");
     }
 
     #[test]
