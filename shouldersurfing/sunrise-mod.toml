@@ -1,0 +1,14 @@
+# Shoulder Surfing Reloaded for Sunrise: client-only native code in src/ using the typed mod API.
+id = "shouldersurfing"
+name = "Shoulder Surfing Reloaded"
+version = "0.5.0"
+description = "An over-the-shoulder third-person camera with a decoupled view and a crosshair that follows what you act on."
+authors = ["Exopandora", "70CentsApple", "Celestia", "EchoEllet", "EminGT", "Estrecka", "Farenheith", "Fealtous", "Fyoncle", "IMS", "Kynarain", "mpustovoi", "Sabar", "TheLegendofSaram", "Xinyang-Gao", "yichifauzi", "arismoko"]
+license = "MIT"
+credits = "Original mod by Exopandora and contributors (MIT); ported to Sunrise by arismoko."
+homepage = "https://github.com/arismoko/sunrise-ports"
+side = "client"
+
+[native]
+game = "26.3"
+sunrise = "bdad86d2d398ff9293002d2dc08702822aea7265"

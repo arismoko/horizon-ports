@@ -1,0 +1,14 @@
+Shoulder Surfing Reloaded for Sunrise 26.3 (version 0.5.0)
+
+A port of Shoulder Surfing Reloaded (5.3.1) by Exopandora and contributors.
+Original source: https://github.com/Exopandora/ShoulderSurfing
+Original licence: MIT
+
+Ported to Sunrise by arismoko: the camera, picking, crosshair and input rules are
+implemented in Rust on Sunrise's typed mod API (no Java code is included). This port is
+distributed under the same licence as the original (MIT); the licence text is in LICENSE.
+
+The original project's MIT-licensed resources are carried over as they are: the language
+files (assets/shouldersurfing/lang), the three crosshair sprites
+(assets/shouldersurfing/textures/gui/sprites/hud) and the mod icon (icon.png). The
+`shouldersurfing.option.*` labels in the English language file were added for this port.
