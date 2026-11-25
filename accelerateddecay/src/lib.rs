@@ -9,16 +9,18 @@
 //! attachment and breaks up to 5 queued leaves per tick, playing break sound and particles only
 //! for the first position taken in that tick.
 use std::collections::{HashMap, HashSet, VecDeque};
-use std::sync::Mutex;
+use std::sync::{Mutex, OnceLock, RwLock};
 
 use mod_api::{
-    AttachmentCodec, AttachmentError, AttachmentType, BlockChangedEvent, Compound,
-    GameEventContext, Holder, Hooks, HostSide, JavaString, LevelHost, LevelRef, LevelTickPostEvent,
-    LevelUnloadEvent, Registrar, RegistrationContext, ServerHost, Tag,
+    AttachmentCodec, AttachmentDescriptor, AttachmentError, AttachmentKey, BlockChangedEvent,
+    Compound, GameEventContext, Holder, Hooks, HostSide, JavaString, LevelHost, LevelRef,
+    LevelTickPostEvent, LevelUnloadEvent, Registrar, RegistrationContext, ServerHost, Tag, TagKey,
 };
 
 /// Block tag identifying leaves eligible for accelerated decay.
 pub const LEAVES_TAG: &str = "minecraft:leaves";
+/// `LEAVES_TAG` resolved once at registration (`BlockState.is(BlockTags.LEAVES)`).
+static LEAVES: OnceLock<TagKey> = OnceLock::new();
 /// Distance value vanilla sets on a leaf with no supporting log within range.
 pub const DECAY_DISTANCE: &str = "7";
 /// Maximum queued leaf positions processed per level per server tick.
@@ -123,17 +125,13 @@ fn empty_queue() -> BreakQueue {
     BreakQueue::default()
 }
 
-static BREAK_DATA: AttachmentType<BreakQueue> = AttachmentType {
-    namespace: "accelerateddecay",
-    name: "break_data",
-    default: empty_queue,
-    codec: Some(AttachmentCodec {
+/// The level attachment holding the queue: saved with the level, never synced to clients.
+fn break_data_descriptor() -> AttachmentDescriptor<BreakQueue> {
+    AttachmentDescriptor::new(BREAK_DATA_ID, empty_queue).serialize(AttachmentCodec {
         encode: encode_queue,
         decode: decode_queue,
-    }),
-    copy_on_death: false,
-    sync: false,
-};
+    })
+}
 
 /// Break a queued block if it is loaded and still in `#minecraft:leaves`, as the original's
 /// tick does (it checks only the tag: a leaf re-supported since it was queued still breaks).
@@ -147,7 +145,10 @@ fn break_decaying_leaf(
     let Some(state) = level.block_state(&*host, pos) else {
         return false;
     };
-    if host.block_in_tag(state.block(), LEAVES_TAG) != Some(true) {
+    let is_leaves = LEAVES
+        .get()
+        .is_some_and(|&tag| state.block().is_in_tag(host.tags(), tag) == Some(true));
+    if !is_leaves {
         return false;
     }
 
@@ -190,6 +191,8 @@ struct Mod {
     /// Newly decaying leaves staged from read-only `block_changed` until that dimension's
     /// `level_tick_post` merges them into the level's persistent `BREAK_DATA` attachment.
     pending: Mutex<HashMap<String, Vec<[i32; 3]>>>,
+    /// The key issued for `BREAK_DATA_ID` by this installation's `register`.
+    break_data: RwLock<Option<AttachmentKey<BreakQueue>>>,
 }
 
 impl Mod {
@@ -221,12 +224,21 @@ impl Mod {
 #[mod_api::sunrise_mod]
 impl Hooks for Mod {
     fn register(&self, r: &mut dyn Registrar, _cx: &RegistrationContext) {
-        let _ = r.register_attachment_type(BREAK_DATA_ID, BREAK_DATA.sync);
+        let _ = LEAVES.set(r.tag_key(LEAVES_TAG));
+        match r.register_attachment_type(break_data_descriptor()) {
+            Ok(key) => {
+                *self.break_data.write().unwrap_or_else(|e| e.into_inner()) = Some(key);
+            }
+            Err(err) => eprintln!("accelerateddecay: attachment registration refused: {err}"),
+        }
     }
 
     fn block_changed(&self, level: &dyn LevelHost, event: &mut BlockChangedEvent) {
-        let old_is_leaves = level.block_in_tag(event.old.block(), LEAVES_TAG) == Some(true);
-        let new_is_leaves = level.block_in_tag(event.new.block(), LEAVES_TAG) == Some(true);
+        let Some(&leaves) = LEAVES.get() else {
+            return;
+        };
+        let old_is_leaves = event.old.block().is_in_tag(level.tags(), leaves) == Some(true);
+        let new_is_leaves = event.new.block().is_in_tag(level.tags(), leaves) == Some(true);
         if !old_is_leaves || !new_is_leaves {
             return;
         }
@@ -243,6 +255,14 @@ impl Hooks for Mod {
         let HostSide::Server(host) = host else {
             return;
         };
+        let Some(key) = self
+            .break_data
+            .read()
+            .unwrap_or_else(|e| e.into_inner())
+            .clone()
+        else {
+            return;
+        };
         let level = event.level;
         let staged = {
             let Some(dim) = level.dimension().id(&*host) else {
@@ -250,19 +270,15 @@ impl Hooks for Mod {
             };
             self.take_staged(dim)
         };
-        if staged.is_empty()
-            && !BREAK_DATA
-                .has(host.attachments(), Holder::Level)
-                .unwrap_or(false)
-        {
+        let saved = key
+            .get_existing(host, Holder::Level, |value| value.cloned())
+            .ok()
+            .flatten();
+        if staged.is_empty() && saved.is_none() {
             return;
         }
 
-        let mut queue = BREAK_DATA
-            .get_existing(host.attachments(), Holder::Level)
-            .ok()
-            .flatten()
-            .unwrap_or_default();
+        let mut queue = saved.unwrap_or_default();
         queue.extend(staged);
 
         // As the original: only the first position taken each tick plays the break sound and
@@ -283,9 +299,9 @@ impl Hooks for Mod {
         }
 
         if queue.is_empty() {
-            let _ = BREAK_DATA.remove(host.attachments(), Holder::Level);
+            let _ = key.remove(host, Holder::Level);
         } else {
-            let _ = BREAK_DATA.set(host.attachments(), Holder::Level, queue);
+            let _ = key.set(host, Holder::Level, queue);
         }
     }
 
