@@ -1,0 +1,15 @@
+Mythic Upgrades for Sunrise 26.3 (version 0.3.0)
+
+A port of Mythic Upgrades 5.1.1 (Fabric, Minecraft 1.20.1) by TriQue (fabric.mod.json "authors", gradle.properties
+mod_author).
+Original source: https://github.com/TriQue06/mythic-upgrades-multiloader (branch 1.20.1, version=5.1.1)
+Original licence: MIT ("license": "MIT" in fabric.mod.json, license=MIT in gradle.properties). The 1.20.1 branch
+ships no licence file; LICENSE is the MIT text from the author's earlier repository,
+https://github.com/TriQue06/mythic-upgrades-1.20.x (its copyright line names no holder; the author is TriQue).
+
+Carried to Minecraft 26.3 by lavoide: the rules (budding crystal growth, ore experience, the armour set effects, the
+tool effects, the end city loot) are re-implemented in Rust on a mod API, and the content (blocks, items, textures,
+models, sounds, loot, recipes, tags, trims, worldgen) is carried over from the original jar and converted to 26.3's
+formats. Moved to Sunrise's mod API by arismoko, pinned to the Dev 1 build
+bdad86d2d398ff9293002d2dc08702822aea7265. This port is distributed under the same licence as the original (MIT); the
+licence text is in LICENSE.

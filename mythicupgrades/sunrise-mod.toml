@@ -1,0 +1,14 @@
+# Mythic Upgrades for Sunrise: native code in src/ (src/classes.rs lists the blocks), content in data/ and assets/.
+id = "mythicupgrades"
+name = "Mythic Upgrades"
+version = "0.3.0"
+description = "Eight gems and necoium with their ores and crystal geodes, and armour sets and tools that each have their own effect."
+authors = ["TriQue", "lavoide", "arismoko"]
+license = "MIT"
+credits = "Ported to Minecraft 26.3 by lavoide, and to Sunrise by arismoko."
+homepage = "https://github.com/arismoko/sunrise-ports"
+side = "both"
+
+[native]
+game = "26.3"
+sunrise = "bdad86d2d398ff9293002d2dc08702822aea7265"
