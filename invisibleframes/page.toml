@@ -9,3 +9,7 @@ Sneak and use an item frame that holds an item to make the frame invisible: only
 A port of Invisible Frames by Roundaround, under the MIT licence.
 """
 categories = ["decoration"]
+
+[[screenshots]]
+file = "page/world.png"
+title = "Invisible item frame holding an apple beside visible frames"
