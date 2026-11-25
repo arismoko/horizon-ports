@@ -9,8 +9,8 @@ Rust on Sunrise's typed mod API (no Java code is included).
 
 Carried from the original under its licence: the language files (assets/travelerstitles/lang;
 en_us.json has the Options → Mods labels and tooltips added), the sound events and their
-three .ogg files (assets/travelerstitles/sounds*), the `is_underground` biome tag
-(data/travelerstitles/tags) and the mod icon (icon.png).
+three .ogg files (assets/travelerstitles/sounds*) and the `is_underground` biome tag
+(data/travelerstitles/tags). The mod icon (icon.png) is the original's icon, resized.
 
 This port is distributed under the same licence as the original (LGPL-3.0-only); the full
 licence texts are in COPYING and COPYING.LESSER (the latter also as LICENSE).

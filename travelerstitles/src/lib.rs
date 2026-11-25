@@ -10,12 +10,11 @@ mod titles;
 use crate::config::{Kind, Lists, MOD_ID};
 use crate::titles::{Style, Title, description_id, opacity, origin, parse_color};
 use mod_api::{
-    ClientDisconnectingEvent, ClientHost, ClientTickPostEvent, ClientTickPreEvent, CommandEvent,
-    ConfigContext, ConfigKind, ConfigLoadingEvent, ConfigReloadingEvent, DrawContext, Flow, Hooks,
-    Host, HostSide, RegisterClientCommandsEvent, RegisterConfigsEvent, Registrar,
-    RegistrationContext, RenderFramePreEvent, RenderGuiPostEvent, SoundPlay,
+    ClientHost, ClientPlayerLoggingOutEvent, ClientTickPostEvent, ClientTickPreEvent, DrawContext,
+    Hooks, Host, RegisterClientCommandsEvent, Registrar, RegistrationContext, RenderFramePreEvent,
+    RenderGuiPostEvent, SoundPlay,
 };
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
 
 /// Biomes whose titles show even when the player is underground
 /// (`Biomes.LUSH_CAVES`, `Biomes.DRIPSTONE_CAVES` and the `travelerstitles:is_underground` tag).
@@ -35,7 +34,7 @@ pub(crate) struct State {
 
 #[derive(Default)]
 struct TravelersTitles {
-    state: Mutex<State>,
+    state: Arc<Mutex<State>>,
 }
 
 /// Run `f` on the shared state.
@@ -134,12 +133,12 @@ impl TravelersTitles {
             let skip_dimension = underground && config::only_at_surface(host, Kind::Dimension);
             if !skip_dimension
                 && dimension_style.enabled
-                && !state.dimension.recently_shown(&dimension_type.id)
+                && !state.dimension.recently_shown(dimension_type.id)
                 && !state.lists.dimensions.contains(&dimension)
             {
                 let (text, color) = dimension_title(host, &dimension, dimension_style.color);
                 state.dimension.display(text, color, &dimension_style);
-                state.dimension.add_recent(1, dimension_type.id.clone());
+                state.dimension.add_recent(1, dimension_type.id.to_owned());
                 play_entry_sound(host, Kind::Dimension);
             }
 
@@ -147,10 +146,12 @@ impl TravelersTitles {
             let Some(biome) = level.client_biome(h, pos) else {
                 return;
             };
-            let underground_biome = UNDERGROUND_BIOMES.contains(&biome.as_str())
-                || level.biome_in_tag(h, &biome, UNDERGROUND_TAG) == Some(true);
-            if underground && config::only_at_surface(host, Kind::Biome) && !underground_biome {
-                return;
+            if underground && config::only_at_surface(host, Kind::Biome) {
+                let underground_biome = UNDERGROUND_BIOMES.contains(&biome.as_str())
+                    || level.biome_in_tag(h, &biome, UNDERGROUND_TAG) == Some(true);
+                if !underground_biome {
+                    return;
+                }
             }
             if !biome_style.enabled
                 || state.biome.cooldown > 0
@@ -200,26 +201,7 @@ impl TravelersTitles {
 impl Hooks for TravelersTitles {
     fn register(&self, r: &mut dyn Registrar, _cx: &RegistrationContext) {
         config::register_settings(r);
-    }
-
-    fn register_configs(&self, _ctx: &dyn ConfigContext, event: &mut RegisterConfigsEvent<'_>) {
-        config::register_mod_configs(event.configs);
-    }
-
-    fn config_loading(&self, _ctx: &dyn ConfigContext, event: &mut ConfigLoadingEvent<'_>) {
-        if event.config.mod_id != MOD_ID || event.config.kind != ConfigKind::Client {
-            return;
-        }
-        let lists = Lists::parse(&event.config.text);
-        with_state(&self.state, |state| state.lists = lists);
-    }
-
-    fn config_reloading(&self, _host: HostSide<'_>, event: &mut ConfigReloadingEvent<'_>) {
-        if event.config.mod_id != MOD_ID || event.config.kind != ConfigKind::Client {
-            return;
-        }
-        let lists = Lists::parse(&event.config.text);
-        with_state(&self.state, |state| state.lists = lists);
+        config::register_mod_config(r, &self.state);
     }
 
     fn register_client_commands(
@@ -227,14 +209,7 @@ impl Hooks for TravelersTitles {
         _host: &mut dyn ClientHost,
         event: &mut RegisterClientCommandsEvent<'_>,
     ) {
-        commands::register(event.commands);
-    }
-
-    fn command(&self, host: &mut dyn ClientHost, event: &mut CommandEvent<'_>) -> Flow {
-        if !host.on(MOD_ID) {
-            return Flow::Continue;
-        }
-        commands::run(&self.state, host, event.command)
+        commands::register(event.commands, &self.state);
     }
 
     /// `Minecraft.tick` head: every title counts down while the game runs.
@@ -256,7 +231,11 @@ impl Hooks for TravelersTitles {
         self.player_tick(&*host);
     }
 
-    fn client_disconnecting(&self, _host: &dyn ClientHost, _event: &mut ClientDisconnectingEvent) {
+    fn client_player_logging_out(
+        &self,
+        _host: &mut dyn ClientHost,
+        _event: &mut ClientPlayerLoggingOutEvent,
+    ) {
         with_state(&self.state, |state| state.last_dimension = None);
     }
 

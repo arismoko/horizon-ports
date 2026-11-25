@@ -3,7 +3,12 @@
 //! reloaded when it is edited.
 
 use crate::titles::Style;
-use mod_api::{ClientHost, Config, ConfigKind, Registrar, SettingSpec};
+use mod_api::{
+    ClientHost, ConfigEvent, ConfigKind, ConfigSnapshot, ConfigSpec, Registrar, SettingKey,
+    SettingSpec,
+};
+use std::collections::HashMap;
+use std::sync::{Arc, Mutex, OnceLock};
 
 pub const MOD_ID: &str = "travelerstitles";
 pub const CONFIG_FILE: &str = "travelerstitles.toml";
@@ -42,12 +47,31 @@ fn tooltip(key: &str) -> String {
     format!("config.travelerstitles.{key}.tooltip")
 }
 
+/// The keys `register_setting` returned, by setting name, kept for the process.
+static KEYS: OnceLock<HashMap<String, SettingKey>> = OnceLock::new();
+
+fn setting_key(name: &str) -> Option<SettingKey> {
+    KEYS.get()?.get(name).copied()
+}
+
+fn read_bool(host: &dyn ClientHost, name: &str) -> Option<bool> {
+    host.setting_bool(setting_key(name)?).ok()
+}
+
+fn read_f64(host: &dyn ClientHost, name: &str) -> Option<f64> {
+    host.setting_f64(setting_key(name)?).ok()
+}
+
+fn read_color(host: &dyn ClientHost, name: &str) -> Option<u32> {
+    host.setting_color(setting_key(name)?).ok()
+}
+
 /// Read one kind's style; a missing setting reads as its default.
 pub fn read_style(host: &dyn ClientHost, kind: Kind) -> Style {
     let defaults = defaults(kind);
-    let toggle = |name: &str, default: bool| host.setting_bool(&key(kind, name)).unwrap_or(default);
+    let toggle = |name: &str, default: bool| read_bool(host, &key(kind, name)).unwrap_or(default);
     let number = |name: &str, default: f64| {
-        host.setting_f64(&key(kind, name))
+        read_f64(host, &key(kind, name))
             .filter(|v| v.is_finite())
             .unwrap_or(default)
     };
@@ -56,9 +80,7 @@ pub fn read_style(host: &dyn ClientHost, kind: Kind) -> Style {
         fade_in: number("fade_in", f64::from(defaults.fade_in)) as i32,
         display: number("display", f64::from(defaults.display)) as i32,
         fade_out: number("fade_out", f64::from(defaults.fade_out)) as i32,
-        color: host
-            .setting_color(&key(kind, "color"))
-            .unwrap_or(defaults.color),
+        color: read_color(host, &key(kind, "color")).unwrap_or(defaults.color),
         size: number("size", f64::from(defaults.size)) as f32,
         shadow: toggle("shadow", defaults.shadow),
         x: number("x", f64::from(defaults.x)) as i32,
@@ -99,32 +121,31 @@ pub fn defaults(kind: Kind) -> Style {
 
 /// Biome title cooldown, ticks.
 pub fn biome_cooldown(host: &dyn ClientHost) -> i32 {
-    host.setting_f64("biomes_cooldown")
+    read_f64(host, "biomes_cooldown")
         .filter(|v| v.is_finite())
         .map_or(80, |v| v as i32)
 }
 
 /// How many recent biomes are remembered.
 pub fn biome_cache_size(host: &dyn ClientHost) -> usize {
-    host.setting_f64("biomes_cache")
+    read_f64(host, "biomes_cache")
         .filter(|v| v.is_finite() && *v >= 0.0)
         .map_or(5, |v| v as usize)
 }
 
 pub fn biome_reset_cache_on_dimension_change(host: &dyn ClientHost) -> bool {
-    host.setting_bool("biomes_reset_cache").unwrap_or(true)
+    read_bool(host, "biomes_reset_cache").unwrap_or(true)
 }
 
 /// Only show titles in a roofless dimension when the player sees the sky.
 pub fn only_at_surface(host: &dyn ClientHost, kind: Kind) -> bool {
-    host.setting_bool(&key(kind, "surface_only"))
-        .unwrap_or(kind == Kind::Biome)
+    read_bool(host, &key(kind, "surface_only")).unwrap_or(kind == Kind::Biome)
 }
 
 /// Sound volume and pitch for a kind's entry sound.
 pub fn sound(host: &dyn ClientHost, kind: Kind) -> (f32, f32) {
     let read = |name: &str| {
-        host.setting_f64(&format!("sound_{}_{name}", kind.prefix()))
+        read_f64(host, &format!("sound_{}_{name}", kind.prefix()))
             .filter(|v| v.is_finite())
             .unwrap_or(1.0) as f32
     };
@@ -132,7 +153,7 @@ pub fn sound(host: &dyn ClientHost, kind: Kind) -> (f32, f32) {
 }
 
 pub fn register_settings(r: &mut dyn Registrar) {
-    let mut specs: Vec<SettingSpec> = Vec::new();
+    let mut specs: Vec<(String, SettingSpec)> = Vec::new();
     for kind in [Kind::Biome, Kind::Dimension] {
         let d = defaults(kind);
         let k = |name: &str| key(kind, name);
@@ -144,29 +165,40 @@ pub fn register_settings(r: &mut dyn Registrar) {
             let key = key(kind, name);
             SettingSpec::range(&key, label(&key), min, max, step, default).tooltip(tooltip(&key))
         };
-        specs.push(toggle("enabled", d.enabled));
-        specs.push(range("fade_in", 0.0, 200.0, 1.0, f64::from(d.fade_in)));
-        specs.push(range("display", 0.0, 600.0, 1.0, f64::from(d.display)));
-        specs.push(range("fade_out", 0.0, 200.0, 1.0, f64::from(d.fade_out)));
+        let mut add = |name: &str, spec: SettingSpec| specs.push((key(kind, name), spec));
+        add("enabled", toggle("enabled", d.enabled));
+        add(
+            "fade_in",
+            range("fade_in", 0.0, 200.0, 1.0, f64::from(d.fade_in)),
+        );
+        add(
+            "display",
+            range("display", 0.0, 600.0, 1.0, f64::from(d.display)),
+        );
+        add(
+            "fade_out",
+            range("fade_out", 0.0, 200.0, 1.0, f64::from(d.fade_out)),
+        );
         if kind == Kind::Biome {
-            specs.push(range("cooldown", 0.0, 1200.0, 1.0, 80.0));
+            add("cooldown", range("cooldown", 0.0, 1200.0, 1.0, 80.0));
         }
-        specs.push(
+        add(
+            "color",
             SettingSpec::color(k("color"), label(&k("color")), d.color)
                 .tooltip(tooltip(&k("color"))),
         );
-        specs.push(range("size", 0.5, 8.0, 0.1, f64::from(d.size)));
-        specs.push(toggle("shadow", d.shadow));
-        specs.push(range("y", -300.0, 300.0, 1.0, f64::from(d.y)));
-        specs.push(range("x", -300.0, 300.0, 1.0, f64::from(d.x)));
+        add("size", range("size", 0.5, 8.0, 0.1, f64::from(d.size)));
+        add("shadow", toggle("shadow", d.shadow));
+        add("y", range("y", -300.0, 300.0, 1.0, f64::from(d.y)));
+        add("x", range("x", -300.0, 300.0, 1.0, f64::from(d.x)));
         if kind == Kind::Biome {
-            specs.push(range("cache", 0.0, 30.0, 1.0, 5.0));
+            add("cache", range("cache", 0.0, 30.0, 1.0, 5.0));
         }
-        specs.push(toggle("center", d.centered));
+        add("center", toggle("center", d.centered));
         if kind == Kind::Biome {
-            specs.push(toggle("reset_cache", true));
+            add("reset_cache", toggle("reset_cache", true));
         }
-        specs.push(toggle("surface_only", kind == Kind::Biome));
+        add("surface_only", toggle("surface_only", kind == Kind::Biome));
     }
     for (name, default, min, max) in [
         ("sound_biomes_volume", 1.0, 0.0, 2.0),
@@ -174,13 +206,22 @@ pub fn register_settings(r: &mut dyn Registrar) {
         ("sound_dimensions_volume", 1.0, 0.0, 2.0),
         ("sound_dimensions_pitch", 1.0, 0.5, 2.0),
     ] {
-        specs.push(
+        specs.push((
+            name.to_owned(),
             SettingSpec::range(name, label(name), min, max, 0.05, default).tooltip(tooltip(name)),
-        );
+        ));
     }
-    for spec in specs {
-        let _ = r.register_setting(spec);
+    let mut keys = HashMap::new();
+    for (name, spec) in specs {
+        match r.register_setting(spec) {
+            Ok(setting) => {
+                keys.insert(name, setting);
+            }
+            Err(error) => eprintln!("travelerstitles: setting {name} not registered: {error}"),
+        }
     }
+    // A second registration in one process keeps the first keys, which name the same slots.
+    let _ = KEYS.set(keys);
 }
 
 /// The two blacklists in `config/travelerstitles.toml`.
@@ -298,11 +339,26 @@ fn strip_comment(line: &str) -> &str {
     line
 }
 
-/// Register the client file `config/travelerstitles.toml`.
-pub fn register_mod_configs(configs: &mut Vec<Config>) {
-    configs.push(
-        Config::new(MOD_ID, ConfigKind::Client, &Lists::default().to_toml()).file(CONFIG_FILE),
+/// Register the client file `config/travelerstitles.toml`; its text goes to `state`
+/// when it loads and each time it changes on disk.
+pub fn register_mod_config(r: &mut dyn Registrar, state: &Arc<Mutex<crate::State>>) {
+    let state = Arc::clone(state);
+    let spec = ConfigSpec::new(ConfigKind::Client, Lists::default().to_toml()).file(CONFIG_FILE);
+    let registered = r.register_config(
+        spec,
+        Some(Arc::new(
+            move |event: ConfigEvent<'_>, snapshot: &ConfigSnapshot| {
+                if matches!(event, ConfigEvent::Loading(_) | ConfigEvent::Reloading(_)) {
+                    let lists = Lists::parse(&snapshot.text);
+                    crate::with_state(&state, |state| state.lists = lists);
+                }
+                Ok(())
+            },
+        )),
     );
+    if let Err(error) = registered {
+        eprintln!("travelerstitles: config not registered: {error}");
+    }
 }
 
 #[cfg(test)]
@@ -341,11 +397,7 @@ mod tests {
     }
 
     #[test]
-    fn the_config_file_is_owned_by_the_mod() {
-        let mut configs = Vec::new();
-        register_mod_configs(&mut configs);
-        assert_eq!(configs.len(), 1);
-        assert_eq!(configs[0].file, CONFIG_FILE);
+    fn the_config_file_is_named_for_the_mod() {
         assert!(CONFIG_FILE.starts_with(MOD_ID));
     }
 
