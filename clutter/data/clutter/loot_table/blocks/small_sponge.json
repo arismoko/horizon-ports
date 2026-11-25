@@ -1,0 +1,45 @@
+{
+  "pools": [
+    {
+      "entries": [
+        {
+          "modifier": [
+            {
+              "condition": {
+                "term": {
+                  "blocks": "clutter:small_sponge",
+                  "state": {
+                    "age": "3"
+                  },
+                  "type": "minecraft:match_block"
+                },
+                "type": "minecraft:inverted"
+              },
+              "count": 1,
+              "type": "minecraft:set_count"
+            },
+            {
+              "condition": {
+                "blocks": "clutter:small_sponge",
+                "state": {
+                  "age": "3"
+                },
+                "type": "minecraft:match_block"
+              },
+              "count": {
+                "max": 3,
+                "min": 2,
+                "type": "minecraft:uniform"
+              },
+              "type": "minecraft:set_count"
+            }
+          ],
+          "name": "clutter:sponge_shard",
+          "type": "minecraft:item"
+        }
+      ],
+      "rolls": 1
+    }
+  ],
+  "type": "minecraft:block"
+}

@@ -1,0 +1,16 @@
+{
+  "type": "minecraft:crafting_shaped",
+  "pattern": [
+    "###",
+    "#T#",
+    "###"
+  ],
+  "key": {
+    "#": "#c:silver_nuggets",
+    "T": "minecraft:torch"
+  },
+  "result": {
+    "count": 1,
+    "id": "clutter:silver_lantern"
+  }
+}

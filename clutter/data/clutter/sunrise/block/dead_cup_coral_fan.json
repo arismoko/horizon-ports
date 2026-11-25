@@ -1,0 +1,11 @@
+{
+  "template": "minecraft:dead_tube_coral_fan",
+  "properties": {
+    "hardness": 0.0,
+    "explosion_resistance": 0.0,
+    "sounds": "minecraft:dead_horn_coral_fan",
+    "requires_tool": false
+  },
+  "item": false,
+  "block_item": "clutter:dead_cup_coral_fan"
+}

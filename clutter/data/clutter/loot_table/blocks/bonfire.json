@@ -1,0 +1,20 @@
+{
+  "pools": [
+    {
+      "condition": {
+        "blocks": "clutter:bonfire",
+        "state": {
+          "block_shape": "center"
+        },
+        "type": "minecraft:match_block"
+      },
+      "entries": [
+        {
+          "name": "clutter:bonfire",
+          "type": "minecraft:item"
+        }
+      ],
+      "rolls": 1
+    }
+  ]
+}

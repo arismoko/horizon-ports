@@ -1,0 +1,30 @@
+{
+  "pools": [
+    {
+      "entries": [
+        {
+          "name": "clutter:clam",
+          "type": "minecraft:item"
+        }
+      ],
+      "rolls": 1
+    },
+    {
+      "entries": [
+        {
+          "condition": {
+            "blocks": "clutter:pearl_clam_block",
+            "state": {
+              "has_pearl": "true"
+            },
+            "type": "minecraft:match_block"
+          },
+          "name": "clutter:pearl",
+          "type": "minecraft:item"
+        }
+      ],
+      "rolls": 1
+    }
+  ],
+  "type": "minecraft:block"
+}

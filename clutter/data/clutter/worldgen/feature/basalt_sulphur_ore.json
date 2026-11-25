@@ -1,0 +1,19 @@
+{
+  "type": "minecraft:ore",
+  "discard_chance_on_air_exposure": 0.5,
+  "size": 20,
+  "targets": [
+    {
+      "state": {
+        "id": "clutter:basalt_sulphur_ore",
+        "properties": {
+          "axis": "y"
+        }
+      },
+      "target": {
+        "block": "minecraft:basalt",
+        "predicate_type": "minecraft:block_match"
+      }
+    }
+  ]
+}

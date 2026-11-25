@@ -1,0 +1,16 @@
+{
+  "type": "minecraft:crafting_shaped",
+  "group": "kitchen_curtains",
+  "pattern": [
+    "NNN",
+    "###"
+  ],
+  "key": {
+    "#": "minecraft:red_wool",
+    "N": "minecraft:iron_ingot"
+  },
+  "result": {
+    "count": 6,
+    "id": "clutter:red_kitchen_curtains"
+  }
+}

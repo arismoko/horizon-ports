@@ -1,0 +1,6 @@
+{
+  "model": {
+    "model": "clutter:item/mailbox",
+    "type": "minecraft:model"
+  }
+}

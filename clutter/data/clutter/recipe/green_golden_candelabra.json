@@ -1,0 +1,18 @@
+{
+  "type": "minecraft:crafting_shaped",
+  "group": "golden_candelabras",
+  "pattern": [
+    "CCC",
+    "NIN",
+    " I "
+  ],
+  "key": {
+    "I": "minecraft:gold_ingot",
+    "N": "minecraft:gold_nugget",
+    "C": "minecraft:green_candle"
+  },
+  "result": {
+    "count": 1,
+    "id": "clutter:green_golden_candelabra"
+  }
+}

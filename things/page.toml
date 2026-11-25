@@ -1,0 +1,26 @@
+summary = "Trinkets and gadgets: Monocle, Mossy Necklace, mining gloves, socks, an Item Magnet, an Infernal Scepter, Container Keys and more."
+description = """
+Twenty-odd gadgets and trinkets. Wear the trinkets in the slots of the Trinkets mod (G); the tools work on their own.
+
+What it does:
+
+- Worn trinkets: Monocle (night vision), Moss Necklace (regeneration in light), Mining Gloves (haste), Riot Gauntlet (strength), Rabbit Foot Charm (jump boost), Hades Crystal (fire resistance), Socks (speed, and a jump boost toggled with Caps Lock), Arm Extender (more reach), Enchanted Wax Gland (water movement), Shock Absorber (less fall and wall damage), Placebo (potions sometimes fail) and Luck of the Irish (a poisonous potato heals).
+- Item Magnet: use it to pull items you look at; it recharges over time.
+- Infernal Scepter: shoots a fireball for a fire charge, 64 uses.
+- Container Key: sneak-use it on a chest, barrel, furnace or other container to lock it; only a key with the same number opens it again.
+- Recall Potion: takes you to your respawn point.
+- Bater Wucket: a water bucket that is never emptied; it fills cauldrons too.
+- Hardening Catalyst: on an anvil it makes a tool or armour piece unbreakable for 30 levels.
+- Gleaming ore, gleaming powder and compound, and glowstone fixtures.
+
+Differences from the original:
+
+- Without the Trinkets mod the trinkets cannot be worn; the rest works.
+- Effects are refreshed every half second with two seconds left, so one lingers a moment after the trinket comes off.
+- The sock upgrade recipes are not ported; socks are crafted as they come.
+- The Almanac is an item only: the Lavender book pages are not ported.
+- The Bater Wucket places water from a click on a block, at the end of the server tick; water in the Nether does nothing.
+
+A port of Things by glisco, under the MIT licence.
+"""
+categories = ["equipment", "utility"]

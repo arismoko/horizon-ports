@@ -1,0 +1,15 @@
+{
+  "template": "minecraft:elytra",
+  "components": {
+    "minecraft:max_damage": 432,
+    "minecraft:repairable": {
+      "items": "minecraft:pink_dye"
+    },
+    "minecraft:equippable": {
+      "slot": "chest",
+      "asset_id": "clutter:pink_butterfly_elytra",
+      "equip_sound": "minecraft:item.armor.equip_elytra",
+      "damage_on_hurt": false
+    }
+  }
+}

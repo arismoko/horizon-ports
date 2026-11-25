@@ -1,0 +1,98 @@
+{
+  "type": "minecraft:simple_block",
+  "to_place": {
+    "entries": [
+      {
+        "data": {
+          "id": "clutter:small_blue_lupine"
+        },
+        "weight": 10
+      },
+      {
+        "data": {
+          "id": "clutter:small_magenta_lupine"
+        },
+        "weight": 10
+      },
+      {
+        "data": {
+          "id": "clutter:small_purple_lupine"
+        },
+        "weight": 10
+      },
+      {
+        "data": {
+          "id": "clutter:small_yellow_lupine"
+        },
+        "weight": 8
+      },
+      {
+        "data": {
+          "id": "clutter:small_red_lupine"
+        },
+        "weight": 8
+      },
+      {
+        "data": {
+          "id": "clutter:small_white_lupine"
+        },
+        "weight": 5
+      },
+      {
+        "data": {
+          "id": "clutter:blue_lupine",
+          "properties": {
+            "half": "lower"
+          }
+        },
+        "weight": 2
+      },
+      {
+        "data": {
+          "id": "clutter:magenta_lupine",
+          "properties": {
+            "half": "lower"
+          }
+        },
+        "weight": 2
+      },
+      {
+        "data": {
+          "id": "clutter:purple_lupine",
+          "properties": {
+            "half": "lower"
+          }
+        },
+        "weight": 2
+      },
+      {
+        "data": {
+          "id": "clutter:yellow_lupine",
+          "properties": {
+            "half": "lower"
+          }
+        },
+        "weight": 2
+      },
+      {
+        "data": {
+          "id": "clutter:red_lupine",
+          "properties": {
+            "half": "lower"
+          }
+        },
+        "weight": 2
+      },
+      {
+        "data": {
+          "id": "clutter:white_lupine",
+          "properties": {
+            "half": "lower"
+          }
+        },
+        "weight": 1
+      }
+    ],
+    "type": "minecraft:weighted"
+  }
+}

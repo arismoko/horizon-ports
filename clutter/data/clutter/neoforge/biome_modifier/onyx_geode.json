@@ -1,0 +1,8 @@
+{
+  "type": "neoforge:add_features",
+  "biomes": "#minecraft:is_nether",
+  "features": [
+    "clutter:onyx_geode_placed"
+  ],
+  "step": "underground_ores"
+}

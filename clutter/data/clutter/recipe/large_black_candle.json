@@ -1,0 +1,11 @@
+{
+  "type": "minecraft:crafting_shapeless",
+  "group": "large_dyed_candles",
+  "ingredients": [
+    "clutter:large_candle",
+    "minecraft:black_dye"
+  ],
+  "result": {
+    "id": "clutter:large_black_candle"
+  }
+}

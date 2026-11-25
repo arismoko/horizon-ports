@@ -1,0 +1,48 @@
+{
+  "pools": [
+    {
+      "entries": [
+        {
+          "name": "clutter:glowlily",
+          "type": "minecraft:item"
+        }
+      ],
+      "rolls": 1
+    },
+    {
+      "entries": [
+        {
+          "condition": {
+            "blocks": "clutter:glowlily",
+            "state": {
+              "age": "2"
+            },
+            "type": "minecraft:match_block"
+          },
+          "modifier": [
+            {
+              "count": {
+                "max": 3,
+                "min": 2,
+                "type": "minecraft:uniform"
+              },
+              "type": "minecraft:set_count"
+            },
+            {
+              "enchantment": "minecraft:fortune",
+              "formula": "minecraft:uniform_bonus_count",
+              "parameters": {
+                "bonusMultiplier": 1
+              },
+              "type": "minecraft:apply_bonus"
+            }
+          ],
+          "name": "clutter:glowlily_bulb",
+          "type": "minecraft:item"
+        }
+      ],
+      "rolls": 1
+    }
+  ],
+  "type": "minecraft:block"
+}

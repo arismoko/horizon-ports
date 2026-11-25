@@ -1,0 +1,11 @@
+{
+  "template": "minecraft:wheat",
+  "properties": {
+    "hardness": 0.0,
+    "explosion_resistance": 0.0,
+    "sounds": "minecraft:wheat",
+    "requires_tool": false
+  },
+  "item": false,
+  "block_item": "clutter:cotton_seeds"
+}

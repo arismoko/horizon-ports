@@ -1,0 +1,49 @@
+{
+  "template": "minecraft:lily_pad",
+  "properties": {
+    "hardness": 0.0,
+    "explosion_resistance": 0.0,
+    "sounds": "minecraft:lily_pad",
+    "requires_tool": false,
+    "light": 0,
+    "occludes": false
+  },
+  "state_properties": {
+    "facing": {
+      "type": "enum",
+      "values": [
+        "east",
+        "north",
+        "south",
+        "west"
+      ]
+    },
+    "pad_amount": {
+      "type": "enum",
+      "values": [
+        "1",
+        "2",
+        "3",
+        "4"
+      ]
+    }
+  },
+  "default_state": {
+    "facing": "north",
+    "pad_amount": "1"
+  },
+  "shapes": {
+    "default": [
+      [
+        0.0,
+        0.015625,
+        0.0,
+        1.0,
+        0.046875,
+        1.0
+      ]
+    ]
+  },
+  "item": false,
+  "block_item": "clutter:small_lily_pads"
+}

@@ -1,0 +1,16 @@
+{
+  "type": "minecraft:crafting_shaped",
+  "group": "food_boxes",
+  "pattern": [
+    "###",
+    "#F#",
+    "###"
+  ],
+  "key": {
+    "#": "minecraft:carrot",
+    "F": "clutter:food_box"
+  },
+  "result": {
+    "id": "clutter:carrot_food_box"
+  }
+}

@@ -1,0 +1,19 @@
+{
+  "type": "minecraft:crafting_shaped",
+  "category": "misc",
+  "group": "chairs",
+  "key": {
+    "L": "clutter:redwood_log",
+    "P": "clutter:redwood_planks"
+  },
+  "pattern": [
+    "P  ",
+    "PP ",
+    "LL "
+  ],
+  "result": {
+    "count": 4,
+    "id": "clutter:redwood_chair"
+  },
+  "show_notification": true
+}

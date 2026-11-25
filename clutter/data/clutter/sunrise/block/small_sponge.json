@@ -1,0 +1,85 @@
+{
+  "template": "minecraft:dead_tube_coral",
+  "properties": {
+    "hardness": 0.6,
+    "explosion_resistance": 0.6,
+    "sounds": "minecraft:wet_sponge",
+    "requires_tool": false,
+    "light": 0,
+    "occludes": false
+  },
+  "state_properties": {
+    "age": {
+      "type": "enum",
+      "values": [
+        "0",
+        "1",
+        "2",
+        "3"
+      ]
+    }
+  },
+  "default_state": {
+    "age": "0",
+    "waterlogged": "false"
+  },
+  "shapes": {
+    "properties": [
+      "age"
+    ],
+    "values": {
+      "0": [
+        [
+          0.3125,
+          0.0,
+          0.3125,
+          0.6875,
+          0.375,
+          0.6875
+        ]
+      ],
+      "1": [
+        [
+          0.3125,
+          0.0,
+          0.25,
+          0.8125,
+          0.5,
+          0.75
+        ]
+      ],
+      "2": [
+        [
+          0.1875,
+          0.0,
+          0.1875,
+          0.8125,
+          0.625,
+          0.8125
+        ]
+      ],
+      "3": [
+        [
+          0.125,
+          0.0,
+          0.125,
+          0.875,
+          0.75,
+          0.875
+        ]
+      ]
+    },
+    "default": [
+      [
+        0.3125,
+        0.0,
+        0.3125,
+        0.6875,
+        0.375,
+        0.6875
+      ]
+    ]
+  },
+  "item": false,
+  "block_item": "clutter:sponge_shard"
+}

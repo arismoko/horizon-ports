@@ -1,0 +1,11 @@
+{
+  "type": "minecraft:crafting_shapeless",
+  "category": "building",
+  "ingredients": [
+    "clutter:weathered_cyan_copper_candelabra",
+    "minecraft:honeycomb"
+  ],
+  "result": {
+    "id": "clutter:waxed_weathered_cyan_copper_candelabra"
+  }
+}

@@ -1,0 +1,13 @@
+{
+  "type": "minecraft:crafting_shapeless",
+  "ingredients": [
+    "clutter:cherries",
+    "clutter:cherries",
+    "minecraft:wheat",
+    "minecraft:egg",
+    "minecraft:sugar"
+  ],
+  "result": {
+    "id": "clutter:cherry_pie"
+  }
+}

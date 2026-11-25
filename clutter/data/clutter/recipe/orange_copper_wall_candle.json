@@ -1,0 +1,17 @@
+{
+  "type": "minecraft:crafting_shaped",
+  "group": "copper_wall_candles",
+  "pattern": [
+    "C ",
+    "NI"
+  ],
+  "key": {
+    "I": "#c:copper_ingots",
+    "N": "#c:copper_nuggets",
+    "C": "minecraft:orange_candle"
+  },
+  "result": {
+    "count": 1,
+    "id": "clutter:orange_copper_wall_candle"
+  }
+}

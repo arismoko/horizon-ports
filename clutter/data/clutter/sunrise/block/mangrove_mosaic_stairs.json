@@ -1,0 +1,9 @@
+{
+  "template": "minecraft:mangrove_stairs",
+  "properties": {
+    "hardness": 2.0,
+    "explosion_resistance": 3.0,
+    "sounds": "minecraft:mangrove_stairs",
+    "requires_tool": false
+  }
+}

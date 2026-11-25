@@ -1,0 +1,11 @@
+{
+  "type": "minecraft:crafting_shapeless",
+  "category": "building",
+  "ingredients": [
+    "clutter:exposed_light_blue_copper_chandelier",
+    "minecraft:honeycomb"
+  ],
+  "result": {
+    "id": "clutter:waxed_exposed_light_blue_copper_chandelier"
+  }
+}

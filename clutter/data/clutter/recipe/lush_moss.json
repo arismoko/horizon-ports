@@ -1,0 +1,14 @@
+{
+  "type": "minecraft:crafting_shaped",
+  "pattern": [
+    "M",
+    "M"
+  ],
+  "key": {
+    "M": "minecraft:moss_block"
+  },
+  "result": {
+    "count": 2,
+    "id": "clutter:lush_moss"
+  }
+}

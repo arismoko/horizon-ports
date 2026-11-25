@@ -1,0 +1,6 @@
+{
+  "model": {
+    "model": "clutter:item/clutter_recipe_book",
+    "type": "minecraft:model"
+  }
+}

@@ -1,0 +1,10 @@
+{
+  "template": "minecraft:paper",
+  "max_stack_size": 1,
+  "components": {
+    "minecraft:equippable": {
+      "slot": "head",
+      "swappable": true
+    }
+  }
+}

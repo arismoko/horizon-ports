@@ -1,0 +1,11 @@
+{
+  "type": "minecraft:crafting_shapeless",
+  "category": "building",
+  "ingredients": [
+    "clutter:polished_onyx",
+    "clutter:sulphur"
+  ],
+  "result": {
+    "id": "clutter:polished_black_onyx"
+  }
+}

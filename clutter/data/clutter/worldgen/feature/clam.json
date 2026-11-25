@@ -1,0 +1,96 @@
+{
+  "type": "minecraft:simple_block",
+  "to_place": {
+    "type": "minecraft:weighted",
+    "entries": [
+      {
+        "data": {
+          "id": "clutter:pearl_clam_block",
+          "properties": {
+            "facing": "north",
+            "has_pearl": "true",
+            "waterlogged": "true"
+          }
+        },
+        "weight": 1
+      },
+      {
+        "data": {
+          "id": "clutter:pearl_clam_block",
+          "properties": {
+            "facing": "north",
+            "has_pearl": "false",
+            "waterlogged": "true"
+          }
+        },
+        "weight": 3
+      },
+      {
+        "data": {
+          "id": "clutter:pearl_clam_block",
+          "properties": {
+            "facing": "east",
+            "has_pearl": "true",
+            "waterlogged": "true"
+          }
+        },
+        "weight": 1
+      },
+      {
+        "data": {
+          "id": "clutter:pearl_clam_block",
+          "properties": {
+            "facing": "east",
+            "has_pearl": "false",
+            "waterlogged": "true"
+          }
+        },
+        "weight": 3
+      },
+      {
+        "data": {
+          "id": "clutter:pearl_clam_block",
+          "properties": {
+            "facing": "south",
+            "has_pearl": "true",
+            "waterlogged": "true"
+          }
+        },
+        "weight": 1
+      },
+      {
+        "data": {
+          "id": "clutter:pearl_clam_block",
+          "properties": {
+            "facing": "south",
+            "has_pearl": "false",
+            "waterlogged": "true"
+          }
+        },
+        "weight": 3
+      },
+      {
+        "data": {
+          "id": "clutter:pearl_clam_block",
+          "properties": {
+            "facing": "west",
+            "has_pearl": "true",
+            "waterlogged": "true"
+          }
+        },
+        "weight": 1
+      },
+      {
+        "data": {
+          "id": "clutter:pearl_clam_block",
+          "properties": {
+            "facing": "west",
+            "has_pearl": "false",
+            "waterlogged": "true"
+          }
+        },
+        "weight": 3
+      }
+    ]
+  }
+}
