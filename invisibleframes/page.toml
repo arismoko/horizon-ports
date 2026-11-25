@@ -11,5 +11,5 @@ A port of Invisible Frames by Roundaround, under the MIT licence.
 categories = ["decoration"]
 
 [[screenshots]]
-file = "page/world.png"
-title = "Invisible item frame holding an apple beside visible frames"
+path = "page/world.png"
+caption = "Invisible item frame holding an apple beside visible frames"
