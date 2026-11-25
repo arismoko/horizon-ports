@@ -5,8 +5,8 @@
 
 use crate::wind::{TAU, WindSnapshot};
 use mod_api::{
-    BlockKey, BlockState, Compound, LightLayer, ModParticle, ParticleBatch, ParticleFacing,
-    ParticleLevelView, ParticleMapCodec, ParticleProvider, ParticleStreamCodec, RandomSource, Tag,
+    BlockKey, BlockState, Compound, CustomParticle, LightLayer, ParticleFacing, ParticleLevelView,
+    ParticleMapCodec, ParticleProvider, ParticleSpawn, ParticleStreamCodec, ParticleTickView, Tag,
     Wire,
 };
 use std::collections::HashMap;
@@ -24,18 +24,6 @@ pub enum LeafParticleKind {
     Conifer,
     Cherry,
     Snow,
-}
-
-impl LeafParticleKind {
-    pub const fn frame_count(self) -> u32 {
-        match self {
-            Self::Regular => 5,
-            Self::RegularVanilla => 12,
-            Self::Conifer => 3,
-            Self::Cherry => 12,
-            Self::Snow => 1,
-        }
-    }
 }
 
 /// Typed options carried by our registered particle types.
@@ -118,7 +106,7 @@ impl LeafParticleData {
     }
 }
 
-/// Cached block keys and fluid state ordinals so `ParticleProvider::tick` can inspect
+/// Cached block keys and fluid state ordinals so `CustomParticle::tick` can inspect
 /// water, lava, and air without a `Host`.
 #[derive(Clone, Debug, Default)]
 pub struct FluidBlockCache {
@@ -210,45 +198,34 @@ pub fn fluid_height_for_level(level: u8, same_fluid_above: bool) -> f64 {
     f64::from(amount) / 9.0
 }
 
-const FLAG_IN_WATER: u32 = 1 << 0;
-const FLAG_ON_GROUND: u32 = 1 << 1;
-const FLAG_STUCK_IN_GROUND: u32 = 1 << 2;
-
-/// Encode `(max_rotate_time, rotate_time, flags)` into an exact finite `f64` integer
-/// (19 bits total, always well within `f64`'s 53-bit exact integer mantissa).
-pub fn encode_counters(max_rotate_time: u32, rotate_time: u32, flags: u32) -> f64 {
-    let packed = ((max_rotate_time & 0xFF) << 11) | ((rotate_time & 0xFF) << 3) | (flags & 0x7);
-    f64::from(packed)
-}
-
-pub fn decode_counters(raw: f64) -> (u32, u32, u32) {
-    let packed = if raw.is_finite() && raw >= 0.0 {
-        raw as u32
-    } else {
-        0
-    };
-    let max_rotate_time = ((packed >> 11) & 0xFF).max(1);
-    let rotate_time = (packed >> 3) & 0xFF;
-    let flags = packed & 0x7;
-    (max_rotate_time, rotate_time, flags)
-}
-
-/// `ParticleProvider` for our custom falling-leaf and snowflake particle types.
+/// `ParticleProvider` for our custom falling-leaf and snowflake particle types, bound to one
+/// loaded sprite set.
 pub struct LeafParticleProvider {
     pub kind: LeafParticleKind,
     pub shared: std::sync::Arc<ParticleSharedState>,
+    pub frames: usize,
+}
+
+/// One live falling leaf or snowflake; its fields are its per-particle state.
+struct LeafParticle {
+    shared: std::sync::Arc<ParticleSharedState>,
+    gravity: f64,
+    wind_coeff: f64,
+    max_rotate_speed: f32,
+    max_rotate_time: u32,
+    rotate_time: u32,
+    in_water: bool,
+    on_ground: bool,
+    stuck_in_ground: bool,
 }
 
 impl ParticleProvider<LeafParticleData> for LeafParticleProvider {
     fn create_particle(
         &self,
-        options: &LeafParticleData,
-        _level: &dyn ParticleLevelView,
-        _position: [f64; 3],
-        _aux: [f64; 3],
-        random: &mut dyn RandomSource,
-        particle: &mut ModParticle,
-    ) -> Option<()> {
+        spawn: &mut ParticleSpawn<'_, LeafParticleData>,
+        particle: &mut dyn ParticleTickView,
+    ) -> Option<Box<dyn CustomParticle>> {
+        let random = &mut *spawn.random;
         let (gravity, wind_coeff) = match self.kind {
             LeafParticleKind::Cherry => (
                 0.0175 + random.next_float() * 0.0050,
@@ -266,7 +243,7 @@ impl ParticleProvider<LeafParticleData> for LeafParticleProvider {
             ),
         };
 
-        let options = &options.finite_or_default();
+        let options = spawn.options.finite_or_default();
         let max_rotate_time = (3 + random.next_int_bound(5)) as u32 * 20;
         let sign = if random.next_boolean() {
             -1.0f32
@@ -289,30 +266,43 @@ impl ParticleProvider<LeafParticleData> for LeafParticleProvider {
             size *= 1.5;
         }
 
-        let frames = self.kind.frame_count().max(1);
-        particle.velocity = [0.0, 0.0, 0.0];
-        particle.lifetime = options.lifespan.clamp(20, 1200);
-        particle.rgba = [
+        let frames = self.frames.max(1);
+        let frame = random
+            .next_int_bound(frames.min(i32::MAX as usize) as i32)
+            .max(0) as usize;
+        let roll = random.next_float() * TAU;
+
+        // The instance moves itself, so the base tick's motion and collision stay off.
+        particle.set_has_physics(false);
+        particle.set_velocity([0.0, 0.0, 0.0]);
+        particle.set_lifetime(options.lifespan.clamp(20, 1200));
+        particle.set_rgba([
             options.r.clamp(0.0, 1.0),
             options.g.clamp(0.0, 1.0),
             options.b.clamp(0.0, 1.0),
             1.0,
-        ];
-        particle.size = size.clamp(0.005, 1.0);
-        particle.frame = random.next_int_bound(frames as i32).max(0) as u32;
-        particle.facing = ParticleFacing::Camera;
-        particle.roll = random.next_float() * TAU;
-        particle.state = [
-            f64::from(gravity),
-            f64::from(wind_coeff),
-            f64::from(max_rotate_speed),
-            encode_counters(max_rotate_time, 0, 0),
-        ];
+        ]);
+        particle.set_size(size.clamp(0.005, 1.0));
+        particle.set_sprite_index(frame);
+        particle.set_facing(ParticleFacing::Camera);
+        particle.set_roll(roll);
 
-        Some(())
+        Some(Box::new(LeafParticle {
+            shared: self.shared.clone(),
+            gravity: f64::from(gravity),
+            wind_coeff: f64::from(wind_coeff),
+            max_rotate_speed,
+            max_rotate_time: max_rotate_time.max(1),
+            rotate_time: 0,
+            in_water: false,
+            on_ground: false,
+            stuck_in_ground: false,
+        }))
     }
+}
 
-    fn tick(&self, particles: &mut ParticleBatch, level: &dyn ParticleLevelView) {
+impl CustomParticle for LeafParticle {
+    fn tick(&mut self, particle: &mut dyn ParticleTickView, level: &dyn ParticleLevelView) {
         let (wind_x, wind_z, is_raining) = self.shared.wind.load();
         let wind_x = f64::from(wind_x);
         let wind_z = f64::from(wind_z);
@@ -324,156 +314,158 @@ impl ParticleProvider<LeafParticleData> for LeafParticleProvider {
             .unwrap_or_else(|e| e.into_inner())
             .clone();
 
-        for p in particles {
-            // Fade-out animation over the last FADE_DURATION ticks.
-            if p.age >= p.lifetime + 1 - FADE_DURATION {
-                p.rgba[3] = (p.rgba[3] - 1.0 / FADE_DURATION as f32).max(0.0);
-            }
-            if p.age >= p.lifetime {
-                p.removed = true;
-                continue;
-            }
-
-            let gravity = p.state[0];
-            let wind_coeff = p.state[1];
-            let max_rotate_speed = p.state[2] as f32;
-            let (max_rotate_time, mut rotate_time, mut flags) = decode_counters(p.state[3]);
-
-            let mut in_water = (flags & FLAG_IN_WATER) != 0;
-            let mut on_ground = (flags & FLAG_ON_GROUND) != 0;
-            let mut stuck_in_ground = (flags & FLAG_STUCK_IN_GROUND) != 0;
-
-            let bx = p.position[0].floor() as i32;
-            let by = p.position[1].floor() as i32;
-            let bz = p.position[2].floor() as i32;
-            let block_pos = [bx, by, bz];
-
-            let cell_state = level.block_state(block_pos);
-
-            // Burn on contact with lava.
-            if let Some(lava_lvl) = block_cache.lava_level(cell_state) {
-                let above_is_lava = block_cache
-                    .lava_level(level.block_state([bx, by + 1, bz]))
-                    .is_some();
-                let lava_y = f64::from(by) + fluid_height_for_level(lava_lvl, above_is_lava);
-                if lava_y >= p.position[1] {
-                    self.shared.push_lava_splash(p.position);
-                    p.removed = true;
-                    continue;
-                }
-            }
-
-            // Apply gravity + weight of rain under open sky.
-            let sky_light = level.brightness(LightLayer::Sky, block_pos);
-            let rain_weight = if is_raining && sky_light == 15 {
-                0.04
-            } else {
-                0.0
-            };
-            p.velocity[1] -= 0.04 * (gravity + rain_weight);
-
-            // Water floating, buoyancy, flow push, and water friction.
-            if let Some(water_lvl) = block_cache.water_level(cell_state) {
-                let above_is_water = block_cache
-                    .water_level(level.block_state([bx, by + 1, bz]))
-                    .is_some();
-                let water_y = f64::from(by) + fluid_height_for_level(water_lvl, above_is_water);
-                if water_y >= p.position[1] - 0.1 {
-                    if !in_water {
-                        in_water = true;
-                        if (water_y - p.position[1]).abs() < 0.2 {
-                            p.position[1] = water_y;
-                        }
-                        p.velocity[1] *= 0.1;
-                        p.velocity[0] *= 0.5;
-                        p.velocity[2] *= 0.5;
-                        rotate_time = 0;
-                    } else {
-                        let depth = (water_y + 0.1 - p.position[1]).max(0.0);
-                        p.velocity[1] += depth * wind_coeff / 30.0;
-                    }
-
-                    // Flowing water pushes leaves along the local water slope.
-                    if water_lvl != 0 {
-                        let (flow_x, flow_z) =
-                            estimate_water_flow(level, &block_cache, bx, by, bz, water_lvl);
-                        let push_x = flow_x * 0.4;
-                        let push_z = flow_z * 0.4;
-                        p.velocity[0] += (push_x - p.velocity[0]) * wind_coeff / 60.0;
-                        p.velocity[2] += (push_z - p.velocity[2]) * wind_coeff / 60.0;
-                    }
-
-                    p.velocity[0] *= 1.0 - WATER_FRICTION;
-                    p.velocity[1] *= 1.0 - WATER_FRICTION;
-                    p.velocity[2] *= 1.0 - WATER_FRICTION;
-                }
-            } else {
-                in_water = false;
-                if !on_ground {
-                    rotate_time = (rotate_time + 1).min(max_rotate_time);
-                    p.roll += (rotate_time as f32 / max_rotate_time as f32) * max_rotate_speed;
-                } else {
-                    rotate_time = 0;
-                }
-
-                // Approach wind velocity smoothly.
-                p.velocity[0] += (wind_x - p.velocity[0]) * wind_coeff / 60.0;
-                p.velocity[2] += (wind_z - p.velocity[2]) * wind_coeff / 60.0;
-            }
-
-            // Move & collide against solid blocks.
-            let old_dx = p.velocity[0];
-            let old_dy = p.velocity[1];
-            let old_dz = p.velocity[2];
-
-            if !stuck_in_ground && (old_dx != 0.0 || old_dy != 0.0 || old_dz != 0.0) {
-                let (dx, dy, dz) =
-                    collide_step(level, &block_cache, p.position, old_dx, old_dy, old_dz);
-
-                if (old_dx - dx).abs() > 1e-9 {
-                    p.velocity[0] = 0.0;
-                }
-                if (old_dz - dz).abs() > 1e-9 {
-                    p.velocity[2] = 0.0;
-                }
-
-                on_ground = (old_dy - dy).abs() > 1e-9 && old_dy < 0.0;
-                if !on_ground {
-                    stuck_in_ground = false;
-                } else if dy.abs() < 1e-5 {
-                    stuck_in_ground = true;
-                    p.velocity = [0.0, 0.0, 0.0];
-                }
-
-                if !stuck_in_ground {
-                    p.position[0] += dx;
-                    p.position[1] += dy;
-                    p.position[2] += dz;
-                }
-            } else if stuck_in_ground {
-                // Re-check whether the supporting block underneath was removed.
-                let below = [
-                    p.position[0].floor() as i32,
-                    (p.position[1] - 0.05).floor() as i32,
-                    p.position[2].floor() as i32,
-                ];
-                if !is_solid_cell(level.block_state(below), &block_cache) {
-                    stuck_in_ground = false;
-                    on_ground = false;
-                } else {
-                    p.velocity = [0.0, 0.0, 0.0];
-                }
-            }
-
-            flags = (if in_water { FLAG_IN_WATER } else { 0 })
-                | (if on_ground { FLAG_ON_GROUND } else { 0 })
-                | (if stuck_in_ground {
-                    FLAG_STUCK_IN_GROUND
-                } else {
-                    0
-                });
-            p.state[3] = encode_counters(max_rotate_time, rotate_time, flags);
+        // Fade-out animation over the last FADE_DURATION ticks.
+        if particle.age() >= particle.lifetime() + 1 - FADE_DURATION {
+            let mut rgba = particle.rgba();
+            rgba[3] = (rgba[3] - 1.0 / FADE_DURATION as f32).max(0.0);
+            particle.set_rgba(rgba);
         }
+        if !particle.advance_age() {
+            return;
+        }
+
+        let gravity = self.gravity;
+        let wind_coeff = self.wind_coeff;
+        let max_rotate_speed = self.max_rotate_speed;
+        let max_rotate_time = self.max_rotate_time;
+        let mut rotate_time = self.rotate_time;
+        let mut in_water = self.in_water;
+        let mut on_ground = self.on_ground;
+        let mut stuck_in_ground = self.stuck_in_ground;
+
+        let mut position = particle.position();
+        let mut velocity = particle.velocity();
+        let mut roll = particle.roll();
+
+        let bx = position[0].floor() as i32;
+        let by = position[1].floor() as i32;
+        let bz = position[2].floor() as i32;
+        let block_pos = [bx, by, bz];
+
+        let cell_state = level.block_state(block_pos);
+
+        // Burn on contact with lava.
+        if let Some(lava_lvl) = block_cache.lava_level(cell_state) {
+            let above_is_lava = block_cache
+                .lava_level(level.block_state([bx, by + 1, bz]))
+                .is_some();
+            let lava_y = f64::from(by) + fluid_height_for_level(lava_lvl, above_is_lava);
+            if lava_y >= position[1] {
+                self.shared.push_lava_splash(position);
+                particle.remove();
+                return;
+            }
+        }
+
+        // Apply gravity + weight of rain under open sky.
+        let sky_light = level.brightness(LightLayer::Sky, block_pos);
+        let rain_weight = if is_raining && sky_light == 15 {
+            0.04
+        } else {
+            0.0
+        };
+        velocity[1] -= 0.04 * (gravity + rain_weight);
+
+        // Water floating, buoyancy, flow push, and water friction.
+        if let Some(water_lvl) = block_cache.water_level(cell_state) {
+            let above_is_water = block_cache
+                .water_level(level.block_state([bx, by + 1, bz]))
+                .is_some();
+            let water_y = f64::from(by) + fluid_height_for_level(water_lvl, above_is_water);
+            if water_y >= position[1] - 0.1 {
+                if !in_water {
+                    in_water = true;
+                    if (water_y - position[1]).abs() < 0.2 {
+                        position[1] = water_y;
+                    }
+                    velocity[1] *= 0.1;
+                    velocity[0] *= 0.5;
+                    velocity[2] *= 0.5;
+                    rotate_time = 0;
+                } else {
+                    let depth = (water_y + 0.1 - position[1]).max(0.0);
+                    velocity[1] += depth * wind_coeff / 30.0;
+                }
+
+                // Flowing water pushes leaves along the local water slope.
+                if water_lvl != 0 {
+                    let (flow_x, flow_z) =
+                        estimate_water_flow(level, &block_cache, bx, by, bz, water_lvl);
+                    let push_x = flow_x * 0.4;
+                    let push_z = flow_z * 0.4;
+                    velocity[0] += (push_x - velocity[0]) * wind_coeff / 60.0;
+                    velocity[2] += (push_z - velocity[2]) * wind_coeff / 60.0;
+                }
+
+                velocity[0] *= 1.0 - WATER_FRICTION;
+                velocity[1] *= 1.0 - WATER_FRICTION;
+                velocity[2] *= 1.0 - WATER_FRICTION;
+            }
+        } else {
+            in_water = false;
+            if !on_ground {
+                rotate_time = (rotate_time + 1).min(max_rotate_time);
+                roll += (rotate_time as f32 / max_rotate_time as f32) * max_rotate_speed;
+            } else {
+                rotate_time = 0;
+            }
+
+            // Approach wind velocity smoothly.
+            velocity[0] += (wind_x - velocity[0]) * wind_coeff / 60.0;
+            velocity[2] += (wind_z - velocity[2]) * wind_coeff / 60.0;
+        }
+
+        // Move & collide against solid blocks.
+        let old_dx = velocity[0];
+        let old_dy = velocity[1];
+        let old_dz = velocity[2];
+
+        if !stuck_in_ground && (old_dx != 0.0 || old_dy != 0.0 || old_dz != 0.0) {
+            let (dx, dy, dz) = collide_step(level, &block_cache, position, old_dx, old_dy, old_dz);
+
+            if (old_dx - dx).abs() > 1e-9 {
+                velocity[0] = 0.0;
+            }
+            if (old_dz - dz).abs() > 1e-9 {
+                velocity[2] = 0.0;
+            }
+
+            on_ground = (old_dy - dy).abs() > 1e-9 && old_dy < 0.0;
+            if !on_ground {
+                stuck_in_ground = false;
+            } else if dy.abs() < 1e-5 {
+                stuck_in_ground = true;
+                velocity = [0.0, 0.0, 0.0];
+            }
+
+            if !stuck_in_ground {
+                position[0] += dx;
+                position[1] += dy;
+                position[2] += dz;
+            }
+        } else if stuck_in_ground {
+            // Re-check whether the supporting block underneath was removed.
+            let below = [
+                position[0].floor() as i32,
+                (position[1] - 0.05).floor() as i32,
+                position[2].floor() as i32,
+            ];
+            if !is_solid_cell(level.block_state(below), &block_cache) {
+                stuck_in_ground = false;
+                on_ground = false;
+            } else {
+                velocity = [0.0, 0.0, 0.0];
+            }
+        }
+
+        self.rotate_time = rotate_time;
+        self.in_water = in_water;
+        self.on_ground = on_ground;
+        self.stuck_in_ground = stuck_in_ground;
+
+        particle.set_roll(roll);
+        particle.set_velocity(velocity);
+        particle.set_position(position);
     }
 }
 
@@ -569,19 +561,6 @@ fn estimate_water_flow(
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn counters_round_trip_and_stay_finite() {
-        for max_t in [60u32, 100, 140] {
-            for cur_t in [0u32, 50, 140] {
-                for flags in 0u32..8 {
-                    let encoded = encode_counters(max_t, cur_t, flags);
-                    assert!(encoded.is_finite());
-                    assert_eq!(decode_counters(encoded), (max_t, cur_t, flags));
-                }
-            }
-        }
-    }
 
     #[test]
     fn non_finite_options_fall_back_to_defaults() {
