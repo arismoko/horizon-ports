@@ -1,7 +1,7 @@
 # Armor HUD for Sunrise: client-only native code in src/ using the typed mod API.
 id = "armorhud"
 name = "Armor HUD"
-version = "0.5.0"
+version = "0.5.1"
 description = "A vanilla-style widget beside the hotbar that shows your worn armour, its durability and a low-durability warning."
 authors = ["BerdinskiyBear", "uku", "arismoko"]
 license = "MIT"
