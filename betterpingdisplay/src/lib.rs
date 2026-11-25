@@ -8,16 +8,20 @@ mod config;
 mod tab_list;
 
 use crate::config::{
-    BetterPingDisplayConfig, CONFIG_FILE_NAME, MOD_ID, register_mod_configs, register_settings,
+    BetterPingDisplayConfig, CONFIG_FILE_NAME, MOD_ID, SettingKeys, config_spec, register_settings,
 };
-use crate::tab_list::{TabListState, TextMetrics, build_narration, is_visible};
+use crate::tab_list::{
+    ObjectiveSnap, TabList, TabListState, TextMetrics, build_narration, is_visible, paint,
+};
 use mod_api::{
-    ClientHost, ClientTickPostEvent, ConfigContext, ConfigKind, ConfigLoadingEvent, ConfigPath,
-    ConfigReloadingEvent, DisplaySlot, Hooks, HostSide, HudMode, Narration, RegisterConfigsEvent,
-    RegisterGuiLayersEvent, Registrar, RegistrationContext, SettingChangedEvent, Text,
+    ClientHost, ClientTickPostEvent, ConfigEvent, ConfigSnapshot, Hooks, Host, HostSide, HudMode,
+    Narration, RegisterGuiLayersEvent, Registrar, RegistrationContext, SettingChangedEvent, Text,
     VanillaKeyMappingRef,
 };
-use std::sync::{LazyLock, Mutex, MutexGuard};
+use std::sync::{Arc, LazyLock, Mutex, MutexGuard, OnceLock};
+
+/// The handles of this mod's registered settings, kept at registration.
+static SETTING_KEYS: OnceLock<SettingKeys> = OnceLock::new();
 
 const PLAYERLIST_KEY: &str = "key.playerlist";
 
@@ -40,20 +44,9 @@ impl Runtime {
         }
     }
 
-    fn sync_initial_settings(&mut self, host: &dyn ClientHost) {
-        if self.settings_synced {
-            return;
-        }
-        self.settings_synced = true;
-        self.config.write_to_host_settings(host);
-    }
-
-    fn persist_config_file(&self, host: &dyn ClientHost) {
-        if let Ok(path) = ConfigPath::new(CONFIG_FILE_NAME) {
-            let _ = host
-                .config_files()
-                .write(&path, self.config.to_toml().as_bytes());
-        }
+    fn persist_config_file(&self, host: &dyn Host) {
+        let path = host.config_dir().join(CONFIG_FILE_NAME);
+        let _ = std::fs::write(path, self.config.to_toml());
     }
 
     fn playerlist_key_down(&mut self, host: &dyn ClientHost) -> bool {
@@ -99,43 +92,42 @@ struct BetterPingDisplay;
 #[mod_api::sunrise_mod]
 impl Hooks for BetterPingDisplay {
     fn register(&self, r: &mut dyn Registrar, _cx: &RegistrationContext) {
-        register_settings(r);
-    }
-
-    fn register_configs(&self, _ctx: &dyn ConfigContext, event: &mut RegisterConfigsEvent<'_>) {
-        register_mod_configs(event.configs);
-    }
-
-    fn config_loading(&self, _ctx: &dyn ConfigContext, event: &mut ConfigLoadingEvent<'_>) {
-        if event.config.mod_id != MOD_ID || event.config.kind != ConfigKind::Client {
-            return;
+        if let Some(keys) = register_settings(r) {
+            let _ = SETTING_KEYS.set(keys);
         }
-        let parsed = BetterPingDisplayConfig::parse_toml(&event.config.text);
-        let mut rt = lock_runtime();
-        rt.config = parsed;
+        let listener = |event: ConfigEvent<'_>, snapshot: &ConfigSnapshot| -> Result<(), String> {
+            let parsed = BetterPingDisplayConfig::parse_toml(&snapshot.text);
+            match event {
+                ConfigEvent::Loading(_) => {
+                    lock_runtime().config = parsed;
+                }
+                ConfigEvent::Reloading(host) => {
+                    {
+                        let mut rt = lock_runtime();
+                        rt.config = parsed.clone();
+                        rt.settings_synced = true;
+                    }
+                    // Written with the lock released: a changed value notifies `setting_changed`.
+                    if let HostSide::Client(client) = host
+                        && let Some(keys) = SETTING_KEYS.get()
+                    {
+                        parsed.write_to_host_settings(client, *keys);
+                    }
+                }
+                _ => {}
+            }
+            Ok(())
+        };
+        // A duplicate filename is refused by the game; the first registration stays active.
+        let _ = r.register_config(config_spec(), Some(Arc::new(listener)));
     }
 
-    fn config_reloading(&self, host: HostSide<'_>, event: &mut ConfigReloadingEvent<'_>) {
-        if event.config.mod_id != MOD_ID || event.config.kind != ConfigKind::Client {
-            return;
-        }
-        let parsed = BetterPingDisplayConfig::parse_toml(&event.config.text);
-        let mut rt = lock_runtime();
-        rt.config = parsed;
-        rt.settings_synced = true;
-        if let HostSide::Client(client) = host {
-            rt.config.write_to_host_settings(client);
-        }
-    }
-
-    fn setting_changed(&self, host: &mut dyn ClientHost, event: &mut SettingChangedEvent<'_>) {
+    fn setting_changed(&self, host: &dyn Host, event: &mut SettingChangedEvent<'_>) {
         if event.mod_id != MOD_ID {
             return;
         }
         let mut rt = lock_runtime();
-        let changed = rt.config.apply_single_setting(host, event.key);
-        rt.sync_initial_settings(host);
-        if changed {
+        if rt.config.apply_single_setting(event.key, event.value) {
             rt.persist_config_file(host);
         }
     }
@@ -161,17 +153,23 @@ impl Hooks for BetterPingDisplay {
                 let draws = {
                     let host = ctx.host();
                     let mut rt = lock_runtime();
-                    rt.sync_initial_settings(host);
 
-                    let Some(tab_list) = host.client_session().client_tab_list() else {
+                    let Some(tab_list) = host
+                        .client_session()
+                        .client_tab_list()
+                        .ok()
+                        .flatten()
+                        .map(TabList::copy_from)
+                    else {
                         rt.tab_state.set_visible(false);
                         return;
                     };
 
-                    let scoreboard = host.client_scoreboard().ok().flatten();
-                    let objective = scoreboard
-                        .as_ref()
-                        .and_then(|board| board.in_slot(DisplaySlot::List));
+                    let objective = host
+                        .client_scoreboard()
+                        .ok()
+                        .flatten()
+                        .and_then(ObjectiveSnap::copy_list_slot);
 
                     let local_server = host
                         .client_session()
@@ -200,7 +198,7 @@ impl Hooks for BetterPingDisplay {
                     let metrics = HostMetrics(host);
                     rt.tab_state.build_draws(
                         &tab_list,
-                        objective,
+                        objective.as_ref(),
                         screen_width,
                         gui_ticks,
                         &config,
@@ -210,7 +208,7 @@ impl Hooks for BetterPingDisplay {
 
                 if !draws.is_empty() {
                     ctx.with_draw(&mut |draw| {
-                        let _ = draw.gui_paint(&draws);
+                        let _ = draw.draw_gui(&mut |canvas| paint(canvas, &draws));
                     });
                 }
             }),
@@ -220,6 +218,16 @@ impl Hooks for BetterPingDisplay {
     fn client_tick_post(&self, host: &mut dyn ClientHost, _event: &mut ClientTickPostEvent) {
         if !host.on(MOD_ID) {
             return;
+        }
+        let unsynced = {
+            let mut rt = lock_runtime();
+            let first = !rt.settings_synced;
+            rt.settings_synced = true;
+            first.then(|| rt.config.clone())
+        };
+        if let (Some(config), Some(keys)) = (unsynced, SETTING_KEYS.get()) {
+            // Written with the lock released: a changed value notifies `setting_changed`.
+            config.write_to_host_settings(host, *keys);
         }
         let narration = lock_runtime().pending_narration.take();
         if let Some(text) = narration {
