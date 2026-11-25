@@ -20,3 +20,11 @@ Known differences from the original on Dev `3d34bbe`:
 Ported under the MIT licence. Original mod and icon by Jaredlll08.
 """
 categories = ["optimization", "game-mechanics", "utility"]
+
+[[screenshots]]
+path = "page/merged-orb.png"
+caption = "Four experience orbs of different values merged into a single clump carrying their summed XP."
+
+[[screenshots]]
+path = "page/pickup-total-xp.png"
+caption = "Picking up the merged orb awards the exact summed XP total (76 XP: 6 levels, 4 points)."
