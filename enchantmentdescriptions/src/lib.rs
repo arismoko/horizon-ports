@@ -11,6 +11,7 @@
 
 mod logic;
 
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Mutex, MutexGuard, PoisonError};
 
 use logic::{
@@ -50,12 +51,9 @@ const TOGGLES: [(&str, bool); 5] = [
 ];
 
 static FILE: Mutex<Option<FileConfig>> = Mutex::new(None);
-/// The menu type id of the open screen, kept from the screen hooks for the tooltip hook.
-static MENU: Mutex<Option<String>> = Mutex::new(None);
-
-fn set_menu(menu: Option<&str>) {
-    *MENU.lock().unwrap_or_else(PoisonError::into_inner) = menu.map(str::to_owned);
-}
+/// Whether the open screen is an enchanting table's, kept from the screen hooks for the
+/// tooltip hook.
+static ENCHANTING_SCREEN: AtomicBool = AtomicBool::new(false);
 
 fn file_config() -> FileConfig {
     let guard: MutexGuard<'_, Option<FileConfig>> =
@@ -142,11 +140,8 @@ fn can_display(host: &dyn ClientHost, item_id: Option<&str>) -> bool {
     if toggle(host, ONLY_ON_BOOKS, false) && item_id != Some(ENCHANTED_BOOK) {
         return false;
     }
-    if toggle(host, ONLY_IN_TABLE, false) {
-        let menu = MENU.lock().unwrap_or_else(PoisonError::into_inner).clone();
-        if !is_enchanting_menu(menu.as_deref()) {
-            return false;
-        }
+    if toggle(host, ONLY_IN_TABLE, false) && !ENCHANTING_SCREEN.load(Ordering::Relaxed) {
+        return false;
     }
     true
 }
@@ -189,11 +184,11 @@ impl Hooks for EnchantmentDescriptions {
     }
 
     fn screen_render_post(&self, _host: &dyn ClientHost, event: &mut ScreenRenderPostEvent<'_>) {
-        set_menu(event.screen.menu);
+        ENCHANTING_SCREEN.store(is_enchanting_menu(event.screen.menu), Ordering::Relaxed);
     }
 
     fn screen_closing(&self, _host: &dyn ClientHost, _event: &mut ScreenClosingEvent<'_>) {
-        set_menu(None);
+        ENCHANTING_SCREEN.store(false, Ordering::Relaxed);
     }
 
     fn item_tooltip(&self, host: &dyn ClientHost, event: &mut ItemTooltipEvent<'_>) {
