@@ -9,11 +9,217 @@ use crate::config::BetterPingDisplayConfig;
 use mod_api::client::hud_layout::Blend;
 use mod_api::text::TextStyle;
 use mod_api::{
-    ClientObjective, ClientScore, ClientTabList, ClientTabListEntry, GameMode, GuiDraw,
-    NumberFormat, ObjectiveRenderType, Text,
+    ClientObjective, ClientScore, ClientScoreboard, ClientTabList, ClientTabListEntry, DisplaySlot,
+    GameMode, GuiCanvas, GuiDrawError, NumberFormat, ObjectiveRenderType, Text,
 };
 use std::borrow::Cow;
 use std::collections::{HashMap, HashSet};
+use std::ops::ControlFlow;
+
+/// One listed player, copied from the live player list for a frame.
+#[derive(Clone, Debug, PartialEq)]
+pub struct TabEntry {
+    pub name: String,
+    pub uuid: u128,
+    pub game_mode: GameMode,
+    pub latency: i32,
+    pub display: Text,
+}
+
+impl TabEntry {
+    pub fn new(name: String, uuid: u128, game_mode: GameMode, latency: i32, display: Text) -> Self {
+        Self {
+            name,
+            uuid,
+            game_mode,
+            latency,
+            display,
+        }
+    }
+}
+
+/// The player list copied for a frame.
+#[derive(Clone, Debug, PartialEq)]
+pub struct TabList {
+    pub entries: Vec<TabEntry>,
+    pub header: Option<Text>,
+    pub footer: Option<Text>,
+}
+
+impl TabList {
+    #[cfg(test)]
+    pub fn new(entries: Vec<TabEntry>, header: Option<Text>, footer: Option<Text>) -> Self {
+        Self {
+            entries,
+            header,
+            footer,
+        }
+    }
+
+    /// Copy the host's live player list. A row whose display name cannot be copied shows its
+    /// profile name; a header or footer that cannot be copied is left out.
+    pub fn copy_from(live: &dyn ClientTabList) -> Self {
+        let mut entries = Vec::new();
+        let _ = live.visit_entries(&mut |entry: &dyn ClientTabListEntry| {
+            let name = entry.name().to_owned();
+            let display = entry
+                .copy_display()
+                .unwrap_or_else(|_| Text::literal(name.clone()));
+            entries.push(TabEntry::new(
+                name,
+                entry.uuid(),
+                entry.game_mode(),
+                entry.latency(),
+                display,
+            ));
+            ControlFlow::Continue(())
+        });
+        Self {
+            entries,
+            header: live.copy_header().ok().flatten(),
+            footer: live.copy_footer().ok().flatten(),
+        }
+    }
+}
+
+/// One score of the list objective, copied for a frame.
+#[derive(Clone, Debug, PartialEq)]
+pub struct ScoreSnap {
+    pub holder: String,
+    pub value: i32,
+    pub number_format: Option<NumberFormat>,
+}
+
+/// The objective in the `list` display slot, copied for a frame.
+#[derive(Clone, Debug, PartialEq)]
+pub struct ObjectiveSnap {
+    pub render_type: ObjectiveRenderType,
+    pub number_format: Option<NumberFormat>,
+    pub scores: Vec<ScoreSnap>,
+}
+
+impl ObjectiveSnap {
+    /// Copy the objective shown in the player list slot, if any.
+    pub fn copy_list_slot(board: &dyn ClientScoreboard) -> Option<Self> {
+        let mut copied = None;
+        board.with_slot(DisplaySlot::List, &mut |objective: &dyn ClientObjective| {
+            let mut scores = Vec::new();
+            let _ = objective.visit_scores(&mut |score: &dyn ClientScore| {
+                scores.push(ScoreSnap {
+                    holder: score.holder().to_owned(),
+                    value: score.value(),
+                    number_format: score.copy_number_format().ok().flatten(),
+                });
+                ControlFlow::Continue(())
+            });
+            copied = Some(Self {
+                render_type: objective.render_type(),
+                number_format: objective.copy_number_format().ok().flatten(),
+                scores,
+            });
+        })?;
+        copied
+    }
+}
+
+/// One drawing primitive of the player list, replayed on a canvas by [`paint`].
+#[derive(Clone, Debug, PartialEq)]
+pub enum PingDraw {
+    Sprite {
+        sprite: Cow<'static, str>,
+        x: i32,
+        y: i32,
+        w: i32,
+        h: i32,
+        color: u32,
+        blend: Blend,
+    },
+    Fill {
+        x0: i32,
+        y0: i32,
+        x1: i32,
+        y1: i32,
+        color: u32,
+    },
+    Text {
+        text: Box<Text>,
+        x: i32,
+        y: i32,
+        color: u32,
+        shadow: bool,
+    },
+    PlayerFace {
+        uuid: u128,
+        x: i32,
+        y: i32,
+        size: i32,
+        hat: bool,
+        flip: bool,
+        color: u32,
+    },
+}
+
+/// Replay `draws` in order. A refused primitive is skipped and the others still draw.
+pub fn paint(canvas: &mut dyn GuiCanvas, draws: &[PingDraw]) -> Result<(), GuiDrawError> {
+    for draw in draws {
+        let _ = match draw {
+            PingDraw::Sprite {
+                sprite,
+                x,
+                y,
+                w,
+                h,
+                color,
+                blend,
+            } => canvas.blit_sprite(
+                sprite,
+                [*x as f32, *y as f32, *w as f32, *h as f32],
+                None,
+                *color,
+                *blend,
+            ),
+            PingDraw::Fill {
+                x0,
+                y0,
+                x1,
+                y1,
+                color,
+            } => canvas.fill(
+                [
+                    *x0 as f32,
+                    *y0 as f32,
+                    (*x1 - *x0) as f32,
+                    (*y1 - *y0) as f32,
+                ],
+                *color,
+            ),
+            PingDraw::Text {
+                text,
+                x,
+                y,
+                color,
+                shadow,
+            } => canvas.text(text, [*x as f32, *y as f32], *color, *shadow),
+            PingDraw::PlayerFace {
+                uuid,
+                x,
+                y,
+                size,
+                hat,
+                flip,
+                color,
+            } => canvas.player_face(
+                *uuid,
+                [*x as f32, *y as f32],
+                *size as f32,
+                *hat,
+                *flip,
+                *color,
+            ),
+        };
+    }
+    Ok(())
+}
 
 /// `PlayerTabOverlay.MAX_ROWS_PER_COL`.
 pub const MAX_ROWS_PER_COL: i32 = 20;
@@ -64,7 +270,7 @@ pub const fn ping_sprite(latency: i32) -> &'static str {
 }
 
 /// Vanilla's `PlayerTabOverlay.setVisible(true)` narration (`multiplayer.player.list.narration`).
-pub fn build_narration(entries: &[ClientTabListEntry]) -> Text {
+pub fn build_narration(entries: &[TabEntry]) -> Text {
     let mut names = Text::default();
     for (idx, entry) in entries.iter().enumerate() {
         if idx > 0 {
@@ -130,16 +336,16 @@ impl TabListState {
         false
     }
 
-    /// Build the complete sequence of `GuiDraw` calls for the player list with numeric ping.
+    /// Build the complete sequence of `PingDraw` calls for the player list with numeric ping.
     pub fn build_draws(
         &mut self,
-        tab_list: &ClientTabList,
-        objective: Option<&ClientObjective>,
+        tab_list: &TabList,
+        objective: Option<&ObjectiveSnap>,
         screen_width: i32,
         gui_ticks: i64,
         config: &BetterPingDisplayConfig,
         metrics: &dyn TextMetrics,
-    ) -> Vec<GuiDraw> {
+    ) -> Vec<PingDraw> {
         let entries = &tab_list.entries;
         if entries.is_empty() {
             return Vec::new();
@@ -149,7 +355,7 @@ impl TabListState {
         let mut max_name = 0;
         let mut max_score = 0;
 
-        let score_by_holder: HashMap<&str, &ClientScore> = objective
+        let score_by_holder: HashMap<&str, &ScoreSnap> = objective
             .map(|obj| {
                 obj.scores
                     .iter()
@@ -231,7 +437,7 @@ impl TabListState {
         }
 
         let mut out = Vec::new();
-        let band = |y0: i32, y1: i32| GuiDraw::Fill {
+        let band = |y0: i32, y1: i32| PingDraw::Fill {
             x0: screen_width / 2 - max_line / 2 - 1,
             y0,
             x1: screen_width / 2 + max_line / 2 + 1,
@@ -243,8 +449,8 @@ impl TabListState {
             out.push(band(yyo - 1, yyo + lines.len() as i32 * 9));
             for line in lines {
                 let w = metrics.text_width(line);
-                out.push(GuiDraw::Text {
-                    text: line.clone(),
+                out.push(PingDraw::Text {
+                    text: Box::new(line.clone()),
                     x: screen_width / 2 - w / 2,
                     y: yyo,
                     color: WHITE,
@@ -265,7 +471,7 @@ impl TabListState {
             let slot_left = xxo + col * slot_width + col * 5;
             let yo = yyo + row * 9;
 
-            out.push(GuiDraw::Fill {
+            out.push(PingDraw::Fill {
                 x0: slot_left,
                 y0: yo,
                 x1: slot_left + slot_width,
@@ -273,7 +479,7 @@ impl TabListState {
                 color: ROW_BACKGROUND,
             });
 
-            out.push(GuiDraw::PlayerFace {
+            out.push(PingDraw::PlayerFace {
                 uuid: entry.uuid,
                 x: slot_left,
                 y: yo,
@@ -285,8 +491,8 @@ impl TabListState {
 
             let xo = slot_left + head;
             let spectator = entry.game_mode == GameMode::Spectator;
-            out.push(GuiDraw::Text {
-                text: entry.display.clone(),
+            out.push(PingDraw::Text {
+                text: Box::new(entry.display.clone()),
                 x: xo,
                 y: yo,
                 color: if spectator { SPECTATOR_COLOR } else { WHITE },
@@ -302,8 +508,8 @@ impl TabListState {
                             yo, left, right, entry.uuid, *score_val, gui_ticks, metrics, &mut out,
                         );
                     } else if let Some(text) = formatted {
-                        out.push(GuiDraw::Text {
-                            text: text.clone(),
+                        out.push(PingDraw::Text {
+                            text: Box::new(text.clone()),
                             x: right - *score_width,
                             y: yo,
                             color: WHITE,
@@ -321,8 +527,8 @@ impl TabListState {
             if !config.render_ping_bars {
                 ping_x += PING_BARS_WIDTH;
             }
-            out.push(GuiDraw::Text {
-                text: Text::literal(ping_text),
+            out.push(PingDraw::Text {
+                text: Box::new(Text::literal(ping_text)),
                 x: ping_x,
                 y: yo,
                 color: ping_color,
@@ -345,8 +551,8 @@ impl TabListState {
             out.push(band(yyo - 1, yyo + lines.len() as i32 * 9));
             for line in lines {
                 let w = metrics.text_width(line);
-                out.push(GuiDraw::Text {
-                    text: line.clone(),
+                out.push(PingDraw::Text {
+                    text: Box::new(line.clone()),
                     x: screen_width / 2 - w / 2,
                     y: yyo,
                     color: WHITE,
@@ -369,7 +575,7 @@ impl TabListState {
         score: i32,
         tick: i64,
         metrics: &dyn TextMetrics,
-        out: &mut Vec<GuiDraw>,
+        out: &mut Vec<PingDraw>,
     ) {
         let health = self
             .health
@@ -400,8 +606,8 @@ impl TabListState {
                 Text::literal(hp_num)
             };
             let w = metrics.text_width(&text);
-            out.push(GuiDraw::Text {
-                text,
+            out.push(PingDraw::Text {
+                text: Box::new(text),
                 x: (right + left - w) / 2,
                 y: yo,
                 color: color | 0xFF00_0000,
@@ -453,14 +659,13 @@ impl TabListState {
     }
 }
 
-fn sprite(name: &'static str, x: i32, y: i32, w: i32, h: i32) -> GuiDraw {
-    GuiDraw::Sprite {
+fn sprite(name: &'static str, x: i32, y: i32, w: i32, h: i32) -> PingDraw {
+    PingDraw::Sprite {
         sprite: Cow::Borrowed(name),
         x,
         y,
         w,
         h,
-        region: None,
         color: WHITE,
         blend: Blend::Textured,
     }
@@ -470,7 +675,7 @@ fn is_upside_down(name: &str) -> bool {
     name == "Dinnerbone" || name == "Grumm"
 }
 
-fn format_score(score: &ClientScore, objective: &ClientObjective) -> Text {
+fn format_score(score: &ScoreSnap, objective: &ObjectiveSnap) -> Text {
     match score
         .number_format
         .as_ref()
@@ -521,8 +726,8 @@ mod tests {
         }
     }
 
-    fn sample_entry(uuid: u128, name: &str, latency: i32, mode: GameMode) -> ClientTabListEntry {
-        ClientTabListEntry::new(
+    fn sample_entry(uuid: u128, name: &str, latency: i32, mode: GameMode) -> TabEntry {
+        TabEntry::new(
             name.to_owned(),
             uuid,
             mode,
@@ -544,7 +749,7 @@ mod tests {
 
     #[test]
     fn ping_text_position_and_bars_toggle() {
-        let list = ClientTabList::new(
+        let list = TabList::new(
             vec![sample_entry(1, "Alice", 42, GameMode::Survival)],
             None,
             None,
@@ -557,14 +762,14 @@ mod tests {
         let ping_no_bars = draws_no_bars
             .iter()
             .find_map(|d| match d {
-                GuiDraw::Text { text, x, color, .. } if *text == Text::literal("42ms") => {
+                PingDraw::Text { text, x, color, .. } if **text == Text::literal("42ms") => {
                     Some((*x, *color))
                 }
                 _ => None,
             })
             .expect("ping text should be drawn");
         let has_ping_sprite_off = draws_no_bars.iter().any(
-            |d| matches!(d, GuiDraw::Sprite { sprite, .. } if sprite.starts_with("icon/ping_")),
+            |d| matches!(d, PingDraw::Sprite { sprite, .. } if sprite.starts_with("icon/ping_")),
         );
         assert!(!has_ping_sprite_off);
 
@@ -577,7 +782,7 @@ mod tests {
         let ping_with_bars = draws_with_bars
             .iter()
             .find_map(|d| match d {
-                GuiDraw::Text { text, x, color, .. } if *text == Text::literal("42ms") => {
+                PingDraw::Text { text, x, color, .. } if **text == Text::literal("42ms") => {
                     Some((*x, *color))
                 }
                 _ => None,
@@ -587,13 +792,13 @@ mod tests {
         assert_eq!(ping_no_bars.1, ping_with_bars.1);
         let has_ping_sprite_on = draws_with_bars
             .iter()
-            .any(|d| matches!(d, GuiDraw::Sprite { sprite, .. } if sprite == "icon/ping_5"));
+            .any(|d| matches!(d, PingDraw::Sprite { sprite, .. } if sprite == "icon/ping_5"));
         assert!(has_ping_sprite_on);
     }
 
     #[test]
     fn ping_colors_and_spectator_alpha() {
-        let list = ClientTabList::new(
+        let list = TabList::new(
             vec![
                 sample_entry(1, "Low", 0, GameMode::Survival),
                 sample_entry(2, "High", 500, GameMode::Spectator),
@@ -610,7 +815,7 @@ mod tests {
             draws
                 .iter()
                 .find_map(|d| match d {
-                    GuiDraw::Text { text, color, .. } if *text == Text::literal(label) => {
+                    PingDraw::Text { text, color, .. } if **text == Text::literal(label) => {
                         Some(*color)
                     }
                     _ => None,
@@ -628,7 +833,7 @@ mod tests {
 
     #[test]
     fn tiny_screen_width_never_panics() {
-        let list = ClientTabList::new(
+        let list = TabList::new(
             vec![sample_entry(1, "Alice", 25, GameMode::Survival)],
             None,
             None,
@@ -641,13 +846,13 @@ mod tests {
 
     #[test]
     fn hearts_extreme_scores_match_vanilla() {
-        let count_heart_sprites = |draws: &[GuiDraw]| {
+        let count_heart_sprites = |draws: &[PingDraw]| {
             draws
                 .iter()
                 .filter(|d| {
                     matches!(
                         d,
-                        GuiDraw::Sprite { sprite, .. } if sprite.starts_with("hud/heart/")
+                        PingDraw::Sprite { sprite, .. } if sprite.starts_with("hud/heart/")
                     )
                 })
                 .count()
@@ -669,7 +874,7 @@ mod tests {
         assert_eq!(draws.len(), 1);
         assert!(matches!(
             &draws[0],
-            GuiDraw::Text {
+            PingDraw::Text {
                 color: 0xFF00_FF00,
                 ..
             }
@@ -695,7 +900,7 @@ mod tests {
         assert_eq!(draws.len(), 1);
         assert!(matches!(
             &draws[0],
-            GuiDraw::Text {
+            PingDraw::Text {
                 color: 0xFFFF_0000,
                 ..
             }
