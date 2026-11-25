@@ -220,7 +220,7 @@ impl BlockPart for LeafBlockPart {
                 ]
             });
 
-        let settings = config.settings_for(&block_id);
+        let settings = config.settings_for(block_id);
         let implementation = settings.effective_implementation(&config);
 
         // When using the Vanilla implementation on a vanilla leaf block that already
@@ -230,9 +230,9 @@ impl BlockPart for LeafBlockPart {
             modified_spawn_chance(&config, player_block_pos, pos, &serialized, true, &settings);
 
         let effective_chance = if implementation == ParticleImplementation::Vanilla
-            && vanilla_block_already_animates(&block_id)
+            && vanilla_block_already_animates(block_id)
         {
-            (spawn_chance - vanilla_default_chance(&block_id)).max(0.0)
+            (spawn_chance - vanilla_default_chance(block_id)).max(0.0)
         } else {
             spawn_chance
         };
