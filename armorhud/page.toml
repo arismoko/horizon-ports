@@ -30,3 +30,7 @@ caption = "The armour widget beside the hotbar, with durability bars; the boss b
 [[screenshots]]
 path = "page/settings.png"
 caption = "The settings page under Options > Mods."
+
+[[screenshots]]
+path = "page/attack-indicator.png"
+caption = "With the hotbar attack indicator charging, the widget moves out to make room for it."
