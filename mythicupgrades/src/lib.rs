@@ -1659,9 +1659,12 @@ impl Hooks for Mod {
 
     fn player_destroyed_block(
         &self,
-        host: &mut dyn ServerHost,
+        host: mod_api::HostSide<'_>,
         event: &mut mod_api::PlayerDestroyedBlockEvent,
     ) {
+        let mod_api::HostSide::Server(host) = host else {
+            return;
+        };
         let Some(player) = host.players().acting_player() else {
             return;
         };

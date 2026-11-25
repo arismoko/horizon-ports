@@ -374,11 +374,10 @@ impl Hooks for Mod {
         Flow::Continue
     }
 
-    fn player_destroyed_block(
-        &self,
-        host: &mut dyn ServerHost,
-        event: &mut PlayerDestroyedBlockEvent,
-    ) {
+    fn player_destroyed_block(&self, host: HostSide<'_>, event: &mut PlayerDestroyedBlockEvent) {
+        let HostSide::Server(host) = host else {
+            return;
+        };
         if self.busy.load(Ordering::Relaxed) {
             return;
         }
