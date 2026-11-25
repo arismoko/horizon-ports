@@ -21,14 +21,13 @@ use crate::pattern::PatternList;
 use crate::persp::{Enabled, Perspective};
 use mod_api::client::hud_layout::Blend;
 use mod_api::{
-    BlockFace, BlockHit, BlockPos, CalculatePlayerTurnEvent, CameraDistanceEvent, CameraPoseEvent,
-    CameraType, CameraTypeCycleEvent, ClientHost, ClientPickEvent, ClientTickPreEvent, ClipBlock,
-    ClipFluid, ComputeFovEvent, ConfigContext, ConfigKind, ConfigLoadingEvent,
-    ConfigReloadingEvent, CrosshairTarget, DrawContext, EntityRef, Flow, GuiDraw, Hand, Hooks,
-    HostSide, HudMode, ItemStack, KeyConflictContext, KeyRegistration, LevelRef, ModKeyMappingRef,
-    MovementInputUpdateEvent, RegisterConfigsEvent, RegisterGuiLayersEvent, Registrar,
-    RegistrationContext, RenderFramePreEvent, RenderGuiPostEvent, RenderPlayerPreEvent,
-    SettingChangedEvent, VanillaKeyMappingRef,
+    BlockFace, BlockHit, BlockPos, CameraDistanceEvent, CameraPositionEvent, CameraType,
+    CameraTypeCycleEvent, ClientHost, ClientPickEvent, ClientTickPreEvent, ClipBlock, ClipFluid,
+    ComputeCameraAnglesEvent, ComputeFovEvent, CrosshairTarget, DrawContext, EntityRef, Flow,
+    GuiCanvas, GuiDrawError, Hand, Hooks, Host, HudMode, ItemStack, KeyConflictContext,
+    KeyRegistration, LevelRef, ModKeyMappingRef, MovementInputUpdateEvent, PlaySoundEvent,
+    PlayerTurnEvent, RegisterGuiLayersEvent, Registrar, RegistrationContext, RenderGuiPostEvent,
+    RenderPlayerPreEvent, SettingChangedEvent, VanillaKeyMappingRef,
 };
 use std::borrow::Cow;
 use std::sync::{LazyLock, Mutex, MutexGuard};
@@ -68,6 +67,12 @@ const HELD: [&str; 7] = [
 ];
 
 const MAX_SKIPPED_BLOCKS: usize = 16;
+/// Degrees one unit of an `Entity.turn` delta turns the view.
+const TURN_DEGREES: f32 = 0.15;
+/// Sounds this close to the player (blocks) are the player's own.
+const PLAYER_SOUND_RADIUS: f64 = 2.0;
+/// Items whose use ray the game aims from the player's look: buckets and the brush.
+const BRUSH: &str = "minecraft:brush";
 const VANILLA_FOOD_COMPONENT: &str = "minecraft:food";
 const FILLED_MAP: &str = "minecraft:filled_map";
 const OFFHAND_SLOT: u32 = 40;
@@ -88,9 +93,6 @@ struct Runtime {
     rot: Rotation,
     rot_init: bool,
     offsets: Offsets,
-    /// The player's rotation when a mouse turn was reported: it is put back once the turn has
-    /// moved the camera instead.
-    snapshot: Option<[f32; 2]>,
     want_yaw: Option<f32>,
     /// Ticks the player keeps turning with the camera after an action.
     lock: i32,
@@ -104,6 +106,8 @@ struct Runtime {
     distance_attribute: f64,
     cam_pos: Option<V3>,
     cam_rot: Rotation,
+    /// Where the camera's own ray ends (the target the player's item rays aim at).
+    cam_point: Option<V3>,
     cam_distance: f64,
     render_offset: V3,
     /// Where the player's own ray ends, for the dynamic crosshair.
@@ -128,7 +132,6 @@ impl Runtime {
             rot: Rotation::default(),
             rot_init: false,
             offsets: Offsets::new([0.0; 3]),
-            snapshot: None,
             want_yaw: None,
             lock: 0,
             aiming: false,
@@ -141,6 +144,7 @@ impl Runtime {
             distance_attribute: camera::VANILLA_CAMERA_DISTANCE,
             cam_pos: None,
             cam_rot: Rotation::default(),
+            cam_point: None,
             cam_distance: 0.0,
             render_offset: [0.0; 3],
             player_point: None,
@@ -192,7 +196,7 @@ impl Runtime {
         host.set_camera_type(p.camera_type());
     }
 
-    fn remember(&mut self, host: &dyn ClientHost, p: Perspective) {
+    fn remember(&mut self, host: &mut dyn ClientHost, p: Perspective) {
         if self.values.b(K::RememberLastPerspective) {
             write_choice(host, &mut self.values, K::DefaultPerspective, p.index());
         }
@@ -243,6 +247,14 @@ static RT: LazyLock<Mutex<Runtime>> = LazyLock::new(|| Mutex::new(Runtime::new()
 
 fn rt() -> MutexGuard<'static, Runtime> {
     RT.lock().unwrap_or_else(|e| e.into_inner())
+}
+
+fn rt_try() -> Option<MutexGuard<'static, Runtime>> {
+    match RT.try_lock() {
+        Ok(guard) => Some(guard),
+        Err(std::sync::TryLockError::Poisoned(e)) => Some(e.into_inner()),
+        Err(std::sync::TryLockError::WouldBlock) => None,
+    }
 }
 
 #[derive(Clone, Copy)]
@@ -502,17 +514,19 @@ fn plan_crosshair(host: &dyn ClientHost) -> Plan {
     Plan::Draw(painted)
 }
 
-fn sprite_at(name: &'static str, blend: Blend, x: i32, y: i32) -> GuiDraw {
-    GuiDraw::Sprite {
-        sprite: Cow::Borrowed(name),
-        x,
-        y,
-        w: 15,
-        h: 15,
-        region: None,
-        color: 0xFFFF_FFFF,
+fn blit(
+    canvas: &mut dyn GuiCanvas,
+    sprite: &str,
+    blend: Blend,
+    at: [i32; 2],
+) -> Result<(), GuiDrawError> {
+    canvas.blit_sprite(
+        sprite,
+        [at[0] as f32, at[1] as f32, 15.0, 15.0],
+        None,
+        0xFFFF_FFFF,
         blend,
-    }
+    )
 }
 
 fn paint_crosshair(d: &mut dyn DrawContext, p: &Painted) {
@@ -526,51 +540,21 @@ fn paint_crosshair(d: &mut dyn DrawContext, p: &Painted) {
         None => base,
     };
     let main = at(p.crosshair);
-    let mut ops = vec![sprite_at(
-        SPRITE_CROSSHAIR,
-        Blend::Crosshair,
-        main[0],
-        main[1],
-    )];
-    if p.obstructed {
-        ops.push(sprite_at(
-            SPRITE_OBSTRUCTED_CROSSHAIR,
-            Blend::Crosshair,
-            base[0],
-            base[1],
-        ));
-        ops.push(sprite_at(
-            SPRITE_OBSTRUCTED_CROSS,
-            Blend::Textured,
-            base[0],
-            base[1],
-        ));
-    } else if let Some(n) = p.indicator {
-        let i = at(Some(n));
-        ops.push(sprite_at(
-            SPRITE_OBSTRUCTION_INDICATOR,
-            Blend::Crosshair,
-            i[0],
-            i[1],
-        ));
-    }
-    let _ = d.gui_paint(&ops);
-}
-
-/// Puts the player's rotation back and gives the turn to the camera.
-fn absorb(host: &mut dyn ClientHost, rt: &mut Runtime) {
-    let Some(snap) = rt.snapshot.take() else {
-        return;
-    };
-    let Some([yaw, pitch]) = host
-        .local_player()
-        .and_then(|p| p.entity().rotation(&*host))
-    else {
-        return;
-    };
-    rt.rot
-        .turn(math::wrap_degrees(yaw - snap[0]), pitch - snap[1]);
-    let _ = host.set_local_rotation(snap[0], snap[1]);
+    let _ = d.draw_gui(&mut |canvas: &mut dyn GuiCanvas| {
+        blit(canvas, SPRITE_CROSSHAIR, Blend::Crosshair, main)?;
+        if p.obstructed {
+            blit(canvas, SPRITE_OBSTRUCTED_CROSSHAIR, Blend::Crosshair, base)?;
+            blit(canvas, SPRITE_OBSTRUCTED_CROSS, Blend::Textured, base)?;
+        } else if let Some(n) = p.indicator {
+            blit(
+                canvas,
+                SPRITE_OBSTRUCTION_INDICATOR,
+                Blend::Crosshair,
+                at(Some(n)),
+            )?;
+        }
+        Ok(())
+    });
 }
 
 fn offset_cfg_ctx(rt: &Runtime, host: &dyn ClientHost, pitch: f32) -> (OffsetCfg, OffsetCtx) {
@@ -650,6 +634,7 @@ struct ShoulderSurfing;
 impl Hooks for ShoulderSurfing {
     fn register(&self, r: &mut dyn Registrar, _cx: &RegistrationContext) {
         register_settings(r);
+        register_mod_configs(r, |lists| rt().set_lists(lists));
         for (id, key) in KEYS {
             r.register_key_mapping(
                 KeyRegistration::new(id, key)
@@ -660,27 +645,11 @@ impl Hooks for ShoulderSurfing {
         }
     }
 
-    fn register_configs(&self, _ctx: &dyn ConfigContext, event: &mut RegisterConfigsEvent<'_>) {
-        register_mod_configs(event.configs);
-    }
-
-    fn config_loading(&self, _ctx: &dyn ConfigContext, event: &mut ConfigLoadingEvent<'_>) {
-        if event.config.mod_id == MOD_ID && event.config.kind == ConfigKind::Client {
-            rt().set_lists(Lists::parse(&event.config.text));
-        }
-    }
-
-    fn config_reloading(&self, _host: HostSide<'_>, event: &mut ConfigReloadingEvent<'_>) {
-        if event.config.mod_id == MOD_ID && event.config.kind == ConfigKind::Client {
-            rt().set_lists(Lists::parse(&event.config.text));
-        }
-    }
-
-    fn setting_changed(&self, host: &mut dyn ClientHost, event: &mut SettingChangedEvent<'_>) {
-        if event.mod_id == MOD_ID {
-            let mut rt = rt();
+    fn setting_changed(&self, _host: &dyn Host, event: &mut SettingChangedEvent<'_>) {
+        // A write made from a callback that holds the runtime has already stored its value.
+        if let Some(mut rt) = rt_try() {
             rt.synced = true;
-            rt.values.refresh(&*host);
+            rt.values.apply(event.key, event.value);
         }
     }
 
@@ -718,7 +687,7 @@ impl Hooks for ShoulderSurfing {
             rt.offsets = Offsets::new([0.0; 3]);
         }
         *event.next = next.camera_type();
-        rt.remember(&*host, next);
+        rt.remember(host, next);
     }
 
     fn camera_distance(&self, host: &dyn ClientHost, event: &mut CameraDistanceEvent<'_>) {
@@ -752,17 +721,22 @@ impl Hooks for ShoulderSurfing {
         }
     }
 
-    fn calculate_player_turn(&self, host: &dyn ClientHost, _event: &mut CalculatePlayerTurnEvent) {
+    fn player_turn(&self, host: &dyn ClientHost, event: &mut PlayerTurnEvent) {
         if !host.on(MOD_ID) {
             return;
         }
         let mut rt = rt();
-        if rt.snapshot.is_none() && rt.is_surfing(host) && rt.decoupled() {
-            rt.snapshot = host.local_player().and_then(|p| p.entity().rotation(host));
+        if !rt.is_surfing(host) || !rt.decoupled() {
+            return;
         }
+        // The mouse, stick or keys move the camera; the player keeps looking where it did.
+        let (dx, dy) = (event.x as f32 * TURN_DEGREES, event.y as f32 * TURN_DEGREES);
+        rt.rot.turn(dx, dy);
+        event.x = 0.0;
+        event.y = 0.0;
     }
 
-    fn camera_pose(&self, host: &dyn ClientHost, event: &mut CameraPoseEvent<'_>) {
+    fn compute_camera_angles(&self, host: &dyn ClientHost, event: &mut ComputeCameraAnglesEvent) {
         if !host.on(MOD_ID) {
             return;
         }
@@ -781,9 +755,24 @@ impl Hooks for ShoulderSurfing {
             event.yaw = rt.rot.yaw;
             event.pitch = rt.rot.pitch;
         }
-        let eye = *event.position;
+        // The roll other mods put on the camera is kept: the offset below follows yaw and pitch.
+        rt.cam_rot = rt.rot;
+    }
+
+    fn camera_position(&self, host: &dyn ClientHost, event: &mut CameraPositionEvent<'_>) {
+        if !host.on(MOD_ID) {
+            return;
+        }
+        let mut rt = rt();
+        if !rt.is_surfing(host) || !rt.rot_init {
+            rt.cam_pos = None;
+            return;
+        }
+        let [eye_x, eye_y, eye_z] = event.position.coordinates();
+        let eye = [eye_x, eye_y, eye_z];
+        let Rotation { yaw, pitch } = rt.cam_rot;
         let offset = rt.offsets.render(f64::from(event.partial));
-        let zoomed = |off: V3| math::camera_displacement(event.yaw, event.pitch, off);
+        let zoomed = |off: V3| math::camera_displacement(yaw, pitch, off);
         let full = zoomed(offset);
         let length = math::length(full);
         let mut fraction = 1.0;
@@ -811,12 +800,15 @@ impl Hooks for ShoulderSurfing {
             let behind = math::sub(full, sideways);
             math::add(sideways, math::scale(behind, fraction))
         };
-        *event.position = math::add(eye, displacement);
-        rt.cam_pos = Some(*event.position);
-        rt.cam_rot = Rotation {
-            yaw: event.yaw,
-            pitch: event.pitch,
-        };
+        let placed = math::add(eye, displacement);
+        if !event
+            .position
+            .set([Some(placed[0]), Some(placed[1]), Some(placed[2])])
+        {
+            rt.cam_pos = None;
+            return;
+        }
+        rt.cam_pos = Some(placed);
         rt.cam_distance = math::length(displacement);
         rt.render_offset = offset;
     }
@@ -853,7 +845,6 @@ impl Hooks for ShoulderSurfing {
         }
         let mut rt = rt();
         rt.sync(&*host);
-        absorb(host, &mut rt);
         if rt.keys.is_empty() {
             let mut keys = Vec::new();
             for (id, _) in KEYS {
@@ -871,7 +862,6 @@ impl Hooks for ShoulderSurfing {
         let Some(player) = host.local_player() else {
             rt.default_applied = false;
             rt.surfing = false;
-            rt.snapshot = None;
             rt.lock = 0;
             return;
         };
@@ -899,12 +889,12 @@ impl Hooks for ShoulderSurfing {
             }
         }
         let screen_open = host.observed_screen_id().is_some();
-        let held = |id: &str| {
-            !screen_open
-                && keys
-                    .iter()
-                    .any(|(k, key)| *k == id && key.is_down(&*host).unwrap_or(false))
-        };
+        let held_now: Vec<&'static str> = keys
+            .iter()
+            .filter(|(_, key)| !screen_open && key.is_down(&*host).unwrap_or(false))
+            .map(|(id, _)| *id)
+            .collect();
+        let held = |id: &str| held_now.contains(&id);
         rt.free_look = rt.surfing && held("free_look");
         if rt.is_surfing(&*host) {
             let step = rt.values.f(K::StepSize);
@@ -975,7 +965,7 @@ impl Hooks for ShoulderSurfing {
                         rt.values.b(unlimited),
                     );
                     let values = &mut rt.values;
-                    write_f64(&*host, values, value, next);
+                    write_f64(&mut *host, values, value, next);
                 }
             }
         }
@@ -1006,7 +996,7 @@ impl Hooks for ShoulderSurfing {
             if let Some(p) = go {
                 let enabled = rt.enabled();
                 rt.set_perspective(&*host, p.or_next_enabled(&enabled));
-                rt.remember(&*host, p);
+                rt.remember(host, p);
                 continue;
             }
             if !rt.is_surfing(&*host) {
@@ -1015,11 +1005,11 @@ impl Hooks for ShoulderSurfing {
             match id {
                 "swap_shoulder" => {
                     let x = -rt.values.f(K::OffsetX);
-                    write_f64(&*host, &mut rt.values, K::OffsetX, x);
+                    write_f64(&mut *host, &mut rt.values, K::OffsetX, x);
                 }
                 "toggle_camera_coupling" => {
                     let on = !rt.values.b(K::DecoupledCamera);
-                    write_bool(&*host, &mut rt.values, K::DecoupledCamera, on);
+                    write_bool(&mut *host, &mut rt.values, K::DecoupledCamera, on);
                 }
                 "toggle_x_offset_presets"
                 | "toggle_y_offset_presets"
@@ -1034,7 +1024,7 @@ impl Hooks for ShoulderSurfing {
                         _ => (K::OffsetZ, rt.lists.offset_z_presets.clone()),
                     };
                     if let Some(next) = camera::next_preset(&presets, rt.values.f(k)) {
-                        write_f64(&*host, &mut rt.values, k, next);
+                        write_f64(&mut *host, &mut rt.values, k, next);
                     }
                 }
                 _ => {}
@@ -1077,19 +1067,27 @@ impl Hooks for ShoulderSurfing {
             let _ = host.set_local_rotation(new_yaw, new_pitch);
         }
 
+        // Buckets and brushes ray from the player's look in the game: aim it at the camera's target.
+        let ray_item = hand_stacks(&*host).0.is_some_and(|stack| {
+            let id = stack.item().id(&*host).unwrap_or_default();
+            id.ends_with("_bucket") || id == BRUSH
+        });
+        let using = rt
+            .use_key
+            .is_some_and(|k| k.is_down(&*host).unwrap_or(false));
+        if ray_item
+            && using
+            && let (Some(point), Some(eye)) = (rt.cam_point, player.entity().eye_position(&*host))
+            && let Some((yaw, pitch)) = math::look_angles(math::sub(point, eye))
+        {
+            let _ = host.set_local_rotation(yaw, pitch);
+        }
+
         // The camera's own offset moves towards where it should be.
         let (cfg, ctx) = offset_cfg_ctx(&rt, &*host, rt.rot.pitch);
         let target = camera::target_offset(&cfg, &ctx);
         let speed = rt.values.f(K::TransitionSpeed);
         rt.offsets.tick(target, speed);
-    }
-
-    fn render_frame_pre(&self, host: &mut dyn ClientHost, _event: &mut RenderFramePreEvent) {
-        if !host.on(MOD_ID) {
-            return;
-        }
-        let mut rt = rt();
-        absorb(host, &mut rt);
     }
 
     fn client_pick(&self, host: &mut dyn ClientHost, event: &mut ClientPickEvent<'_>) {
@@ -1101,6 +1099,7 @@ impl Hooks for ShoulderSurfing {
         let (Some(cam_pos), true) = (rt.cam_pos, rt.is_surfing(host)) else {
             rt.player_point = None;
             rt.obstruction_point = None;
+            rt.cam_point = None;
             return;
         };
         let Some(player) = host.local_player() else {
@@ -1127,6 +1126,7 @@ impl Hooks for ShoulderSurfing {
         // What the camera looks at, and what the player's own ray reaches.
         let cam_hit = ray_any(host, level, &rt, cam_pos, cam_towards, long, me);
         let cam_point = end_of(cam_hit, cam_pos, cam_towards);
+        rt.cam_point = cam_point;
         rt.player_point = player_look.and_then(|look| {
             end_of(
                 ray_any(host, level, &rt, origin, look, long, me),
@@ -1163,6 +1163,39 @@ impl Hooks for ShoulderSurfing {
         let tag = |f: Option<Found>| f.map(|f| (f, f.location()));
         let found = pick::nearest(origin, tag(block), tag(entity));
         *event.result = found.and_then(|f| target_of(host, level, f));
+    }
+
+    fn play_sound(&self, host: &mut dyn ClientHost, event: &mut PlaySoundEvent<'_>) {
+        if !event.starting || !host.on(MOD_ID) {
+            return;
+        }
+        let rt = rt();
+        if !rt.is_surfing(&*host) || !rt.values.b(K::CenterPlayerSounds) {
+            return;
+        }
+        let Some(sound) = event.sound.as_mut() else {
+            return;
+        };
+        if sound.relative {
+            return;
+        }
+        let Some(player) = host.local_player() else {
+            return;
+        };
+        let entity = player.entity();
+        let Some(at) = entity.position(&*host) else {
+            return;
+        };
+        let height = entity.dimensions(&*host).map_or(1.8, |d| d[1]);
+        let offset = math::sub(sound.position, at);
+        let near = offset[0].hypot(offset[2]) <= PLAYER_SOUND_RADIUS
+            && offset[1] >= -PLAYER_SOUND_RADIUS
+            && offset[1] <= height + PLAYER_SOUND_RADIUS;
+        if near {
+            // On the listener, which is the camera: the sound no longer pans with the offset.
+            sound.relative = true;
+            sound.position = [0.0; 3];
+        }
     }
 
     fn render_player_pre(

@@ -29,6 +29,17 @@ pub fn forward(yaw: f32, pitch: f32) -> V3 {
     [-sy * cp, -sp, cy * cp]
 }
 
+/// The `(yaw, pitch)` in degrees that look along `dir`, or None for a zero or non-finite one.
+pub fn look_angles(dir: V3) -> Option<(f32, f32)> {
+    let horizontal = dir[0].hypot(dir[2]);
+    if !(horizontal.is_finite() && dir[1].is_finite()) || horizontal.max(dir[1].abs()) < 1e-9 {
+        return None;
+    }
+    let yaw = (-dir[0]).atan2(dir[2]).to_degrees() as f32;
+    let pitch = (-dir[1]).atan2(horizontal).to_degrees() as f32;
+    Some((yaw, pitch))
+}
+
 /// `Camera.left`.
 pub fn left(yaw: f32) -> V3 {
     let (sy, cy) = f64::from(yaw).to_radians().sin_cos();
@@ -147,5 +158,13 @@ mod tests {
         assert_eq!(r, [0.0, 1.0]);
         let r = rotate_input([1.0, 0.0], 90.0);
         assert!((r[1] - 1.0).abs() < 1e-6 && r[0].abs() < 1e-6);
+    }
+
+    #[test]
+    fn look_angles_invert_forward() {
+        let (yaw, pitch) = look_angles(forward(37.0, -20.0)).unwrap();
+        assert!((yaw - 37.0).abs() < 1e-3 && (pitch + 20.0).abs() < 1e-3);
+        assert!(look_angles([0.0; 3]).is_none());
+        assert!(look_angles([f64::NAN, 0.0, 1.0]).is_none());
     }
 }

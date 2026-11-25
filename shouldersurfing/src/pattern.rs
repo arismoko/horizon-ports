@@ -25,6 +25,8 @@ pub struct Pattern {
 
 const MAX_DEPTH: usize = 32;
 const STEP_BUDGET: usize = 200_000;
+/// Nested matcher calls allowed before a match gives up (keeps the native stack bounded).
+const MAX_MATCH_DEPTH: usize = 512;
 
 struct Parser<'a> {
     chars: &'a [char],
@@ -165,10 +167,27 @@ impl Parser<'_> {
 struct Matcher<'a> {
     text: &'a [char],
     steps: usize,
+    depth: usize,
 }
 
 impl Matcher<'_> {
     fn seq(
+        &mut self,
+        nodes: &[Node],
+        pos: usize,
+        k: &mut dyn FnMut(&mut Self, usize) -> bool,
+    ) -> bool {
+        if self.depth >= MAX_MATCH_DEPTH {
+            self.steps = STEP_BUDGET + 1;
+            return false;
+        }
+        self.depth += 1;
+        let matched = self.seq_inner(nodes, pos, k);
+        self.depth -= 1;
+        matched
+    }
+
+    fn seq_inner(
         &mut self,
         nodes: &[Node],
         pos: usize,
@@ -221,6 +240,25 @@ impl Matcher<'_> {
         pos: usize,
         k: &mut dyn FnMut(&mut Self, usize) -> bool,
     ) -> bool {
+        if self.depth >= MAX_MATCH_DEPTH {
+            self.steps = STEP_BUDGET + 1;
+            return false;
+        }
+        self.depth += 1;
+        let matched = self.repeat_inner(node, min, max, count, pos, k);
+        self.depth -= 1;
+        matched
+    }
+
+    fn repeat_inner(
+        &mut self,
+        node: &Node,
+        min: usize,
+        max: usize,
+        count: usize,
+        pos: usize,
+        k: &mut dyn FnMut(&mut Self, usize) -> bool,
+    ) -> bool {
         self.steps += 1;
         if self.steps > STEP_BUDGET {
             return false;
@@ -255,6 +293,7 @@ impl Pattern {
         let mut matcher = Matcher {
             text: &chars,
             steps: 0,
+            depth: 0,
         };
         for alt in &self.alternatives {
             if matcher.seq(alt, 0, &mut |_, p| p == end) {

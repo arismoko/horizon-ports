@@ -1,7 +1,11 @@
 //! Options of Shoulder Surfing Reloaded: the scalar ones are Sunrise settings (Options > Mods),
 //! the list ones live in `config/shouldersurfing-client.toml`.
 
-use mod_api::{ClientHost, Config, ConfigKind, Registrar, SettingSpec};
+use mod_api::{
+    ClientHost, ConfigEvent, ConfigKind, ConfigListener, ConfigSnapshot, ConfigSpec, Registrar,
+    SettingKey, SettingSpec, SettingValue,
+};
+use std::sync::{Arc, RwLock};
 
 pub const MOD_ID: &str = "shouldersurfing";
 pub const CONFIG_FILE_NAME: &str = "shouldersurfing-client.toml";
@@ -186,6 +190,7 @@ options! {
     MapInsetRight, "gui.maps.map_item_overlay.insets.right", "", int(0, 500, 1);
     MapInsetBottom, "gui.maps.map_item_overlay.insets.bottom", "", int(0, 500, 1);
     MapInsetLeft, "gui.maps.map_item_overlay.insets.left", "", int(0, 500, 1);
+    CenterPlayerSounds, "audio.center_player_sounds", "", Kind::Bool(false);
 }
 
 /// The option's translation key for one value of a choice.
@@ -193,7 +198,20 @@ pub fn choice_label_key(group: &str, value: &str) -> String {
     format!("shouldersurfing.option.{group}.{value}")
 }
 
+/// The keys the registrar issued, in `TABLE` order (None for one it refused).
+static SETTING_KEYS: RwLock<Vec<Option<SettingKey>>> = RwLock::new(Vec::new());
+
+fn setting_key(k: K) -> Option<SettingKey> {
+    SETTING_KEYS
+        .read()
+        .unwrap_or_else(|e| e.into_inner())
+        .get(k as usize)
+        .copied()
+        .flatten()
+}
+
 pub fn register_settings(r: &mut dyn Registrar) {
+    let mut keys = Vec::with_capacity(TABLE.len());
     for opt in TABLE {
         let label = opt.label_key();
         let tooltip = format!("{label}.tooltip");
@@ -220,8 +238,9 @@ pub fn register_settings(r: &mut dyn Registrar) {
                 def,
             ),
         };
-        let _ = r.register_setting(spec.tooltip(tooltip));
+        keys.push(r.register_setting(spec.tooltip(tooltip)).ok());
     }
+    *SETTING_KEYS.write().unwrap_or_else(|e| e.into_inner()) = keys;
 }
 
 /// The current value of every option.
@@ -237,24 +256,55 @@ impl Default for Values {
 impl Values {
     /// Reads every setting; one that is missing, not finite or out of range keeps its last value.
     pub fn refresh(&mut self, host: &dyn ClientHost) {
-        for (slot, opt) in self.0.iter_mut().zip(TABLE) {
+        let keys = SETTING_KEYS.read().unwrap_or_else(|e| e.into_inner());
+        for ((slot, opt), key) in self.0.iter_mut().zip(TABLE).zip(keys.iter()) {
+            let Some(key) = *key else {
+                continue;
+            };
             let read = match opt.kind {
-                Kind::Bool(_) => host.setting_bool(opt.key).map(|b| f64::from(u8::from(b))),
+                Kind::Bool(_) => host.setting_bool(key).ok().map(|b| f64::from(u8::from(b))),
                 Kind::Float { min, max, .. } => host
-                    .setting_f64(opt.key)
+                    .setting_f64(key)
+                    .ok()
                     .filter(|v| v.is_finite())
                     .map(|v| v.clamp(min, max)),
                 Kind::Int { min, max, .. } => host
-                    .setting_f64(opt.key)
+                    .setting_f64(key)
+                    .ok()
                     .filter(|v| v.is_finite())
                     .map(|v| v.round().clamp(f64::from(min), f64::from(max))),
                 Kind::Choice { opts, .. } => host
-                    .setting_choice(opt.key)
+                    .setting_choice(key)
+                    .ok()
                     .map(|i| (i as usize).min(opts.len() - 1) as f64),
             };
             if let Some(value) = read {
                 *slot = value;
             }
+        }
+    }
+
+    /// Takes the value a `setting_changed` notice carries; a key or value of another kind is
+    /// ignored.
+    pub fn apply(&mut self, key: &str, value: SettingValue) {
+        let Some((slot, opt)) = self.0.iter_mut().zip(TABLE).find(|(_, o)| o.key == key) else {
+            return;
+        };
+        let read = match (opt.kind, value) {
+            (Kind::Bool(_), SettingValue::Toggle(b)) => Some(f64::from(u8::from(b))),
+            (Kind::Float { min, max, .. }, SettingValue::Range(v)) if v.is_finite() => {
+                Some(v.clamp(min, max))
+            }
+            (Kind::Int { min, max, .. }, SettingValue::Range(v)) if v.is_finite() => {
+                Some(v.round().clamp(f64::from(min), f64::from(max)))
+            }
+            (Kind::Choice { opts, .. }, SettingValue::Choice(i)) => {
+                Some(i.min(opts.len() - 1) as f64)
+            }
+            _ => None,
+        };
+        if let Some(value) = read {
+            *slot = value;
         }
     }
 
@@ -284,28 +334,30 @@ impl Values {
 }
 
 /// Writes a number to the setting of `k` (and clamps it into its range).
-pub fn write_f64(host: &dyn ClientHost, values: &mut Values, k: K, value: f64) {
+pub fn write_f64(host: &mut dyn ClientHost, values: &mut Values, k: K, value: f64) {
     let opt = &TABLE[k as usize];
     let value = match opt.kind {
         Kind::Float { min, max, .. } => value.clamp(min, max),
         _ => value,
     };
     values.set(k, value);
-    host.set_setting(MOD_ID, opt.key, &format!("{value}"));
+    if let Some(key) = setting_key(k) {
+        let _ = host.set_setting(key, SettingValue::Range(value));
+    }
 }
 
-pub fn write_bool(host: &dyn ClientHost, values: &mut Values, k: K, value: bool) {
+pub fn write_bool(host: &mut dyn ClientHost, values: &mut Values, k: K, value: bool) {
     values.set(k, f64::from(u8::from(value)));
-    host.set_setting(
-        MOD_ID,
-        TABLE[k as usize].key,
-        if value { "true" } else { "false" },
-    );
+    if let Some(key) = setting_key(k) {
+        let _ = host.set_setting(key, SettingValue::Toggle(value));
+    }
 }
 
-pub fn write_choice(host: &dyn ClientHost, values: &mut Values, k: K, index: usize) {
+pub fn write_choice(host: &mut dyn ClientHost, values: &mut Values, k: K, index: usize) {
     values.set(k, index as f64);
-    host.set_setting(MOD_ID, TABLE[k as usize].key, &index.to_string());
+    if let Some(key) = setting_key(k) {
+        let _ = host.set_setting(key, SettingValue::Choice(index));
+    }
 }
 
 macro_rules! choice_enum {
@@ -611,9 +663,22 @@ fn array_items(body: &str) -> Vec<String> {
     items
 }
 
-pub fn register_mod_configs(configs: &mut Vec<Config>) {
-    let default_toml = Lists::default().to_toml();
-    configs.push(Config::new(MOD_ID, ConfigKind::Client, &default_toml).file(CONFIG_FILE_NAME));
+/// Declares `config/shouldersurfing-client.toml`; its listener keeps the lists current.
+pub fn register_mod_configs(
+    r: &mut dyn Registrar,
+    on_lists: impl Fn(Lists) + Send + Sync + 'static,
+) {
+    let spec =
+        ConfigSpec::new(ConfigKind::Client, Lists::default().to_toml()).file(CONFIG_FILE_NAME);
+    let listener = move |event: ConfigEvent<'_>, snapshot: &ConfigSnapshot| -> Result<(), String> {
+        if matches!(event, ConfigEvent::Loading(_) | ConfigEvent::Reloading(_)) {
+            on_lists(Lists::parse(&snapshot.text));
+        }
+        Ok(())
+    };
+    let listener: Arc<ConfigListener> = Arc::new(listener);
+    // A refused declaration (the file is registered twice) leaves the first one active.
+    let _ = r.register_config(spec, Some(listener));
 }
 
 #[cfg(test)]
