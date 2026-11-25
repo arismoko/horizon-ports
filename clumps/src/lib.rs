@@ -7,7 +7,7 @@ use mod_api::{
 };
 
 /// Maximum XP value an experience orb can store in vanilla NBT (`Value` is a signed short,
-/// and `ServerHost::set_experience_orb` refuses values outside `i16::MIN..=i16::MAX`).
+/// and saving truncates the live `i32` value to a short, so clumps stay within it).
 pub const MAX_ORB_VALUE: i32 = i16::MAX as i32;
 
 /// Whether two experience orbs should be allowed to clump together, relaxing vanilla's
@@ -86,11 +86,18 @@ impl Hooks for Mod {
         ) else {
             return Flow::Cancel;
         };
-        if host.set_experience_orb(event.dimension, event.into, Some(total), Some(1), None) {
-            Flow::Continue
-        } else {
-            Flow::Cancel
+        let Some(entity) = host.entity(event.into) else {
+            return Flow::Cancel;
+        };
+        let Ok(Some(orb)) = host.experience_orb(entity) else {
+            return Flow::Cancel;
+        };
+        // Count first so an invalid count changes nothing; the value write then makes
+        // `(total, 1)` the merged orb.
+        if orb.set_count(host, 1).is_err() || orb.set_value(host, total).is_err() {
+            return Flow::Cancel;
         }
+        Flow::Continue
     }
 
     fn player_exp_cooldown_change(
