@@ -564,7 +564,9 @@ pub fn enqueue_batches(
         return false;
     }
     let delay = if vanilla_tweaks {
-        host.setting_f64("client_command_delay")
+        crate::VT_DELAY_SETTING
+            .get()
+            .and_then(|key| host.setting_f64(*key).ok())
             .map(|v| (v.round() as i32).max(DEFAULT_VT_DELAY_TICKS))
             .unwrap_or(DEFAULT_VT_DELAY_TICKS)
     } else {

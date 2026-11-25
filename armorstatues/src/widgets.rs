@@ -979,30 +979,31 @@ impl ScreenWidget for NameBoxWidget {
         let tx = r[0] + 2.0;
         let ty = r[1] + 2.0;
         let inner_w = r[2] - 4.0;
-        let _ = draw.push_clip([tx, r[1] + 1.0, inner_w, r[3] - 2.0]);
-        if value.is_empty() && !is_focused {
-            let hint = tr(host, "screen.statuemenus.style.hint", "Custom Name");
-            draw.text(&hint, [tx, ty], 0xFF808080, false);
-        } else {
-            // Scroll horizontally so cursor stays inside box.
-            let before_cursor: String = value.chars().take(cursor).collect();
-            let cursor_px = draw.text_width(&before_cursor);
-            let scroll = (cursor_px - (inner_w - 4.0)).max(0.0);
-            if cursor != highlight {
-                let (a, b) = (cursor.min(highlight), cursor.max(highlight));
-                let sa: String = value.chars().take(a).collect();
-                let sb: String = value.chars().take(b).collect();
-                let xa = tx + draw.text_width(&sa) - scroll;
-                let xb = tx + draw.text_width(&sb) - scroll;
-                draw.fill([xa, ty - 1.0, (xb - xa).max(1.0), 10.0], 0x803366CC);
+        let clip = [tx, r[1] + 1.0, inner_w, r[3] - 2.0];
+        let _ = draw.with_scissor(clip, &mut |draw| {
+            if value.is_empty() && !is_focused {
+                let hint = tr(host, "screen.statuemenus.style.hint", "Custom Name");
+                draw.text(&hint, [tx, ty], 0xFF808080, false);
+            } else {
+                // Scroll horizontally so cursor stays inside box.
+                let before_cursor: String = value.chars().take(cursor).collect();
+                let cursor_px = draw.text_width(&before_cursor);
+                let scroll = (cursor_px - (inner_w - 4.0)).max(0.0);
+                if cursor != highlight {
+                    let (a, b) = (cursor.min(highlight), cursor.max(highlight));
+                    let sa: String = value.chars().take(a).collect();
+                    let sb: String = value.chars().take(b).collect();
+                    let xa = tx + draw.text_width(&sa) - scroll;
+                    let xb = tx + draw.text_width(&sb) - scroll;
+                    draw.fill([xa, ty - 1.0, (xb - xa).max(1.0), 10.0], 0x803366CC);
+                }
+                draw.text(&value, [tx - scroll, ty], 0xFFFFFFFF, true);
+                if is_focused && (host.millis() / 300).is_multiple_of(2) {
+                    let cx = tx + cursor_px - scroll;
+                    draw.fill([cx, ty - 1.0, 1.0, 10.0], 0xFFD0D0D0);
+                }
             }
-            draw.text(&value, [tx - scroll, ty], 0xFFFFFFFF, true);
-            if is_focused && (host.millis() / 300).is_multiple_of(2) {
-                let cx = tx + cursor_px - scroll;
-                draw.fill([cx, ty - 1.0, 1.0, 10.0], 0xFFD0D0D0);
-            }
-        }
-        let _ = draw.pop_clip();
+        });
     }
 
     fn mouse_clicked(
