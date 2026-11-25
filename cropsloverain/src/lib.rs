@@ -11,13 +11,13 @@
 
 pub mod rules;
 
-use std::sync::{Arc, Mutex, MutexGuard};
+use std::sync::{Arc, Mutex, MutexGuard, OnceLock};
 
 use mod_api::{
     BlockPart, BlockUpdateFlags, ConfigEvent, ConfigKind, ConfigSnapshot, ConfigSpec,
     CropGrowPreEvent, Flow, Hooks, HostBlockStates, HostSide, LevelRandomHost, LevelRef,
     LevelTickPostEvent, LevelWriteHost, LightLayer, RandomTickEvent, Registrar,
-    RegistrationContext, ServerHost, TriState,
+    RegistrationContext, ServerHost, TagKey, TriState,
 };
 use rules::{Config, CropType, Leaves};
 
@@ -37,6 +37,9 @@ static SETTINGS: Mutex<Config> = Mutex::new(Config {
     debug_mode: false,
     halt_regular_growth: false,
 });
+
+/// The `minecraft:dirt` block tag, resolved once at registration (`BlockState.is(BlockTags.DIRT)`).
+static DIRT: OnceLock<TagKey> = OnceLock::new();
 
 fn settings() -> Config {
     *SETTINGS.lock().unwrap_or_else(|e| e.into_inner())
@@ -315,9 +318,10 @@ impl Grower<'_> {
         let farmland = self.text(ground).is_some_and(|t| {
             let block = block_of(&t).to_owned();
             block == "minecraft:farmland"
-                || self.level.block(&*self.host, ground).is_some_and(|key| {
-                    self.host
-                        .block_in_tag(key, "minecraft:dirt")
+                || DIRT.get().is_some_and(|&tag| {
+                    self.level
+                        .block(&*self.host, ground)
+                        .and_then(|key| key.is_in_tag(self.host.tags(), tag))
                         .unwrap_or(false)
                 })
         });
@@ -461,6 +465,7 @@ struct Mod;
 impl Hooks for Mod {
     fn register(&self, r: &mut dyn Registrar, _: &RegistrationContext) {
         declare(r);
+        let _ = DIRT.set(r.tag_key("minecraft:dirt"));
         let spec = ConfigSpec::new(ConfigKind::Common, rules::DEFAULT_CONFIG);
         let listener = |event: ConfigEvent<'_>, snapshot: &ConfigSnapshot| -> Result<(), String> {
             if matches!(event, ConfigEvent::Loading(_) | ConfigEvent::Reloading(_)) {
