@@ -306,24 +306,14 @@ fn give(host: &mut dyn ServerHost, player: PlayerRef, stack: ItemStack) -> bool 
 /// What a click does to the worn stacks and the inventory, before any of it is written.
 #[derive(Debug, PartialEq)]
 enum Plan {
-    /// Nothing happens.
-    Ignore,
     /// Nothing moves; the player is told why.
     Refuse(&'static str),
-    /// Slot `i` of the table is taken off, into the inventory.
-    TakeOff(usize),
     /// Inventory slot `inv` is worn in slot `i`: one item goes, and what was there comes back.
     Wear { i: usize, inv: usize },
 }
 
 /// Which trinket slots can take an item, as (index, taken by an unknown stand-in).
-fn plan_wear(
-    fits: &[usize],
-    occupied: &[bool],
-    count: u32,
-    room: bool,
-    inv: usize,
-) -> Plan {
+fn plan_wear(fits: &[usize], occupied: &[bool], count: u32, room: bool, inv: usize) -> Plan {
     match fits
         .iter()
         .copied()
@@ -535,10 +525,9 @@ fn wear_slot(
 fn key_label(key: &str) -> Option<String> {
     let (kind, rest) = if let Some(r) = key.strip_prefix("key.keyboard.") {
         ("", r)
-    } else if let Some(r) = key.strip_prefix("key.mouse.") {
-        ("Mouse ", r)
     } else {
-        return None;
+        let r = key.strip_prefix("key.mouse.")?;
+        ("Mouse ", r)
     };
     if rest.is_empty() || rest == "unknown" {
         return None;
@@ -585,12 +574,17 @@ impl Hooks for Mod {
             Ok(key) => *WORN.write().unwrap_or_else(|e| e.into_inner()) = Some(key),
             Err(e) => eprintln!("[trinkets] {WORN_ID} not registered: {e}"),
         }
-        r.register_key_mapping(KeyRegistration::new(KEY, "key.keyboard.g").label("key.trinkets.open"));
-        r.menu_part(MENU, TrinketMenu(self.shared.clone()));
-        r.payload_handlers().registrar("1").optional().play_to_server(
-            PayloadId(OPEN.into()),
-            Arc::new(OpenHandler(self.shared.clone())),
+        r.register_key_mapping(
+            KeyRegistration::new(KEY, "key.keyboard.g").label("key.trinkets.open"),
         );
+        r.menu_part(MENU, TrinketMenu(self.shared.clone()));
+        r.payload_handlers()
+            .registrar("1")
+            .optional()
+            .play_to_server(
+                PayloadId(OPEN.into()),
+                Arc::new(OpenHandler(self.shared.clone())),
+            );
     }
 
     /// The Trinkets key, while playing or in the player's own inventory: asks the server for the menu.
@@ -613,7 +607,8 @@ impl Hooks for Mod {
         if !(host.playing() || inventory) {
             return;
         }
-        if let Err(e) = host.send_payload_to_server(&PayloadId(OPEN.into()), PayloadBytes(Vec::new()))
+        if let Err(e) =
+            host.send_payload_to_server(&PayloadId(OPEN.into()), PayloadBytes(Vec::new()))
         {
             eprintln!("[trinkets] open: {e:?}");
         }
@@ -650,7 +645,10 @@ impl Hooks for Mod {
             return Flow::Continue;
         };
         let remainder = with_count(click.stack, click.stack.count().saturating_sub(1));
-        if player.set_inventory_slot(host, hand_slot, remainder).is_err() {
+        if player
+            .set_inventory_slot(host, hand_slot, remainder)
+            .is_err()
+        {
             return Flow::Continue;
         }
         worn[i] = with_count(click.stack, 1);
@@ -795,7 +793,10 @@ mod tests {
         components.insert("minecraft:enchantments".into(), Tag::Compound(enchantments));
         assert!(vanishes(&components));
         let mut other = Compound::new();
-        other.insert("minecraft:enchantments".into(), Tag::Compound(Compound::new()));
+        other.insert(
+            "minecraft:enchantments".into(),
+            Tag::Compound(Compound::new()),
+        );
         assert!(!vanishes(&other));
     }
 

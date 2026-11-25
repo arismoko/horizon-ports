@@ -28,13 +28,15 @@ use std::collections::{HashMap, HashSet};
 use std::sync::{Arc, Mutex};
 
 use mod_api::{
-    BlockEntityPart, BlockPart, BlockSide, BlockState, Capability, ClientHost, ClientTickPostEvent, Compound, Direction,
-    Flow, Hand, Hooks, Host, HostSide, HostTransaction, IPayloadContext, IPayloadHandler, ITEMS, Identifier,
-    InteractionResult, ItemResource, ItemStack, LevelHost, LevelRef, LevelSide, MenuClickedEvent, MenuPart, MenuRef,
-    MenuRemovedEvent, MenuReplace, Overanswered, PayloadBytes, PayloadHandleError, PayloadId, PlacementSource,
-    PlayerRef, RecipeInput, Registrar, RegistrationContext, ResourceHandler, RightClickBlockEvent,
-    RightClickItemEvent, ScreenCharTypedPreEvent, ScreenKeyPressedPreEvent, ServerHost, ServerTickEvent,
-    ServerTickPhase, StateForPlacementEvent, Tag, Text, TransactionContext, TransactionError,
+    BlockEntityPart, BlockPart, BlockSide, BlockState, Capability, ClientHost, ClientTickPostEvent,
+    Compound, Direction, Flow, Hand, Hooks, Host, HostSide, HostTransaction, IPayloadContext,
+    IPayloadHandler, ITEMS, Identifier, InteractionResult, ItemResource, ItemStack, LevelHost,
+    LevelRef, LevelSide, MenuClickedEvent, MenuPart, MenuRef, MenuRemovedEvent, MenuReplace,
+    Overanswered, PayloadBytes, PayloadHandleError, PayloadId, PlacementSource, PlayerRef,
+    RecipeInput, Registrar, RegistrationContext, ResourceHandler, RightClickBlockEvent,
+    RightClickItemEvent, ScreenCharTypedPreEvent, ScreenKeyPressedPreEvent, ServerHost,
+    ServerTickEvent, ServerTickPhase, StateForPlacementEvent, Tag, Text, TransactionContext,
+    TransactionError,
 };
 
 const NS: &str = "toms_storage:";
@@ -47,9 +49,16 @@ const CABLE_CONNECTORS: [&str; 3] = [
     "toms_storage:ts.inventory_cable_connector_filtered",
     "toms_storage:ts.inventory_cable_connector_framed",
 ];
-const CABLES: [&str; 2] = ["toms_storage:ts.inventory_cable", "toms_storage:ts.inventory_cable_framed"];
+const CABLES: [&str; 2] = [
+    "toms_storage:ts.inventory_cable",
+    "toms_storage:ts.inventory_cable_framed",
+];
 const TRIMS: [&str; 1] = ["toms_storage:ts.trim"];
-const SIX_WAY: [&str; 3] = ["toms_storage:ts.inventory_proxy", "toms_storage:ts.open_crate", "toms_storage:ts.inventory_hopper_basic"];
+const SIX_WAY: [&str; 3] = [
+    "toms_storage:ts.inventory_proxy",
+    "toms_storage:ts.open_crate",
+    "toms_storage:ts.inventory_hopper_basic",
+];
 const WIRELESS: &str = "toms_storage:ts.wireless_terminal";
 const ADV_WIRELESS: &str = "toms_storage:ts.adv_wireless_terminal";
 
@@ -62,7 +71,14 @@ const MAX_CABLES: usize = 2048;
 const SEARCH_CHANNEL: &str = "toms_storage:search";
 const STORAGE_TITLE: &str = "Storage Terminal";
 const CRAFTING_TITLE: &str = "Crafting Terminal";
-const DIRS: [Direction; 6] = [Direction::Down, Direction::Up, Direction::North, Direction::South, Direction::West, Direction::East];
+const DIRS: [Direction; 6] = [
+    Direction::Down,
+    Direction::Up,
+    Direction::North,
+    Direction::South,
+    Direction::West,
+    Direction::East,
+];
 
 type Handler = Capability<dyn ResourceHandler<ItemResource>>;
 
@@ -124,7 +140,10 @@ fn dist2(a: [i32; 3], b: [i32; 3]) -> i32 {
 }
 
 fn block_id(host: &dyn Host, level: LevelRef, pos: [i32; 3]) -> String {
-    level.block(host, pos).and_then(|k| k.id(host).map(str::to_owned)).unwrap_or_default()
+    level
+        .block(host, pos)
+        .and_then(|k| k.id(host).map(str::to_owned))
+        .unwrap_or_default()
 }
 
 fn is_cable_like(id: &str) -> bool {
@@ -145,7 +164,7 @@ fn cap(host: &mut dyn ServerHost, level: LevelRef, inv: Inv) -> Option<Handler> 
 /// The other half of a double chest (ChestBlock.getConnectedDirection), so it is counted once.
 fn chest_other_half(host: &dyn Host, level: LevelRef, pos: [i32; 3]) -> Option<[i32; 3]> {
     let kind = level.block_property(host, pos, "type")?;
-    let facing = dir_named(&level.block_property(host, pos, "facing")?)?;
+    let facing = dir_named(level.block_property(host, pos, "facing")?)?;
     let clockwise = |d: Direction| match d {
         Direction::North => Direction::East,
         Direction::East => Direction::South,
@@ -184,7 +203,10 @@ fn network(host: &mut dyn ServerHost, level: LevelRef, conn: [i32; 3]) -> Vec<In
             if host.block_entity(level, p).is_none() {
                 continue;
             }
-            let inv = Inv { pos: p, side: Some(opposite(d)) };
+            let inv = Inv {
+                pos: p,
+                side: Some(opposite(d)),
+            };
             if cap(host, level, inv).is_none() {
                 continue;
             }
@@ -207,17 +229,26 @@ fn network(host: &mut dyn ServerHost, level: LevelRef, conn: [i32; 3]) -> Vec<In
 }
 
 fn facing_of(host: &dyn Host, level: LevelRef, pos: [i32; 3]) -> Option<Direction> {
-    dir_named(&level.block_property(host, pos, "facing")?)
+    dir_named(level.block_property(host, pos, "facing")?)
 }
 
 /// The cable network next to `start`: each cable connector's faced inventory (not one facing `start` itself,
 /// which reads the network instead), and the connector the cables reach.
-fn cable_walk(host: &dyn Host, level: LevelRef, start: [i32; 3], skip_facing: bool) -> (Vec<Inv>, Option<[i32; 3]>) {
+fn cable_walk(
+    host: &dyn Host,
+    level: LevelRef,
+    start: [i32; 3],
+    skip_facing: bool,
+) -> (Vec<Inv>, Option<[i32; 3]>) {
     let mut invs = Vec::new();
     let mut master = None;
     let mut seen: HashSet<[i32; 3]> = HashSet::from([start]);
     let mut stack = Vec::new();
-    let start_facing = if skip_facing { facing_of(host, level, start) } else { None };
+    let start_facing = if skip_facing {
+        facing_of(host, level, start)
+    } else {
+        None
+    };
     for d in DIRS {
         if Some(d) == start_facing {
             continue;
@@ -236,12 +267,20 @@ fn cable_walk(host: &dyn Host, level: LevelRef, start: [i32; 3], skip_facing: bo
         if !is_cable_like(&id) {
             continue;
         }
-        let facing = if CABLE_CONNECTORS.contains(&id.as_str()) { facing_of(host, level, p) } else { None };
+        let facing = if CABLE_CONNECTORS.contains(&id.as_str()) {
+            facing_of(host, level, p)
+        } else {
+            None
+        };
         if let Some(f) = facing {
             let target = add(p, vec_of(f));
             let tid = block_id(host, level, target);
-            if target != start && !tid.starts_with(NS) && !tid.is_empty() && tid != "minecraft:air" {
-                invs.push(Inv { pos: target, side: Some(opposite(f)) });
+            if target != start && !tid.starts_with(NS) && !tid.is_empty() && tid != "minecraft:air"
+            {
+                invs.push(Inv {
+                    pos: target,
+                    side: Some(opposite(f)),
+                });
             }
         }
         for d in DIRS {
@@ -255,11 +294,18 @@ fn cable_walk(host: &dyn Host, level: LevelRef, start: [i32; 3], skip_facing: bo
 
 fn linked(host: &mut dyn ServerHost, level: LevelRef, conn: [i32; 3]) -> Vec<Inv> {
     let (invs, _) = cable_walk(&*host, level, conn, false);
-    invs.into_iter().filter(|i| cap(host, level, *i).is_some()).collect()
+    invs.into_iter()
+        .filter(|i| cap(host, level, *i).is_some())
+        .collect()
 }
 
 /// What a terminal, a cable connector or a hopper reaches through the block at `target` from `side`.
-fn reach(host: &mut dyn ServerHost, level: LevelRef, target: [i32; 3], side: Direction) -> Vec<Inv> {
+fn reach(
+    host: &mut dyn ServerHost,
+    level: LevelRef,
+    target: [i32; 3],
+    side: Direction,
+) -> Vec<Inv> {
     let id = block_id(&*host, level, target);
     if id == CONNECTOR {
         return network(host, level, target);
@@ -269,18 +315,34 @@ fn reach(host: &mut dyn ServerHost, level: LevelRef, target: [i32; 3], side: Dir
         return master.map(|m| network(host, level, m)).unwrap_or_default();
     }
     if id == PROXY {
-        let Some(f) = facing_of(&*host, level, target) else { return Vec::new() };
-        let inv = Inv { pos: add(target, vec_of(f)), side: Some(opposite(f)) };
-        return if cap(host, level, inv).is_some() { vec![inv] } else { Vec::new() };
+        let Some(f) = facing_of(&*host, level, target) else {
+            return Vec::new();
+        };
+        let inv = Inv {
+            pos: add(target, vec_of(f)),
+            side: Some(opposite(f)),
+        };
+        return if cap(host, level, inv).is_some() {
+            vec![inv]
+        } else {
+            Vec::new()
+        };
     }
-    let inv = Inv { pos: target, side: Some(side) };
-    if cap(host, level, inv).is_some() { vec![inv] } else { Vec::new() }
+    let inv = Inv {
+        pos: target,
+        side: Some(side),
+    };
+    if cap(host, level, inv).is_some() {
+        vec![inv]
+    } else {
+        Vec::new()
+    }
 }
 
 /// StorageTerminalBlockEntity.updateServer: the inventory the terminal was put on.
 fn terminal_source(host: &mut dyn ServerHost, level: LevelRef, term: [i32; 3]) -> Vec<Inv> {
     let reader: &dyn Host = &*host;
-    let d = match level.block_property(reader, term, "pos").as_deref() {
+    let d = match level.block_property(reader, term, "pos") {
         Some("up") => Direction::Up,
         Some("down") => Direction::Down,
         _ => facing_of(reader, level, term).unwrap_or(Direction::North),
@@ -317,10 +379,15 @@ impl Merged {
         let id = block_id(&*host, self.level, self.start);
         if id == CONNECTOR {
             let asker = self.asker.map(|d| add(self.start, vec_of(d)));
-            return network(host, self.level, self.start).into_iter().filter(|i| Some(i.pos) != asker).collect();
+            return network(host, self.level, self.start)
+                .into_iter()
+                .filter(|i| Some(i.pos) != asker)
+                .collect();
         }
         let (_, master) = cable_walk(&*host, self.level, self.start, true);
-        master.map(|m| network(host, self.level, m)).unwrap_or_default()
+        master
+            .map(|m| network(host, self.level, m))
+            .unwrap_or_default()
     }
 
     fn at(&self, host: &mut dyn ServerHost, index: usize) -> Option<(Handler, usize)> {
@@ -339,7 +406,10 @@ impl Merged {
 impl ResourceHandler<ItemResource> for Merged {
     fn size(&self, host: &mut dyn ServerHost) -> usize {
         let invs = self.invs(host);
-        handlers(host, self.level, &invs).iter().map(|(_, n)| n).sum()
+        handlers(host, self.level, &invs)
+            .iter()
+            .map(|(_, n)| n)
+            .sum()
     }
     fn resource(&self, host: &mut dyn ServerHost, index: usize) -> Option<ItemResource> {
         let (h, i) = self.at(host, index)?;
@@ -348,13 +418,27 @@ impl ResourceHandler<ItemResource> for Merged {
     fn amount(&self, host: &mut dyn ServerHost, index: usize) -> u32 {
         self.at(host, index).map_or(0, |(h, i)| h.amount(host, i))
     }
-    fn capacity(&self, host: &mut dyn ServerHost, index: usize, resource: Option<&ItemResource>) -> u32 {
-        self.at(host, index).map_or(0, |(h, i)| h.capacity(host, i, resource))
+    fn capacity(
+        &self,
+        host: &mut dyn ServerHost,
+        index: usize,
+        resource: Option<&ItemResource>,
+    ) -> u32 {
+        self.at(host, index)
+            .map_or(0, |(h, i)| h.capacity(host, i, resource))
     }
     fn is_valid(&self, host: &mut dyn ServerHost, index: usize, resource: &ItemResource) -> bool {
-        self.at(host, index).is_some_and(|(h, i)| h.is_valid(host, i, resource))
+        self.at(host, index)
+            .is_some_and(|(h, i)| h.is_valid(host, i, resource))
     }
-    fn insert_at(&self, host: &mut dyn ServerHost, tx: &TransactionContext, index: usize, resource: &ItemResource, amount: u32) -> Moved {
+    fn insert_at(
+        &self,
+        host: &mut dyn ServerHost,
+        tx: &TransactionContext,
+        index: usize,
+        resource: &ItemResource,
+        amount: u32,
+    ) -> Moved {
         if !host.transaction_matches(Some(tx)) {
             return Err(TransactionError::InvalidContext);
         }
@@ -363,7 +447,14 @@ impl ResourceHandler<ItemResource> for Merged {
             None => Ok(0),
         }
     }
-    fn extract_at(&self, host: &mut dyn ServerHost, tx: &TransactionContext, index: usize, resource: &ItemResource, amount: u32) -> Moved {
+    fn extract_at(
+        &self,
+        host: &mut dyn ServerHost,
+        tx: &TransactionContext,
+        index: usize,
+        resource: &ItemResource,
+        amount: u32,
+    ) -> Moved {
         if !host.transaction_matches(Some(tx)) {
             return Err(TransactionError::InvalidContext);
         }
@@ -372,14 +463,26 @@ impl ResourceHandler<ItemResource> for Merged {
             None => Ok(0),
         }
     }
-    fn insert(&self, host: &mut dyn ServerHost, tx: &TransactionContext, resource: &ItemResource, amount: u32) -> Moved {
+    fn insert(
+        &self,
+        host: &mut dyn ServerHost,
+        tx: &TransactionContext,
+        resource: &ItemResource,
+        amount: u32,
+    ) -> Moved {
         if !host.transaction_matches(Some(tx)) {
             return Err(TransactionError::InvalidContext);
         }
         let invs = self.invs(host);
         net_insert(host, tx, self.level, &invs, resource, amount)
     }
-    fn extract(&self, host: &mut dyn ServerHost, tx: &TransactionContext, resource: &ItemResource, amount: u32) -> Moved {
+    fn extract(
+        &self,
+        host: &mut dyn ServerHost,
+        tx: &TransactionContext,
+        resource: &ItemResource,
+        amount: u32,
+    ) -> Moved {
         if !host.transaction_matches(Some(tx)) {
             return Err(TransactionError::InvalidContext);
         }
@@ -414,13 +517,27 @@ impl ResourceHandler<ItemResource> for Forward {
     fn amount(&self, host: &mut dyn ServerHost, index: usize) -> u32 {
         self.target(host).map_or(0, |h| h.amount(host, index))
     }
-    fn capacity(&self, host: &mut dyn ServerHost, index: usize, resource: Option<&ItemResource>) -> u32 {
-        self.target(host).map_or(0, |h| h.capacity(host, index, resource))
+    fn capacity(
+        &self,
+        host: &mut dyn ServerHost,
+        index: usize,
+        resource: Option<&ItemResource>,
+    ) -> u32 {
+        self.target(host)
+            .map_or(0, |h| h.capacity(host, index, resource))
     }
     fn is_valid(&self, host: &mut dyn ServerHost, index: usize, resource: &ItemResource) -> bool {
-        self.target(host).is_some_and(|h| h.is_valid(host, index, resource))
+        self.target(host)
+            .is_some_and(|h| h.is_valid(host, index, resource))
     }
-    fn insert_at(&self, host: &mut dyn ServerHost, tx: &TransactionContext, index: usize, resource: &ItemResource, amount: u32) -> Moved {
+    fn insert_at(
+        &self,
+        host: &mut dyn ServerHost,
+        tx: &TransactionContext,
+        index: usize,
+        resource: &ItemResource,
+        amount: u32,
+    ) -> Moved {
         if !host.transaction_matches(Some(tx)) {
             return Err(TransactionError::InvalidContext);
         }
@@ -429,7 +546,14 @@ impl ResourceHandler<ItemResource> for Forward {
             None => Ok(0),
         }
     }
-    fn extract_at(&self, host: &mut dyn ServerHost, tx: &TransactionContext, index: usize, resource: &ItemResource, amount: u32) -> Moved {
+    fn extract_at(
+        &self,
+        host: &mut dyn ServerHost,
+        tx: &TransactionContext,
+        index: usize,
+        resource: &ItemResource,
+        amount: u32,
+    ) -> Moved {
         if !host.transaction_matches(Some(tx)) {
             return Err(TransactionError::InvalidContext);
         }
@@ -441,7 +565,14 @@ impl ResourceHandler<ItemResource> for Forward {
 }
 
 /// MergedStorage.insert: first onto stacks of the same item, then wherever it goes.
-fn net_insert(host: &mut dyn ServerHost, tx: &TransactionContext, level: LevelRef, invs: &[Inv], res: &ItemResource, amount: u32) -> Moved {
+fn net_insert(
+    host: &mut dyn ServerHost,
+    tx: &TransactionContext,
+    level: LevelRef,
+    invs: &[Inv],
+    res: &ItemResource,
+    amount: u32,
+) -> Moved {
     let hs = handlers(host, level, invs);
     let mut went = 0;
     for (h, n) in &hs {
@@ -463,7 +594,14 @@ fn net_insert(host: &mut dyn ServerHost, tx: &TransactionContext, level: LevelRe
     Ok(went)
 }
 
-fn net_extract(host: &mut dyn ServerHost, tx: &TransactionContext, level: LevelRef, invs: &[Inv], res: &ItemResource, amount: u32) -> Moved {
+fn net_extract(
+    host: &mut dyn ServerHost,
+    tx: &TransactionContext,
+    level: LevelRef,
+    invs: &[Inv],
+    res: &ItemResource,
+    amount: u32,
+) -> Moved {
     let mut got = 0;
     for (h, n) in handlers(host, level, invs) {
         for i in 0..n {
@@ -488,22 +626,37 @@ struct Entry {
 }
 
 fn res_key(host: &dyn Host, stack: &ItemStack) -> String {
-    format!("{}|{:?}", stack.item().id(host).unwrap_or_default(), stack.components().map(|c| c.as_nbt()))
+    format!(
+        "{}|{:?}",
+        stack.item().id(host).unwrap_or_default(),
+        stack.components().map(|c| c.as_nbt())
+    )
 }
 
 fn contents(host: &mut dyn ServerHost, level: LevelRef, invs: &[Inv]) -> Vec<Entry> {
     let mut map: HashMap<String, Entry> = HashMap::new();
     for (h, n) in handlers(host, level, invs) {
         for i in 0..n {
-            let Some(r) = h.resource(host, i) else { continue };
+            let Some(r) = h.resource(host, i) else {
+                continue;
+            };
             let amount = h.amount(host, i);
             if amount == 0 {
                 continue;
             }
-            let Some(sample) = r.to_stack(1) else { continue };
+            let Some(sample) = r.to_stack(1) else {
+                continue;
+            };
             let key = res_key(&*host, &sample);
             let id = sample.item().id(&*host).unwrap_or_default().to_owned();
-            map.entry(key.clone()).or_insert(Entry { key, id, sample, total: 0 }).total += u64::from(amount);
+            map.entry(key.clone())
+                .or_insert(Entry {
+                    key,
+                    id,
+                    sample,
+                    total: 0,
+                })
+                .total += u64::from(amount);
         }
     }
     map.into_values().collect()
@@ -522,7 +675,14 @@ fn named(mut stack: ItemStack, name: &str, lore: &[String]) -> ItemStack {
     let mut patch = Compound::new();
     patch.insert("minecraft:custom_name".into(), Tag::String(name.into()));
     if !lore.is_empty() {
-        patch.insert("minecraft:lore".into(), Tag::List(lore.iter().map(|l| Tag::String(l.as_str().into())).collect()));
+        patch.insert(
+            "minecraft:lore".into(),
+            Tag::List(
+                lore.iter()
+                    .map(|l| Tag::String(l.as_str().into()))
+                    .collect(),
+            ),
+        );
     }
     let _ = stack.apply_components(&patch);
     stack
@@ -547,9 +707,25 @@ struct Layout {
 
 fn layout(crafting: bool) -> Layout {
     if crafting {
-        Layout { items: CRAFTING_ITEMS, prev: 27, next: 35, sort: 33, search: 36, info: 44, clear: Some(53) }
+        Layout {
+            items: CRAFTING_ITEMS,
+            prev: 27,
+            next: 35,
+            sort: 33,
+            search: 36,
+            info: 44,
+            clear: Some(53),
+        }
     } else {
-        Layout { items: STORAGE_ITEMS, prev: 45, next: 53, sort: 47, search: 49, info: 51, clear: None }
+        Layout {
+            items: STORAGE_ITEMS,
+            prev: 45,
+            next: 53,
+            sort: 47,
+            search: 49,
+            info: 51,
+            clear: None,
+        }
     }
 }
 
@@ -571,7 +747,11 @@ struct Session {
 
 impl Session {
     fn title(&self) -> Text {
-        let base = if self.crafting { CRAFTING_TITLE } else { STORAGE_TITLE };
+        let base = if self.crafting {
+            CRAFTING_TITLE
+        } else {
+            STORAGE_TITLE
+        };
         if self.search.is_empty() {
             Text::literal(base)
         } else {
@@ -604,7 +784,12 @@ fn filter_sort(mut v: Vec<Entry>, search: &str, sort: usize) -> Vec<Entry> {
     }
     match sort {
         0 => v.sort_by(|a, b| b.total.cmp(&a.total).then(a.id.cmp(&b.id))),
-        1 => v.sort_by(|a, b| a.id.split(':').nth(1).cmp(&b.id.split(':').nth(1)).then(a.key.cmp(&b.key))),
+        1 => v.sort_by(|a, b| {
+            a.id.split(':')
+                .nth(1)
+                .cmp(&b.id.split(':').nth(1))
+                .then(a.key.cmp(&b.key))
+        }),
         _ => v.sort_by(|a, b| a.id.cmp(&b.id).then(a.key.cmp(&b.key))),
     }
     v
@@ -675,7 +860,9 @@ fn give(host: &mut dyn ServerHost, player: PlayerRef, stack: &ItemStack) -> u32 
                 break;
             }
             let put = match (&*cell, pass) {
-                (Some(h), 0) if h.is_stackable_with(stack) => max.saturating_sub(h.count()).min(left),
+                (Some(h), 0) if h.is_stackable_with(stack) => {
+                    max.saturating_sub(h.count()).min(left)
+                }
                 (None, 1) => max.min(left),
                 _ => 0,
             };
@@ -698,30 +885,58 @@ fn give(host: &mut dyn ServerHost, player: PlayerRef, stack: &ItemStack) -> u32 
 }
 
 /// Takes up to `want` of `res` off the network into the player's inventory; what doesn't fit goes back.
-fn take_to_player(host: &mut dyn ServerHost, player: PlayerRef, level: LevelRef, invs: &[Inv], res: &ItemResource, want: u32) -> u32 {
-    let got = host.transaction(|host, tx| net_extract(host, tx, level, invs, res, want)).unwrap_or(0);
-    let Some(st) = res.to_stack(got).filter(|_| got > 0) else { return 0 };
+fn take_to_player(
+    host: &mut dyn ServerHost,
+    player: PlayerRef,
+    level: LevelRef,
+    invs: &[Inv],
+    res: &ItemResource,
+    want: u32,
+) -> u32 {
+    let got = host
+        .transaction(|host, tx| net_extract(host, tx, level, invs, res, want))
+        .unwrap_or(0);
+    let Some(st) = res.to_stack(got).filter(|_| got > 0) else {
+        return 0;
+    };
     let left = give(host, player, &st);
     if left > 0 {
-        let back = host.transaction(|host, tx| net_insert(host, tx, level, invs, res, left)).unwrap_or(0);
-        if back < left {
-            if let Some(rest) = res.to_stack(left - back) {
-                let _ = player.give_stack(host, rest);
-            }
+        let back = host
+            .transaction(|host, tx| net_insert(host, tx, level, invs, res, left))
+            .unwrap_or(0);
+        if back < left
+            && let Some(rest) = res.to_stack(left - back)
+        {
+            let _ = player.give_stack(host, rest);
         }
     }
     got - left
 }
 
 /// Puts up to `n` of a stack into the network; gives back what was taken.
-fn put_in(host: &mut dyn ServerHost, level: LevelRef, invs: &[Inv], stack: &ItemStack, n: u32) -> u32 {
+fn put_in(
+    host: &mut dyn ServerHost,
+    level: LevelRef,
+    invs: &[Inv],
+    stack: &ItemStack,
+    n: u32,
+) -> u32 {
     let res = ItemResource::of(stack);
-    host.transaction(|host, tx| net_insert(host, tx, level, invs, &res, n.min(stack.count()))).unwrap_or(0)
+    host.transaction(|host, tx| net_insert(host, tx, level, invs, &res, n.min(stack.count())))
+        .unwrap_or(0)
 }
 
 enum Job {
-    Open { uuid: u128, dim: String, term: [i32; 3], crafting: bool },
-    Search { uuid: u128, text: String },
+    Open {
+        uuid: u128,
+        dim: String,
+        term: [i32; 3],
+        crafting: bool,
+    },
+    Search {
+        uuid: u128,
+        text: String,
+    },
 }
 
 /// What the hooks, the payload handler and the menu part share.
@@ -734,10 +949,22 @@ struct Shared {
 struct SearchHandler(Arc<Shared>);
 
 impl IPayloadHandler for SearchHandler {
-    fn handle(&self, payload: PayloadBytes, context: &mut dyn IPayloadContext) -> Result<(), PayloadHandleError> {
-        let Ok(player) = context.player() else { return Ok(()) };
-        let text: String = String::from_utf8_lossy(&payload.0).chars().take(48).collect();
-        lock(&self.0.jobs).push(Job::Search { uuid: player.uuid(), text });
+    fn handle(
+        &self,
+        payload: PayloadBytes,
+        context: &mut dyn IPayloadContext,
+    ) -> Result<(), PayloadHandleError> {
+        let Ok(player) = context.player() else {
+            return Ok(());
+        };
+        let text: String = String::from_utf8_lossy(&payload.0)
+            .chars()
+            .take(48)
+            .collect();
+        lock(&self.0.jobs).push(Job::Search {
+            uuid: player.uuid(),
+            text,
+        });
         Ok(())
     }
 }
@@ -748,7 +975,11 @@ struct Placement;
 #[mod_api::sunrise_part]
 impl BlockPart for Placement {
     /// AbstractStorageTerminalBlock / InventoryCableConnectorBlock / InventoryProxyBlock.getStateForPlacement.
-    fn state_for_placement(&self, level: LevelSide, event: &mut StateForPlacementEvent<'_>) -> Option<Option<BlockState>> {
+    fn state_for_placement(
+        &self,
+        level: LevelSide,
+        event: &mut StateForPlacementEvent<'_>,
+    ) -> Option<Option<BlockState>> {
         let level: &dyn LevelHost = match &level {
             LevelSide::Server(l) => *l,
             LevelSide::Client(l) => *l,
@@ -771,8 +1002,15 @@ impl BlockPart for Placement {
             format!("{block}[facing={facing},pos={pos},waterlogged={water}]")
         } else if CABLE_CONNECTORS.contains(&block.as_str()) || SIX_WAY.contains(&block.as_str()) {
             let current = level.state_string(event.state)?;
-            let rest = current.split_once('[').map(|(_, r)| r.trim_end_matches(']').to_string()).unwrap_or_default();
-            let mut props: Vec<String> = rest.split(',').filter(|kv| !kv.is_empty() && !kv.starts_with("facing=")).map(str::to_string).collect();
+            let rest = current
+                .split_once('[')
+                .map(|(_, r)| r.trim_end_matches(']').to_string())
+                .unwrap_or_default();
+            let mut props: Vec<String> = rest
+                .split(',')
+                .filter(|kv| !kv.is_empty() && !kv.starts_with("facing="))
+                .map(str::to_string)
+                .collect();
             props.push(format!("facing={}", dir_name(toward)));
             format!("{block}[{}]", props.join(","))
         } else if block == "toms_storage:ts.level_emitter" {
@@ -821,7 +1059,13 @@ fn live(host: &dyn ServerHost, uuid: u128, window: i32) -> Option<MenuRef> {
 }
 
 /// Opens the six-row chest screen; the window id of the menu that opened.
-fn open_screen(host: &mut dyn ServerHost, uuid: u128, title: Text, items: Vec<Option<ItemStack>>, replace: MenuReplace) -> Option<i32> {
+fn open_screen(
+    host: &mut dyn ServerHost,
+    uuid: u128,
+    title: Text,
+    items: Vec<Option<ItemStack>>,
+    replace: MenuReplace,
+) -> Option<i32> {
     let player = host.player(uuid)?;
     match player.open_chest_menu(host, 6, title, items, replace) {
         Ok(menu) => {
@@ -876,34 +1120,70 @@ impl Shared {
             let mut st = e.sample.clone();
             let shown = e.total.min(u64::from(max_stack(reader, &st))) as u32;
             let _ = st.set_count(shown.max(1));
-            let lore = vec![format!("Stored: {}", group(e.total))];
+            let lore = [format!("Stored: {}", group(e.total))];
             let mut patch = Compound::new();
-            patch.insert("minecraft:lore".into(), Tag::List(lore.iter().map(|x| Tag::String(x.as_str().into())).collect()));
+            patch.insert(
+                "minecraft:lore".into(),
+                Tag::List(
+                    lore.iter()
+                        .map(|x| Tag::String(x.as_str().into()))
+                        .collect(),
+                ),
+            );
             let _ = st.apply_components(&patch);
             out[slot] = Some(st);
         }
         let pages = s.pages();
-        out[l.prev] = item(reader, "minecraft:arrow").map(|a| named(a, &format!("Previous page ({}/{pages})", s.page + 1), &[]));
-        out[l.next] = item(reader, "minecraft:spectral_arrow").map(|a| named(a, &format!("Next page ({}/{pages})", s.page + 1), &[]));
+        out[l.prev] = item(reader, "minecraft:arrow")
+            .map(|a| named(a, &format!("Previous page ({}/{pages})", s.page + 1), &[]));
+        out[l.next] = item(reader, "minecraft:spectral_arrow")
+            .map(|a| named(a, &format!("Next page ({}/{pages})", s.page + 1), &[]));
         out[l.sort] = item(reader, "minecraft:hopper").map(|a| {
-            named(a, &format!("Sort by {}", SORTS[s.sort]), &["Click to change".to_string()])
+            named(
+                a,
+                &format!("Sort by {}", SORTS[s.sort]),
+                &["Click to change".to_string()],
+            )
         });
-        let search = if s.search.is_empty() { "Type to search (@ for a mod)".to_string() } else { format!("Search: {}", s.search) };
-        out[l.search] = item(reader, "minecraft:name_tag").map(|a| named(a, &search, &["Click to clear".to_string()]));
+        let search = if s.search.is_empty() {
+            "Type to search (@ for a mod)".to_string()
+        } else {
+            format!("Search: {}", s.search)
+        };
+        out[l.search] = item(reader, "minecraft:name_tag")
+            .map(|a| named(a, &search, &["Click to clear".to_string()]));
         let total: u64 = s.view.iter().map(|e| e.total).sum();
         out[l.info] = item(reader, "minecraft:paper").map(|a| {
-            named(a, &format!("{} kinds, {} items", s.view.len(), group(total)), &[])
+            named(
+                a,
+                &format!("{} kinds, {} items", s.view.len(), group(total)),
+                &[],
+            )
         });
         if let Some(c) = l.clear {
-            out[c] = item(reader, "minecraft:barrier").map(|a| named(a, "Clear the grid", &["Back to the network".to_string()]));
+            out[c] = item(reader, "minecraft:barrier")
+                .map(|a| named(a, "Clear the grid", &["Back to the network".to_string()]));
         }
         if s.crafting {
             for (k, slot) in GRID.iter().enumerate() {
                 out[*slot] = s.grid[k].clone();
             }
             out[40] = match &s.pick {
-                Some(p) => Some(named(p.clone(), "Picked for the grid", &["Click an empty grid slot to put one".to_string(), "Right-click a stored item to pick another".to_string()])),
-                None => item(reader, "minecraft:crafting_table").map(|a| named(a, "Right-click a stored item", &["to pick it for the grid".to_string()])),
+                Some(p) => Some(named(
+                    p.clone(),
+                    "Picked for the grid",
+                    &[
+                        "Click an empty grid slot to put one".to_string(),
+                        "Right-click a stored item to pick another".to_string(),
+                    ],
+                )),
+                None => item(reader, "minecraft:crafting_table").map(|a| {
+                    named(
+                        a,
+                        "Right-click a stored item",
+                        &["to pick it for the grid".to_string()],
+                    )
+                }),
             };
             out[RESULT] = None;
         }
@@ -912,7 +1192,9 @@ impl Shared {
 
     fn refresh(&self, host: &mut dyn ServerHost, uuid: u128, retitle: bool) {
         // The session is out of the map while the menu is touched, so a menu closing under it can't deadlock.
-        let Some(mut s) = lock(&self.sessions).remove(&uuid) else { return };
+        let Some(mut s) = lock(&self.sessions).remove(&uuid) else {
+            return;
+        };
         let Some((level, invs)) = self.source(host, &s) else {
             // The terminal or its network is gone: closing the screen returns the crafting grid.
             lock(&self.sessions).insert(uuid, s);
@@ -937,16 +1219,32 @@ impl Shared {
         lock(&self.sessions).insert(uuid, s);
     }
 
-    fn craft_result(&self, host: &dyn Host, level: LevelRef, s: &Session) -> Option<mod_api::RecipeMatch> {
+    fn craft_result(
+        &self,
+        host: &dyn Host,
+        level: LevelRef,
+        s: &Session,
+    ) -> Option<mod_api::RecipeMatch> {
         if s.grid.iter().all(Option::is_none) {
             return None;
         }
-        let input = RecipeInput::Crafting { width: 3, height: 3, slots: s.grid.to_vec() };
+        let input = RecipeInput::Crafting {
+            width: 3,
+            height: 3,
+            slots: s.grid.to_vec(),
+        };
         let kind = Identifier::parse("minecraft:crafting").ok()?;
         level.recipe_for(host, &kind, &input).ok().flatten()
     }
 
-    fn open(&self, host: &mut dyn ServerHost, uuid: u128, dim: String, term: [i32; 3], crafting: bool) {
+    fn open(
+        &self,
+        host: &mut dyn ServerHost,
+        uuid: u128,
+        dim: String,
+        term: [i32; 3],
+        crafting: bool,
+    ) {
         let old = lock(&self.sessions).remove(&uuid);
         if let Some(old) = old {
             for st in self.return_grid(host, &old) {
@@ -955,8 +1253,21 @@ impl Shared {
                 }
             }
         }
-        let mut s = Session { window: -1, dim, term, crafting, page: 0, sort: 0, search: String::new(), view: Vec::new(), grid: Default::default(), pick: None };
-        let Some((level, invs)) = self.source(host, &s) else { return };
+        let mut s = Session {
+            window: -1,
+            dim,
+            term,
+            crafting,
+            page: 0,
+            sort: 0,
+            search: String::new(),
+            view: Vec::new(),
+            grid: Default::default(),
+            pick: None,
+        };
+        let Some((level, invs)) = self.source(host, &s) else {
+            return;
+        };
         s.view = filter_sort(contents(host, level, &invs), "", 0);
         let items = self.items(host, &mut s);
         if let Some(w) = open_screen(host, uuid, s.title(), items, MenuReplace::CloseFirst) {
@@ -999,10 +1310,10 @@ impl Shared {
         if let Some(s) = s {
             // What is still in the grid goes back to the network, and what doesn't fit to the player.
             for st in self.return_grid(host, &s) {
-                if let Some(p) = host.player(uuid) {
-                    if let Err(e) = p.give_stack(host, st) {
-                        eprintln!("[toms_storage] grid stack lost: {e:?}");
-                    }
+                if let Some(p) = host.player(uuid)
+                    && let Err(e) = p.give_stack(host, st)
+                {
+                    eprintln!("[toms_storage] grid stack lost: {e:?}");
                 }
             }
         }
@@ -1020,8 +1331,12 @@ impl Shared {
             }
             (s.crafting, s.page, s.per_page(), s.dim.clone(), s.term)
         };
-        let Some(player) = host.player(uuid) else { return };
-        let Some(level) = level_of(&*host, &dim) else { return };
+        let Some(player) = host.player(uuid) else {
+            return;
+        };
+        let Some(level) = level_of(&*host, &dim) else {
+            return;
+        };
         let invs = terminal_source(host, level, term);
         let l = layout(crafting);
         let (button, mode) = (ev.button, ev.mode);
@@ -1031,7 +1346,11 @@ impl Shared {
         let mut retitle = false;
         if let Some(inv_slot) = inventory_slot(ev.slot) {
             if let Some(st) = inventory(&*host, player)[inv_slot as usize].clone() {
-                let n = if button == 1 && mode == 0 { 1 } else { st.count() };
+                let n = if button == 1 && mode == 0 {
+                    1
+                } else {
+                    st.count()
+                };
                 let went = put_in(host, level, &invs, &st, n);
                 if went > 0 {
                     let rest = st.shrink(went);
@@ -1045,7 +1364,11 @@ impl Shared {
             if l.items.contains(&slot) {
                 let entry = {
                     let sessions = lock(&self.sessions);
-                    sessions.get(&uuid).and_then(|s| s.view.get(page * per_page + (slot - l.items.start)).cloned())
+                    sessions.get(&uuid).and_then(|s| {
+                        s.view
+                            .get(page * per_page + (slot - l.items.start))
+                            .cloned()
+                    })
                 };
                 if let Some(e) = entry {
                     let res = ItemResource::of(&e.sample);
@@ -1057,26 +1380,34 @@ impl Shared {
                         let _ = res;
                     } else {
                         let stack = e.total.min(u64::from(max_stack(&*host, &e.sample))) as u32;
-                        let want = if button == 1 && mode == 0 { stack.div_ceil(2) } else { stack };
+                        let want = if button == 1 && mode == 0 {
+                            stack.div_ceil(2)
+                        } else {
+                            stack
+                        };
                         take_to_player(host, player, level, &invs, &res, want);
                     }
                 }
             } else if slot == l.prev || slot == l.next {
                 if let Some(s) = lock(&self.sessions).get_mut(&uuid) {
                     let pages = s.pages();
-                    s.page = if slot == l.prev { (s.page + pages - 1) % pages } else { (s.page + 1) % pages };
+                    s.page = if slot == l.prev {
+                        (s.page + pages - 1) % pages
+                    } else {
+                        (s.page + 1) % pages
+                    };
                 }
             } else if slot == l.sort {
                 if let Some(s) = lock(&self.sessions).get_mut(&uuid) {
                     s.sort = (s.sort + if button == 1 { SORTS.len() - 1 } else { 1 }) % SORTS.len();
                 }
             } else if slot == l.search {
-                if let Some(s) = lock(&self.sessions).get_mut(&uuid) {
-                    if !s.search.is_empty() {
-                        s.search.clear();
-                        s.page = 0;
-                        retitle = true;
-                    }
+                if let Some(s) = lock(&self.sessions).get_mut(&uuid)
+                    && !s.search.is_empty()
+                {
+                    s.search.clear();
+                    s.page = 0;
+                    retitle = true;
                 }
             } else if crafting {
                 self.crafting_click(host, ev, player, level, &invs, slot);
@@ -1086,14 +1417,26 @@ impl Shared {
     }
 
     /// One of the picked item from the network onto grid slot `k`.
-    fn to_grid(&self, host: &mut dyn ServerHost, s: &mut Session, k: usize, level: LevelRef, invs: &[Inv]) {
+    fn to_grid(
+        &self,
+        host: &mut dyn ServerHost,
+        s: &mut Session,
+        k: usize,
+        level: LevelRef,
+        invs: &[Inv],
+    ) {
         let Some(sample) = s.pick.clone() else { return };
         let max = max_stack(&*host, &sample);
-        if s.grid[k].as_ref().is_some_and(|g| !g.is_stackable_with(&sample) || g.count() >= max) {
+        if s.grid[k]
+            .as_ref()
+            .is_some_and(|g| !g.is_stackable_with(&sample) || g.count() >= max)
+        {
             return;
         }
         let res = ItemResource::of(&sample);
-        let got = host.transaction(|host, tx| net_extract(host, tx, level, invs, &res, 1)).unwrap_or(0);
+        let got = host
+            .transaction(|host, tx| net_extract(host, tx, level, invs, &res, 1))
+            .unwrap_or(0);
         if got == 1 {
             s.grid[k] = match s.grid[k].take() {
                 Some(mut g) => {
@@ -1105,19 +1448,36 @@ impl Shared {
         }
     }
 
-    fn crafting_click(&self, host: &mut dyn ServerHost, ev: &MenuClickedEvent, player: PlayerRef, level: LevelRef, invs: &[Inv], slot: usize) {
+    fn crafting_click(
+        &self,
+        host: &mut dyn ServerHost,
+        ev: &MenuClickedEvent,
+        player: PlayerRef,
+        level: LevelRef,
+        invs: &[Inv],
+        slot: usize,
+    ) {
         let uuid = ev.uuid;
         if let Some(k) = GRID.iter().position(|g| *g == slot) {
             // A grid stack back to the network (one with the right button); what doesn't fit to the player.
             let mut sessions = lock(&self.sessions);
-            let Some(s) = sessions.get_mut(&uuid) else { return };
-            let picked = s.pick.as_ref().is_some_and(|p| s.grid[k].as_ref().is_none_or(|g| g.is_stackable_with(p)));
+            let Some(s) = sessions.get_mut(&uuid) else {
+                return;
+            };
+            let picked = s
+                .pick
+                .as_ref()
+                .is_some_and(|p| s.grid[k].as_ref().is_none_or(|g| g.is_stackable_with(p)));
             if ev.mode == 0 && picked && (s.grid[k].is_none() || ev.button == 1) {
                 // The picked item: one into an empty slot, or one more with the right button.
                 return self.to_grid(host, s, k, level, invs);
             }
             let Some(st) = s.grid[k].take() else { return };
-            let n = if ev.button == 1 && ev.mode == 0 { 1 } else { st.count() };
+            let n = if ev.button == 1 && ev.mode == 0 {
+                1
+            } else {
+                st.count()
+            };
             let mut went = put_in(host, level, invs, &st, n);
             if went < n {
                 let mut part = st.clone();
@@ -1131,7 +1491,10 @@ impl Shared {
             let times = if ev.mode == 1 { 64 } else { 1 };
             let mut first: Option<ItemStack> = None;
             for _ in 0..times {
-                let Some(out) = self.craft_once(host, uuid, player, level, invs, first.as_ref()) else { break };
+                let Some(out) = self.craft_once(host, uuid, player, level, invs, first.as_ref())
+                else {
+                    break;
+                };
                 first.get_or_insert(out);
             }
         } else if slot == 40 {
@@ -1140,7 +1503,9 @@ impl Shared {
             }
         } else if Some(slot) == layout(true).clear {
             let mut sessions = lock(&self.sessions);
-            let Some(s) = sessions.get_mut(&uuid) else { return };
+            let Some(s) = sessions.get_mut(&uuid) else {
+                return;
+            };
             for g in s.grid.iter_mut() {
                 if let Some(st) = g.take() {
                     let n = st.count();
@@ -1153,7 +1518,15 @@ impl Shared {
 
     /// The result to the inventory, one of each ingredient used, remainders kept, and the used slots refilled
     /// from the network.
-    fn craft_once(&self, host: &mut dyn ServerHost, uuid: u128, player: PlayerRef, level: LevelRef, invs: &[Inv], same_as: Option<&ItemStack>) -> Option<ItemStack> {
+    fn craft_once(
+        &self,
+        host: &mut dyn ServerHost,
+        uuid: u128,
+        player: PlayerRef,
+        level: LevelRef,
+        invs: &[Inv],
+        same_as: Option<&ItemStack>,
+    ) -> Option<ItemStack> {
         let mut sessions = lock(&self.sessions);
         let s = sessions.get_mut(&uuid)?;
         let m = self.craft_result(&*host, level, s)?;
@@ -1164,11 +1537,14 @@ impl Shared {
         // Only when it all fits: `give` on a copy of the inventory would be cleaner, this checks the room.
         let inv = inventory(&*host, player);
         let max = max_stack(&*host, &out);
-        let room: u32 = inv.iter().map(|h| match h {
-            None => max,
-            Some(h) if h.is_stackable_with(&out) => max.saturating_sub(h.count()),
-            _ => 0,
-        }).sum();
+        let room: u32 = inv
+            .iter()
+            .map(|h| match h {
+                None => max,
+                Some(h) if h.is_stackable_with(&out) => max.saturating_sub(h.count()),
+                _ => 0,
+            })
+            .sum();
         if room < out.count() {
             return None;
         }
@@ -1177,10 +1553,17 @@ impl Shared {
         for (k, before_k) in before.iter().enumerate().take(9) {
             let Some(st) = s.grid[k].take() else { continue };
             s.grid[k] = st.shrink(1);
-            let rem = m.remainders.get(k).cloned().flatten().filter(|r| r.count() > 0);
+            let rem = m
+                .remainders
+                .get(k)
+                .cloned()
+                .flatten()
+                .filter(|r| r.count() > 0);
             if s.grid[k].is_none() {
                 let res = ItemResource::of(before_k.as_ref().expect("the grid slot held a stack"));
-                let got = host.transaction(|host, tx| net_extract(host, tx, level, invs, &res, 1)).unwrap_or(0);
+                let got = host
+                    .transaction(|host, tx| net_extract(host, tx, level, invs, &res, 1))
+                    .unwrap_or(0);
                 if got == 1 {
                     s.grid[k] = res.to_stack(1);
                     if let Some(r) = rem {
@@ -1204,7 +1587,12 @@ impl Shared {
     }
 
     /// WirelessTerminalItem.use: the terminal the player looks at within reach.
-    fn looked_terminal(&self, host: &dyn Host, uuid: u128, range: f64) -> Option<(String, [i32; 3], bool)> {
+    fn looked_terminal(
+        &self,
+        host: &dyn Host,
+        uuid: u128,
+        range: f64,
+    ) -> Option<(String, [i32; 3], bool)> {
         let player = host.player(uuid)?;
         let e = player.entity();
         let eye = e.eye_position(host)?;
@@ -1213,12 +1601,20 @@ impl Shared {
         let dim = level.dimension().id(host)?.to_string();
         let mut t = 0.0;
         while t <= range {
-            let p = [(eye[0] + v[0] * t).floor() as i32, (eye[1] + v[1] * t).floor() as i32, (eye[2] + v[2] * t).floor() as i32];
+            let p = [
+                (eye[0] + v[0] * t).floor() as i32,
+                (eye[1] + v[1] * t).floor() as i32,
+                (eye[2] + v[2] * t).floor() as i32,
+            ];
             let id = block_id(host, level, p);
             if id == TERMINAL || id == CRAFTING {
                 return Some((dim, p, id == CRAFTING));
             }
-            if !id.is_empty() && id != "minecraft:air" && !id.contains("glass") && id != "minecraft:water" {
+            if !id.is_empty()
+                && id != "minecraft:air"
+                && !id.contains("glass")
+                && id != "minecraft:water"
+            {
                 return None;
             }
             t += 0.1;
@@ -1229,7 +1625,9 @@ impl Shared {
 
 fn bound(stack: &ItemStack) -> Option<(String, [i32; 3])> {
     let comps = stack.components()?;
-    let Some(Tag::Compound(data)) = comps.as_nbt().get(&"minecraft:custom_data".into()) else { return None };
+    let Some(Tag::Compound(data)) = comps.as_nbt().get(&"minecraft:custom_data".into()) else {
+        return None;
+    };
     let int = |k: &str| match data.get(&k.into()) {
         Some(Tag::Int(v)) => Some(*v),
         _ => None,
@@ -1248,7 +1646,10 @@ struct TerminalMenu(Arc<Shared>);
 impl MenuPart for TerminalMenu {
     /// A click in an open terminal is the terminal's alone: the vanilla click never moves a stack.
     fn menu_clicked(&self, host: &mut dyn ServerHost, event: &mut MenuClickedEvent<'_>) -> Flow {
-        if lock(&self.0.sessions).get(&event.uuid).is_some_and(|s| s.window == event.window) {
+        if lock(&self.0.sessions)
+            .get(&event.uuid)
+            .is_some_and(|s| s.window == event.window)
+        {
             self.0.click(host, event);
             Flow::Cancel
         } else {
@@ -1264,11 +1665,19 @@ impl MenuPart for TerminalMenu {
 #[mod_api::sunrise_mod]
 impl Hooks for Mod {
     fn register(&self, r: &mut dyn Registrar, _cx: &RegistrationContext) {
-        for b in [TERMINAL, CRAFTING].iter().chain(CABLE_CONNECTORS.iter()).chain(SIX_WAY.iter()).chain(["toms_storage:ts.level_emitter"].iter()) {
+        for b in [TERMINAL, CRAFTING]
+            .iter()
+            .chain(CABLE_CONNECTORS.iter())
+            .chain(SIX_WAY.iter())
+            .chain(["toms_storage:ts.level_emitter"].iter())
+        {
             let key = r.block_key(b);
             r.block_part(key, Placement);
         }
-        for (name, block) in [("storage_terminal", TERMINAL), ("crafting_terminal", CRAFTING)] {
+        for (name, block) in [
+            ("storage_terminal", TERMINAL),
+            ("crafting_terminal", CRAFTING),
+        ] {
             let kind = r.block_entity_type(name).blocks(&[block]).build();
             if let Err(e) = r.block_entity_part(&kind, Tile) {
                 eprintln!("[toms_storage] block entity part refused: {e:?}");
@@ -1278,28 +1687,58 @@ impl Hooks for Mod {
         // sees the block, so the network is worked out when the handler is used.
         let conn = r.block_key(CONNECTOR);
         r.block_capability(&ITEMS, &conn, |_, at: BlockSide, _, _, offer| {
-            offer.offer(|| Box::new(Merged { level: at.level, start: at.pos, asker: at.side }) as Box<dyn ResourceHandler<ItemResource>>);
+            offer.offer(|| {
+                Box::new(Merged {
+                    level: at.level,
+                    start: at.pos,
+                    asker: at.side,
+                }) as Box<dyn ResourceHandler<ItemResource>>
+            });
         });
         for cc in CABLE_CONNECTORS {
             let key = r.block_key(cc);
             r.block_capability(&ITEMS, &key, |_, at: BlockSide, _, _, offer| {
-                offer.offer(|| Box::new(Merged { level: at.level, start: at.pos, asker: None }) as Box<dyn ResourceHandler<ItemResource>>);
+                offer.offer(|| {
+                    Box::new(Merged {
+                        level: at.level,
+                        start: at.pos,
+                        asker: None,
+                    }) as Box<dyn ResourceHandler<ItemResource>>
+                });
             });
         }
         let proxy = r.block_key(PROXY);
         r.block_capability(&ITEMS, &proxy, |level, at: BlockSide, state, _, offer| {
-            let Some(f) = state.property(&level.block_states(), "facing").ok().flatten().and_then(dir_named) else { return };
+            let Some(f) = state
+                .property(&level.block_states(), "facing")
+                .ok()
+                .flatten()
+                .and_then(dir_named)
+            else {
+                return;
+            };
             if at.side == Some(f) {
                 return;
             }
-            let inv = Inv { pos: add(at.pos, vec_of(f)), side: Some(opposite(f)) };
-            offer.offer(|| Box::new(Forward { level: at.level, inv }) as Box<dyn ResourceHandler<ItemResource>>);
+            let inv = Inv {
+                pos: add(at.pos, vec_of(f)),
+                side: Some(opposite(f)),
+            };
+            offer.offer(|| {
+                Box::new(Forward {
+                    level: at.level,
+                    inv,
+                }) as Box<dyn ResourceHandler<ItemResource>>
+            });
         });
         r.menu_part("minecraft:generic_9x6", TerminalMenu(self.shared.clone()));
         r.payload_handlers()
             .registrar("1")
             .optional()
-            .play_to_server(PayloadId(SEARCH_CHANNEL.into()), Arc::new(SearchHandler(self.shared.clone())));
+            .play_to_server(
+                PayloadId(SEARCH_CHANNEL.into()),
+                Arc::new(SearchHandler(self.shared.clone())),
+            );
     }
 
     fn server_tick(&self, host: &mut dyn ServerHost, event: &mut ServerTickEvent<'_>) {
@@ -1309,7 +1748,12 @@ impl Hooks for Mod {
         let jobs = std::mem::take(&mut *lock(&self.shared.jobs));
         for job in jobs {
             match job {
-                Job::Open { uuid, dim, term, crafting } => self.shared.open(host, uuid, dim, term, crafting),
+                Job::Open {
+                    uuid,
+                    dim,
+                    term,
+                    crafting,
+                } => self.shared.open(host, uuid, dim, term, crafting),
                 Job::Search { uuid, text } => {
                     let changed = match lock(&self.shared.sessions).get_mut(&uuid) {
                         Some(s) if s.search != text => {
@@ -1334,13 +1778,21 @@ impl Hooks for Mod {
             return Flow::Continue;
         };
         let dim = click.dimension.key().id().to_string();
-        let Some(level) = host.level(&dim) else { return Flow::Continue };
+        let Some(level) = host.level(&dim) else {
+            return Flow::Continue;
+        };
         let id = block_id(&*host, level, click.pos);
         if id != TERMINAL && id != CRAFTING {
             return Flow::Continue;
         }
-        let held = click.stack.map(|s| s.item().id(&*host).unwrap_or_default().to_owned()).unwrap_or_default();
-        let sneaking = host.player(click.player).and_then(|p| p.entity().is_shift_key_down(&*host)) == Some(true);
+        let held = click
+            .stack
+            .map(|s| s.item().id(&*host).unwrap_or_default().to_owned())
+            .unwrap_or_default();
+        let sneaking = host
+            .player(click.player)
+            .and_then(|p| p.entity().is_shift_key_down(&*host))
+            == Some(true);
         if held == ADV_WIRELESS && sneaking {
             // AdvWirelessTerminalItem.useOn: bind it to this terminal.
             if let Some(mut st) = click.stack.cloned() {
@@ -1361,14 +1813,22 @@ impl Hooks for Mod {
                         let _ = p.set_inventory_slot(host, slot, Some(st));
                     }
                 }
-                if let Some(name) = host.player(click.player).and_then(|p| p.name(&*host).map(str::to_owned)) {
+                if let Some(name) = host
+                    .player(click.player)
+                    .and_then(|p| p.name(&*host).map(str::to_owned))
+                {
                     host.commands().run_command(&format!("title {name} actionbar {{\"translate\":\"chat.toms_storage.terminal_bound\"}}"));
                 }
             }
         } else if sneaking && click.stack.is_some() {
             return Flow::Continue;
         } else if matches!(click.hand, Hand::Main) {
-            self.shared.queue(Job::Open { uuid: click.player, dim, term: click.pos, crafting: id == CRAFTING });
+            self.shared.queue(Job::Open {
+                uuid: click.player,
+                dim,
+                term: click.pos,
+                crafting: id == CRAFTING,
+            });
         }
         *event.cancellation_result = InteractionResult::Success;
         event.cancelled = true;
@@ -1376,28 +1836,43 @@ impl Hooks for Mod {
     }
 
     fn right_click_item(&self, host: HostSide<'_>, event: &mut RightClickItemEvent<'_>) -> Flow {
-        let HostSide::Server(host) = host else { return Flow::Continue };
+        let HostSide::Server(host) = host else {
+            return Flow::Continue;
+        };
         let click = event.click;
         let held = click.stack.item().id(&*host).unwrap_or_default().to_owned();
         let target = if held == WIRELESS {
-            self.shared.looked_terminal(&*host, click.player, WIRELESS_RANGE)
+            self.shared
+                .looked_terminal(&*host, click.player, WIRELESS_RANGE)
         } else if held == ADV_WIRELESS {
             bound(click.stack).and_then(|(dim, pos)| {
                 let player = host.player(click.player)?;
                 let here = player.level(&*host)?.dimension().id(&*host)?.to_string();
                 let at = player.entity().position(&*host)?;
-                let d = ((at[0] - f64::from(pos[0])).powi(2) + (at[1] - f64::from(pos[1])).powi(2) + (at[2] - f64::from(pos[2])).powi(2)).sqrt();
+                let d = ((at[0] - f64::from(pos[0])).powi(2)
+                    + (at[1] - f64::from(pos[1])).powi(2)
+                    + (at[2] - f64::from(pos[2])).powi(2))
+                .sqrt();
                 let level = host.level(&dim)?;
                 let id = block_id(&*host, level, pos);
-                (here == dim && d <= ADV_WIRELESS_RANGE && (id == TERMINAL || id == CRAFTING)).then_some((dim, pos, id == CRAFTING))
+                (here == dim && d <= ADV_WIRELESS_RANGE && (id == TERMINAL || id == CRAFTING))
+                    .then_some((dim, pos, id == CRAFTING))
             })
         } else {
             return Flow::Continue;
         };
         match target {
-            Some((dim, term, crafting)) => self.shared.queue(Job::Open { uuid: click.player, dim, term, crafting }),
+            Some((dim, term, crafting)) => self.shared.queue(Job::Open {
+                uuid: click.player,
+                dim,
+                term,
+                crafting,
+            }),
             None => {
-                if let Some(name) = host.player(click.player).and_then(|p| p.name(&*host).map(str::to_owned)) {
+                if let Some(name) = host
+                    .player(click.player)
+                    .and_then(|p| p.name(&*host).map(str::to_owned))
+                {
                     host.commands().run_command(&format!("title {name} actionbar {{\"translate\":\"chat.toms_storage.terminal_out_of_range\"}}"));
                 }
             }
@@ -1408,7 +1883,11 @@ impl Hooks for Mod {
     }
 
     /// The terminal's search field, typed straight into the screen: the keys don't reach the chest screen.
-    fn screen_char_typed_pre(&self, host: &dyn ClientHost, event: &mut ScreenCharTypedPreEvent<'_>) -> Flow {
+    fn screen_char_typed_pre(
+        &self,
+        host: &dyn ClientHost,
+        event: &mut ScreenCharTypedPreEvent<'_>,
+    ) -> Flow {
         if !host.screen_title().is_some_and(|t| is_terminal_title(&t)) || event.c.is_control() {
             return Flow::Continue;
         }
@@ -1420,7 +1899,11 @@ impl Hooks for Mod {
         Flow::Cancel
     }
 
-    fn screen_key_pressed_pre(&self, host: &dyn ClientHost, event: &mut ScreenKeyPressedPreEvent<'_>) -> Flow {
+    fn screen_key_pressed_pre(
+        &self,
+        host: &dyn ClientHost,
+        event: &mut ScreenKeyPressedPreEvent<'_>,
+    ) -> Flow {
         let title = host.screen_title();
         if !title.as_deref().is_some_and(is_terminal_title) {
             return Flow::Continue;
@@ -1450,7 +1933,8 @@ impl Hooks for Mod {
             typed.1 = false;
             let bytes = typed.0.clone().into_bytes();
             drop(typed);
-            let _ = host.send_payload_to_server(&PayloadId(SEARCH_CHANNEL.into()), PayloadBytes(bytes));
+            let _ =
+                host.send_payload_to_server(&PayloadId(SEARCH_CHANNEL.into()), PayloadBytes(bytes));
         }
     }
 }
@@ -1532,7 +2016,9 @@ mod tests {
     #[test]
     fn cable_blocks_are_cable_like() {
         assert!(is_cable_like("toms_storage:ts.inventory_cable"));
-        assert!(is_cable_like("toms_storage:ts.inventory_cable_connector_framed"));
+        assert!(is_cable_like(
+            "toms_storage:ts.inventory_cable_connector_framed"
+        ));
         assert!(!is_cable_like(CONNECTOR));
         assert!(!is_cable_like("minecraft:chest"));
     }
