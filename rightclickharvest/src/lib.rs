@@ -21,7 +21,6 @@ use mod_api::{
 };
 use rules::{Config, Gate, Kind, Player, Tiers};
 
-const MOD: &str = "rightclickharvest";
 
 static SETTINGS: Mutex<Config> = Mutex::new(Config {
     require_hoe: false,
