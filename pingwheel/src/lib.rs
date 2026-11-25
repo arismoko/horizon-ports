@@ -12,7 +12,7 @@ mod screen;
 mod server;
 
 use crate::config::{
-    persist_client_config, register_mod_configs, register_settings, update_client_config,
+    MOD_ID, persist_client_config, register_mod_configs, register_settings, update_client_config,
 };
 use crate::payloads::{
     Channels, PingLocationC2S, PingLocationS2C, UpdateChannelC2S, id_ping_location_c2s,
@@ -59,6 +59,9 @@ impl Hooks for PingWheel {
     }
 
     fn setting_changed(&self, host: &dyn Host, event: &mut SettingChangedEvent<'_>) {
+        if event.mod_id != MOD_ID {
+            return;
+        }
         let updated = update_client_config(|cfg| cfg.apply_setting(event.key, event.value));
         persist_client_config(host.config_dir(), &updated);
     }

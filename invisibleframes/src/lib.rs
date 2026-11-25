@@ -2,8 +2,8 @@
 //! invisibility, as Invisible Frames 2.0.1 (Roundaround) does in `ItemFrame.interact`; a frame
 //! that loses its item becomes visible again.
 use mod_api::{
-    EntityInteractEvent, EntityTickListenedEvent, EntityTickPostEvent, GameEventContext, Hooks,
-    HostSide, InteractionResult, JavaString, ServerHost, Tag,
+    EntityInteractEvent, EntityTickPostEvent, GameEventContext, Hooks, HostSide, InteractionResult,
+    JavaString, ServerHost, Tag,
 };
 
 const FRAMES: [&str; 2] = ["minecraft:item_frame", "minecraft:glow_item_frame"];
@@ -56,28 +56,20 @@ impl Hooks for Mod {
         Some(InteractionResult::Success)
     }
 
-    fn entity_tick_listened(&self, host: HostSide, event: &mut EntityTickListenedEvent) {
-        if matches!(host, HostSide::Server(_)) {
-            event.listened = true;
-        }
-    }
-
     /// The original's `onSyncedDataUpdated`: an invisible frame whose item is gone (taken,
     /// knocked out or emptied by a command) becomes visible again.
-    fn entity_tick_post(&self, host: HostSide, event: &mut EntityTickPostEvent<'_>) {
+    fn entity_tick_post(&self, host: HostSide<'_>, event: &mut EntityTickPostEvent<'_>) {
         let HostSide::Server(host) = host else {
             return;
         };
-        for (&id, kind) in event.entities.iter().zip(event.kinds) {
-            if !FRAMES.contains(kind) {
-                continue;
-            }
-            let Some(frame) = host.entity(id) else {
-                continue;
-            };
-            if frame.is_invisible(&*host) == Some(true) && holds_item(host, frame) == Some(false) {
-                frame.set_invisible(host, false);
-            }
+        if !FRAMES.contains(&event.kind) {
+            return;
+        }
+        let Some(frame) = host.entity(event.entity) else {
+            return;
+        };
+        if frame.is_invisible(&*host) == Some(true) && holds_item(host, frame) == Some(false) {
+            frame.set_invisible(host, false);
         }
     }
 }

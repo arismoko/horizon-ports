@@ -479,10 +479,12 @@ impl ScreenWidget for ConfigPanel {
     ) -> bool {
         match key {
             "key.keyboard.left" => {
+                self.dragging = None;
                 turn_page(false);
                 true
             }
             "key.keyboard.right" => {
+                self.dragging = None;
                 turn_page(true);
                 true
             }

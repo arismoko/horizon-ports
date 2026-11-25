@@ -19,7 +19,7 @@ use bridges::{BRIDGES, TEMPLATES};
 use mod_api::{
     self, BiomeKey, BlockKey, BlockState, BlockUpdateFlags, FeatureContext, FeatureError,
     FeatureType, HeightmapType, Hooks, LevelLoadEvent, LevelRef, Registrar, RegistrationContext,
-    ReloadContext, ServerHost, ServerTickEvent, TagsUpdateCause, TagsUpdatedEvent,
+    ReloadContext, ServerHost, ServerTickEvent, TagKey, TagsUpdateCause, TagsUpdatedEvent,
 };
 use random::{Xoroshiro, position_seed};
 
@@ -74,17 +74,18 @@ static BIOME_WOOD: RwLock<Option<HashMap<BiomeKey, &'static str>>> = RwLock::new
 static STALE: AtomicBool = AtomicBool::new(false);
 
 fn read_biome_woods(host: &dyn ServerHost, level: LevelRef) {
+    let mut ids = Vec::new();
+    let _ = host.visit_registry_entries("minecraft:worldgen/biome", &mut |id| {
+        ids.push(id.to_owned());
+        std::ops::ControlFlow::Continue(())
+    });
     let mut woods = HashMap::new();
-    for id in host
-        .registry_entries("minecraft:worldgen/biome")
-        .unwrap_or_default()
-    {
-        let id = id.to_string();
+    for id in ids {
         let wood = WOODS
             .iter()
             .find(|(tag, _)| level.biome_in_tag(host, &id, tag) == Some(true));
-        if let (Some((_, wood)), Some(key)) = (wood, host.biome_key(&id)) {
-            woods.insert(key, *wood);
+        if let (Some((_, wood)), Ok(view)) = (wood, host.biome(&id)) {
+            woods.insert(view.key().clone(), *wood);
         }
     }
     *BIOME_WOOD.write().unwrap_or_else(PoisonError::into_inner) = Some(woods);
@@ -189,7 +190,11 @@ impl Hooks for Mod {
             keys.entry(name)
                 .or_insert_with(|| registrar.block_key(name));
         }
-        registrar.register_feature_type("bridge_list", Vec::new(), BridgeList { keys });
+        let tags = Tags {
+            leaves: registrar.tag_key("minecraft:leaves"),
+            replaceable: registrar.tag_key("minecraft:replaceable"),
+        };
+        registrar.register_feature_type("bridge_list", Vec::new(), BridgeList { keys, tags });
     }
 
     /// A world opened (its biome keys and tags are new): read the biome woods before its chunks.
@@ -217,6 +222,14 @@ impl Hooks for Mod {
 /// `yungsbridges:bridge_list`: MultipleAttemptSingleRandomFeature over the 22 bridges.
 struct BridgeList {
     keys: HashMap<&'static str, BlockKey>,
+    tags: Tags,
+}
+
+/// The tags occlusion reads, resolved once at registration.
+#[derive(Clone, Copy)]
+struct Tags {
+    leaves: TagKey,
+    replaceable: TagKey,
 }
 
 impl FeatureType for BridgeList {
@@ -229,7 +242,7 @@ impl FeatureType for BridgeList {
         while !left.is_empty() {
             let i = context.random().next_int_bound(left.len() as i32) as usize;
             let bridge = &BRIDGES[left[i]];
-            if let Some(at) = crossing(context, bridge, origin)
+            if let Some(at) = crossing(context, self.tags, bridge, origin)
                 && context.random().next_float() < 1.0 / bridge.rarity as f32
             {
                 // RngInitializerPlacement: the random reseeded from the position.
@@ -239,6 +252,7 @@ impl FeatureType for BridgeList {
                 let mut placer = Placer {
                     context,
                     keys: &self.keys,
+                    tags: self.tags,
                     random: &mut random,
                     chunk: [origin[0] >> 4, origin[2] >> 4],
                 };
@@ -256,15 +270,15 @@ fn name(context: &dyn FeatureContext, state: BlockState) -> &str {
 }
 
 /// BlockState.canOcclude, for what generation leaves at a river.
-fn occludes(context: &mut dyn FeatureContext, p: [i32; 3]) -> bool {
+fn occludes(context: &mut dyn FeatureContext, tags: Tags, p: [i32; 3]) -> bool {
     let Some(state) = context.block(p) else {
         return false;
     };
     if context.is_air(state) || SEE_THROUGH.contains(&name(context, state)) {
         return false;
     }
-    context.block_in_tag(p, "minecraft:leaves") != Some(true)
-        && context.block_in_tag(p, "minecraft:replaceable") != Some(true)
+    context.block_in_tag(p, tags.leaves) != Some(true)
+        && context.block_in_tag(p, tags.replaceable) != Some(true)
 }
 
 /// BlockState.liquid: water, lava and bubble columns.
@@ -280,7 +294,12 @@ fn liquid(context: &mut dyn FeatureContext, p: [i32; 3]) -> bool {
 /// BridgePlacement.getPositions: the first crossing in the chunk at `origin`, scanning across
 /// then along the bridge's axis: banks at both ends (sea level - 1, occluding, nothing above
 /// sea level), `solid_needed` such blocks across each end, and water under the span.
-fn crossing(context: &mut dyn FeatureContext, b: &Bridge, origin: [i32; 3]) -> Option<[i32; 3]> {
+fn crossing(
+    context: &mut dyn FeatureContext,
+    tags: Tags,
+    b: &Bridge,
+    origin: [i32; 3],
+) -> Option<[i32; 3]> {
     let sea = SEA_LEVEL - 1;
     let along = |p: [i32; 3], minor: i32, major: i32| {
         if b.z_axis {
@@ -294,8 +313,9 @@ fn crossing(context: &mut dyn FeatureContext, b: &Bridge, origin: [i32; 3]) -> O
             .height(HeightmapType::WorldSurface, p[0], p[2])
             .is_some_and(|h| h <= sea + 1)
     };
-    let bank =
-        |context: &mut dyn FeatureContext, p: [i32; 3]| occludes(context, p) && low(context, p);
+    let bank = |context: &mut dyn FeatureContext, p: [i32; 3]| {
+        occludes(context, tags, p) && low(context, p)
+    };
     let solid_run = |context: &mut dyn FeatureContext, end: [i32; 3]| {
         let mut n = 1;
         for direction in [-1, 1] {
@@ -313,8 +333,8 @@ fn crossing(context: &mut dyn FeatureContext, b: &Bridge, origin: [i32; 3]) -> O
         for major in 0..16 {
             let start = along(origin, minor, major);
             let end = along(start, 0, b.length + 1);
-            if !(occludes(context, start)
-                && occludes(context, end)
+            if !(occludes(context, tags, start)
+                && occludes(context, tags, end)
                 && low(context, start)
                 && low(context, end))
             {
@@ -343,6 +363,7 @@ fn crossing(context: &mut dyn FeatureContext, b: &Bridge, origin: [i32; 3]) -> O
 struct Placer<'a> {
     context: &'a mut dyn FeatureContext,
     keys: &'a HashMap<&'static str, BlockKey>,
+    tags: Tags,
     random: &'a mut Xoroshiro,
     /// The chunk being decorated: writes go to it and its neighbours only, the region vanilla's
     /// decoration may write (WorldGenRegion drops the rest).
@@ -351,11 +372,9 @@ struct Placer<'a> {
 
 impl Placer<'_> {
     fn state(&self, block: &str, props: &[(&str, &str)]) -> Result<BlockState, FeatureError> {
-        let key = self
-            .keys
-            .get(block)
-            .copied()
-            .ok_or_else(|| FeatureError(format!("{block} was not resolved")))?;
+        let key = self.keys.get(block).copied().ok_or_else(|| {
+            FeatureError::new(std::io::Error::other(format!("{block} was not resolved")))
+        })?;
         let metadata = self.context.metadata();
         let mut state = self.context.state(key);
         for (k, v) in props {
@@ -730,11 +749,11 @@ impl Placer<'_> {
             let above = [p[0], p[1] + 1, p[2]];
             let north = [p[0], p[1], p[2] - 1];
             let west = [p[0] - 1, p[1], p[2]];
-            if self.random.next_float() < 0.75 || occludes(self.context, above) {
+            if self.random.next_float() < 0.75 || occludes(self.context, self.tags, above) {
                 let mut state = self.state(&fence, s)?;
                 let (north_open, west_open) = (
-                    !occludes(self.context, north),
-                    !occludes(self.context, west),
+                    !occludes(self.context, self.tags, north),
+                    !occludes(self.context, self.tags, west),
                 );
                 let metadata = self.context.metadata();
                 if north_open {

@@ -167,10 +167,10 @@ impl Hooks for Mod {
                 let Some(ours) = stack(host, &format!("{NS}:{item}")) else {
                     continue;
                 };
-                let insert = |placement| {
+                let mut insert = |placement| {
                     event
-                        .edit
-                        .insert(host, placement, ours.clone(), CreativeTabVisibility::Both)
+                        .output
+                        .insert(placement, ours.clone(), CreativeTabVisibility::Both)
                 };
                 // Fabric's addAfter appends to the end when the tab lacks the anchor.
                 let placement = match &after {
