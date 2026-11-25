@@ -1,0 +1,16 @@
+Ping Wheel for Sunrise 26.3 (version 0.5.0)
+
+A port of Ping Wheel (1.12.2, Minecraft 26.3 branch @ 6447533) by Luken (LukenSkyne)
+and contributor RXJpaw.
+Original source: https://github.com/LukenSkyne/Minecraft-Ping-Wheel
+Original licence: MIT
+
+Ported to Sunrise by arismoko: all client and server logic is implemented in Rust on
+Sunrise's typed mod API (no Java code is included). This port is distributed under the
+same licence as the original (MIT); the licence text is in LICENSE.
+
+Assets carried from the original project under the MIT licence:
+- icon.png
+- assets/pingwheel/lang/*.json (9 languages, with additional Options > Mods setting keys in en_us.json)
+- assets/pingwheel/sounds.json and assets/pingwheel/sounds/ping.ogg
+- assets/pingwheel/textures/arrow.png (also placed under textures/gui/sprites/arrow.png) and textures/ping.png
