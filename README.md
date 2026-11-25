@@ -52,6 +52,8 @@ Releases are tagged `<folder>/v<version>`; the shared Sunrise release workflow b
 | [easymagic](easymagic/) | Enchanting tables keep their items and can re-roll. | [Easy Magic](https://github.com/Fuzss/easymagic) by Fuzs | MPL-2.0 | Being ported |
 | [cutthrough](cutthrough/) | Attacks pass through tall grass and flowers to hit mobs behind them. | [Cut Through](https://github.com/Fuzss/cut-through) by Fuzs | MPL-2.0 | Being ported |
 | [enchantmentdescriptions](enchantmentdescriptions/) | Enchanted books and gear show what each enchantment does in their tooltips. | [Enchantment Descriptions](https://github.com/Darkhax-Minecraft/Enchantment-Descriptions) by Darkhax | LGPL-2.1-only | Being ported |
+| [travelerstitles](travelerstitles/) | Shows a fading title when you enter a new biome or dimension. | [Traveler's Titles](https://github.com/YUNG-GANG/Travelers-Titles) by YUNGNICKYOUNG | LGPL-3.0-only | Being ported |
+| [invmove](invmove/) | Walk, jump, sneak and sprint while inventories and other screens are open. | [InvMove](https://github.com/PieKing1215/InvMove) by PieKing1215 | LGPL-3.0-only | Being ported |
 
 Some arismoko ports live in their own repositories, such as the YUNG's and Macaw's ports, Iron Furnaces and Jade; their pages on the registry link to them.
 
