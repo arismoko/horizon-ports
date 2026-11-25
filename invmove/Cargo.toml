@@ -1,6 +1,6 @@
 [package]
 name = "mod-invmove"
-version = "0.5.2"
+version = "0.5.3"
 edition = "2024"
 license = "LGPL-3.0-only"
 description = "InvMove for Sunrise: walk, jump, sneak and sprint while an inventory or other screen is open"
