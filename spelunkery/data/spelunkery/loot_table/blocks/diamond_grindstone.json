@@ -1,0 +1,146 @@
+{
+  "pools": [
+    {
+      "bonus_rolls": 0,
+      "entries": [
+        {
+          "modifier": [
+            {
+              "condition": {
+                "blocks": [
+                  "spelunkery:diamond_grindstone"
+                ],
+                "state": {
+                  "depletion": "1"
+                },
+                "type": "minecraft:match_block"
+              },
+              "tag": "{depletion:1}",
+              "type": "minecraft:set_custom_data"
+            },
+            {
+              "condition": {
+                "blocks": [
+                  "spelunkery:diamond_grindstone"
+                ],
+                "state": {
+                  "depletion": "1"
+                },
+                "type": "minecraft:match_block"
+              },
+              "name": {
+                "italic": false,
+                "translate": "item.spelunkery.diamond_grindstone.used"
+              },
+              "target": "item_name",
+              "type": "minecraft:set_name"
+            },
+            {
+              "condition": {
+                "blocks": [
+                  "spelunkery:diamond_grindstone"
+                ],
+                "state": {
+                  "depletion": "2"
+                },
+                "type": "minecraft:match_block"
+              },
+              "tag": "{depletion:2}",
+              "type": "minecraft:set_custom_data"
+            },
+            {
+              "condition": {
+                "blocks": [
+                  "spelunkery:diamond_grindstone"
+                ],
+                "state": {
+                  "depletion": "2"
+                },
+                "type": "minecraft:match_block"
+              },
+              "name": {
+                "italic": false,
+                "translate": "item.spelunkery.diamond_grindstone.worn"
+              },
+              "target": "item_name",
+              "type": "minecraft:set_name"
+            },
+            {
+              "condition": {
+                "blocks": [
+                  "spelunkery:diamond_grindstone"
+                ],
+                "state": {
+                  "depletion": "3"
+                },
+                "type": "minecraft:match_block"
+              },
+              "tag": "{depletion:3}",
+              "type": "minecraft:set_custom_data"
+            },
+            {
+              "condition": {
+                "blocks": [
+                  "spelunkery:diamond_grindstone"
+                ],
+                "state": {
+                  "depletion": "3"
+                },
+                "type": "minecraft:match_block"
+              },
+              "name": {
+                "italic": false,
+                "translate": "item.spelunkery.diamond_grindstone.dull"
+              },
+              "target": "item_name",
+              "type": "minecraft:set_name"
+            },
+            {
+              "block": "spelunkery:diamond_grindstone",
+              "condition": {
+                "terms": [
+                  {
+                    "blocks": [
+                      "spelunkery:diamond_grindstone"
+                    ],
+                    "state": {
+                      "depletion": "1"
+                    },
+                    "type": "minecraft:match_block"
+                  },
+                  {
+                    "blocks": [
+                      "spelunkery:diamond_grindstone"
+                    ],
+                    "state": {
+                      "depletion": "2"
+                    },
+                    "type": "minecraft:match_block"
+                  },
+                  {
+                    "blocks": [
+                      "spelunkery:diamond_grindstone"
+                    ],
+                    "state": {
+                      "depletion": "3"
+                    },
+                    "type": "minecraft:match_block"
+                  }
+                ],
+                "type": "minecraft:any_of"
+              },
+              "properties": [
+                "depletion"
+              ],
+              "type": "minecraft:copy_state"
+            }
+          ],
+          "name": "spelunkery:diamond_grindstone",
+          "type": "minecraft:item"
+        }
+      ],
+      "rolls": 1
+    }
+  ],
+  "type": "minecraft:block"
+}

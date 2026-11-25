@@ -1,0 +1,26 @@
+summary = "Hammers, excavators, scythes, clippers and lumber axes, copper buckets, a trowel, chisels and an abacus."
+description = """
+Tools in seven tiers (wood to netherite, with obsidian when Obsidian Equipment Rework is installed).
+
+- Hammers and excavators break a 3x3 in the plane of the face you hit (not when sneaking, and only in survival); hammers only take what they can harvest.
+- Scythes cut the 3x3 of crops and plants around a block, and till the 3x3 of soil around the block you till.
+- Clippers clip leaves, wool, webs, moss, vines and plants in a 3x3.
+- Lumber axes fell a whole tree when you chop its log, the logs dropping at the stump and the axe wearing once per log.
+- The copper bucket milks cows and mooshrooms; the milk comes back as a bucket with a use of wear. It lasts sixteen uses.
+- The abacus binds to a block when used on it (and unbinds when used again); with one in hand, the blocks counted from it to the block you aim at show over the hotbar.
+- The mod's tab holds everything, and a manual item can be crafted from a book and any of the tools.
+
+Differences from the original:
+
+- The copper buckets do not pick up or place water, lava or powder snow, and do not work with cauldrons yet; the filled buckets are items only.
+- The trowel and the chisels are items only: the trowel does not place a random hotbar block and the chisels do not swap blocks.
+- Clippers do not roll block loot as shears; loot tables that name `minecraft:shears` itself do not see them.
+- A plant, for the scythe and the clippers, is read from the vegetation block tags and a list of grasses, not from the block's class.
+
+A port of Tokimi's Toolshed by Tokimi and CozyStudios, under the CC0-1.0 licence.
+"""
+categories = ["equipment"]
+
+[[screenshots]]
+path = "page/world.png"
+caption = "3x3 stone wall mined with Tokimi's Toolshed diamond hammer"

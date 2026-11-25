@@ -1,0 +1,13 @@
+Tokimi's Toolshed for Sunrise (version 0.1.0)
+
+A port of Tokimi's Toolshed 1.8 by Tokimi, CozyStudios.
+Original source: https://github.com/CozyCord/TokimisToolshed
+Original licence: CC0-1.0
+
+Ported to Sunrise by arismoko: what the tools do is re-implemented in Rust on Sunrise's typed mod
+API (no Java code is included, and the package declares no native mixin). The items' data in data/,
+the models, textures and translations in assets/ are the original release's, and icon.png is made
+from four of its textures. This port is distributed under the same licence as the original
+(CC0-1.0); the licence text is in LICENSE.
+
+LICENSE is the CC0-1.0 text (the jar names CC0-1.0 and has no licence file).

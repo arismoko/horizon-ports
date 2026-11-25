@@ -1,0 +1,14 @@
+# Tokimi's Toolshed for Sunrise: native code in src/, items in data/, models and textures in assets/.
+id = "tokimistoolshed"
+name = "Tokimi's Toolshed"
+version = "0.1.0"
+description = "Hammers, excavators, scythes, clippers, lumber axes, copper buckets, trowel, chisels and abacus"
+authors = ["Tokimi", "CozyStudios", "arismoko"]
+license = "CC0-1.0"
+credits = "Original mod by Tokimi / CozyStudios (CC0-1.0); Sunrise port by arismoko."
+homepage = "https://github.com/arismoko/sunrise-ports"
+side = "both"
+
+[native]
+game = "26.3"
+sunrise = "bdad86d2d398ff9293002d2dc08702822aea7265"
