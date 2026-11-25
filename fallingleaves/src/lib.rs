@@ -25,12 +25,10 @@ use mod_api::{
     AddHitEffectsEvent, AnimateTickEvent, BlockPart, BlockState, ClientBlockChangedEvent,
     ClientHost, ClientLevelLoadEvent, ClientTickPostEvent, ConfigContext, ConfigKind,
     ConfigLoadingEvent, ConfigPath, ConfigReloadingEvent, DebugEntry, DebugGroup, Flow, Hooks,
-    HostSide, LeavesDecayEvent, LevelHost, ParticleOptions, RandomSource, RegisterConfigsEvent,
-    RegisterDebugEntriesEvent, RegisterParticleProvidersEvent, Registrar, RegistrationContext,
-    SettingChangedEvent,
+    HostSide, ParticleOptions, RandomSource, RegisterConfigsEvent, RegisterDebugEntriesEvent,
+    RegisterParticleProvidersEvent, Registrar, RegistrationContext, SettingChangedEvent,
 };
 use std::collections::HashMap;
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard, OnceLock};
 
 const MAX_PENDING_DECAYS: usize = 128;
@@ -45,7 +43,6 @@ static HANDLES: OnceLock<ParticleHandles> = OnceLock::new();
 static PARTICLE_SHARED: OnceLock<Arc<ParticleSharedState>> = OnceLock::new();
 static RUNTIME: OnceLock<Mutex<Runtime>> = OnceLock::new();
 static PENDING_DECAYS: OnceLock<Mutex<Vec<PendingDecay>>> = OnceLock::new();
-static CLIENT_ACTIVE: AtomicBool = AtomicBool::new(false);
 
 fn particle_shared() -> Arc<ParticleSharedState> {
     PARTICLE_SHARED
@@ -119,7 +116,7 @@ impl RandomSource for LocalRandom {
 }
 
 struct Runtime {
-    config: FallingLeavesConfig,
+    config: Arc<FallingLeavesConfig>,
     settings_synced: bool,
     fluid_cache_ready: bool,
     dimension: String,
@@ -132,7 +129,7 @@ struct Runtime {
 impl Runtime {
     fn new() -> Self {
         Self {
-            config: FallingLeavesConfig::default(),
+            config: Arc::new(FallingLeavesConfig::default()),
             settings_synced: false,
             fluid_cache_ready: false,
             dimension: "minecraft:overworld".to_owned(),
@@ -202,13 +199,13 @@ impl BlockPart for LeafBlockPart {
             return;
         };
 
-        let config = lock_runtime().config.clone();
+        let config = Arc::clone(&lock_runtime().config);
         if !config.enabled {
             return;
         }
 
         let pos = [event.pos.x, event.pos.y, event.pos.z];
-        let Some(block_id) = event.state.block().id(&*host).map(str::to_owned) else {
+        let Some(block_id) = event.state.block().id(&*host) else {
             return;
         };
         let serialized = host.block_state_string(event.state).unwrap_or_default();
@@ -502,7 +499,7 @@ impl Hooks for FallingLeaves {
             return;
         }
         let parsed = FallingLeavesConfig::parse_toml(&event.config.text);
-        lock_runtime().config = parsed;
+        lock_runtime().config = Arc::new(parsed);
     }
 
     fn config_reloading(&self, host: HostSide<'_>, event: &mut ConfigReloadingEvent<'_>) {
@@ -511,7 +508,7 @@ impl Hooks for FallingLeaves {
         }
         let parsed = FallingLeavesConfig::parse_toml(&event.config.text);
         let mut rt = lock_runtime();
-        rt.config = parsed;
+        rt.config = Arc::new(parsed);
         rt.settings_synced = true;
         if let HostSide::Client(client) = host {
             rt.config.write_to_host_settings(client);
@@ -523,7 +520,7 @@ impl Hooks for FallingLeaves {
             return;
         }
         let mut rt = lock_runtime();
-        let changed = rt.config.apply_single_setting(host, event.key);
+        let changed = Arc::make_mut(&mut rt.config).apply_single_setting(host, event.key);
         rt.sync_initial_settings(host);
         if changed {
             rt.persist_config_file(host);
@@ -555,7 +552,6 @@ impl Hooks for FallingLeaves {
     }
 
     fn client_level_load(&self, host: &mut dyn ClientHost, event: &mut ClientLevelLoadEvent<'_>) {
-        CLIENT_ACTIVE.store(true, Ordering::Relaxed);
         let seed = host.millis() ^ 0xFA11_1EAF;
         let mut rt = lock_runtime();
         rt.dimension = event.dimension.to_owned();
@@ -568,7 +564,6 @@ impl Hooks for FallingLeaves {
         if !host.on(MOD_ID) {
             return;
         }
-        CLIENT_ACTIVE.store(true, Ordering::Relaxed);
 
         let Some(handles) = HANDLES.get().copied() else {
             return;
@@ -620,7 +615,7 @@ impl Hooks for FallingLeaves {
             return;
         };
 
-        // Spawn bursts for decaying leaf blocks (from leaves_decay / client_block_changed).
+        // Spawn bursts for decaying leaf blocks (from client_block_changed).
         let decays = drain_pending_decays();
         if !decays.is_empty() && config.max_decay_leaves > 0 {
             let mut rng = LocalRandom(WindRng::new(host.millis() ^ 0xDEC4_7EAF));
@@ -717,19 +712,11 @@ impl Hooks for FallingLeaves {
         }
     }
 
-    fn leaves_decay(&self, host: &dyn LevelHost, event: &mut LeavesDecayEvent) -> Flow {
-        if !CLIENT_ACTIVE.load(Ordering::Relaxed) {
-            return Flow::Continue;
-        }
-        let pos = [event.pos.x, event.pos.y, event.pos.z];
-        if let Some(state) = host.block_state(pos) {
-            push_pending_decay(pos, state);
-        }
-        Flow::Continue
-    }
-
     fn client_block_changed(&self, host: &dyn ClientHost, event: &mut ClientBlockChangedEvent<'_>) {
         if !host.on(MOD_ID) || event.predicted {
+            return;
+        }
+        if lock_runtime().dimension != event.dimension {
             return;
         }
         let new_id = event.new.block().id(host).unwrap_or("");

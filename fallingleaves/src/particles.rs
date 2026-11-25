@@ -102,6 +102,20 @@ impl LeafParticleData {
     pub fn stream_codec() -> ParticleStreamCodec<Self> {
         ParticleStreamCodec::wire()
     }
+
+    /// Replaces non-finite colour and size values (the wire codec decodes raw `f32`s, and
+    /// `f32::clamp` passes NaN through) with their defaults.
+    pub fn finite_or_default(&self) -> Self {
+        let default = Self::default();
+        let finite = |v: f32, fallback: f32| if v.is_finite() { v } else { fallback };
+        Self {
+            r: finite(self.r, default.r),
+            g: finite(self.g, default.g),
+            b: finite(self.b, default.b),
+            size: finite(self.size, default.size),
+            lifespan: self.lifespan,
+        }
+    }
 }
 
 /// Cached block keys and fluid state ordinals so `ParticleProvider::tick` can inspect
@@ -252,6 +266,7 @@ impl ParticleProvider<LeafParticleData> for LeafParticleProvider {
             ),
         };
 
+        let options = &options.finite_or_default();
         let max_rotate_time = (3 + random.next_int_bound(5)) as u32 * 20;
         let sign = if random.next_boolean() {
             -1.0f32
@@ -566,6 +581,37 @@ mod tests {
                 }
             }
         }
+    }
+
+    #[test]
+    fn non_finite_options_fall_back_to_defaults() {
+        let bad = LeafParticleData {
+            r: f32::NAN,
+            g: f32::INFINITY,
+            b: f32::NEG_INFINITY,
+            size: f32::NAN,
+            lifespan: 80,
+        };
+        let fixed = bad.finite_or_default();
+        assert_eq!(
+            fixed,
+            LeafParticleData {
+                lifespan: 80,
+                ..LeafParticleData::default()
+            }
+        );
+    }
+
+    #[test]
+    fn finite_options_are_unchanged() {
+        let ok = LeafParticleData {
+            r: 0.2,
+            g: 0.4,
+            b: 0.6,
+            size: 0.3,
+            lifespan: 100,
+        };
+        assert_eq!(ok.finite_or_default(), ok);
     }
 
     #[test]
