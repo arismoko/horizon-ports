@@ -1,7 +1,7 @@
 # Pick Up Notifier for Sunrise: typed mod API port (client + optional server hooks).
 id = "pickupnotifier"
 name = "Pick Up Notifier"
-version = "0.5.1"
+version = "0.5.2"
 description = "Be notified about all the things you've just collected: items, experience orbs, and arrows."
 authors = ["Fuzs", "arismoko"]
 license = "MPL-2.0"
