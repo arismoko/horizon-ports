@@ -12,7 +12,7 @@ A Sunrise 26.3 client-only port of [Dynamic FPS](https://github.com/juliand665/D
 - **Battery integration**: reads system batteries on Linux (`/sys/class/power_supply`, skipping peripheral/device batteries; mock battery mode available on all platforms), switches to **On Battery** when discharging, draws a corner HUD battery icon and percentage, and displays charging, discharging, and low-battery toast notifications.
 - **Toast suppression**: blocks incoming toasts in states with **Show Toasts** off and holds Dynamic FPS's own battery toasts until a state with toasts enabled is active.
 - **F3 debug entry**: registers `dynamicfps:power_state` in debug options to show the active power state and target frame rate.
-- **Options screen and hot-reloaded config**: core settings are editable in **Options → Mods → Dynamic FPS**; full per-source volume multipliers live in `config/dynamicfps.toml` and hot-reload on save.
+- **Config screen and hot-reloaded config**: **Mods → Dynamic FPS → Config** opens Dynamic FPS's own paged screen (General, Unfocused, Minimized, Idle, Hovered, Battery, Battery HUD) with toggles, choices and sliders; full per-source volume multipliers live in `config/dynamicfps.toml` and hot-reload on save.
 
 Client-side only: works in single player and on any multiplayer server.
 
@@ -25,13 +25,13 @@ Client-side only: works in single player and on any multiplayer server.
 - Per-state VSync and **Graphics Options** (`Reduced` / `Minimal`) are preserved in `config/dynamicfps.toml` but cannot override video options at runtime yet (gap: [sunrise-org/sunrise#5553](https://github.com/sunrise-org/sunrise/issues/5553)).
 - F3 debug status is registered as its own `dynamicfps:power_state` entry instead of appending inline to vanilla's FPS line (gap: [sunrise-org/sunrise#5554](https://github.com/sunrise-org/sunrise/issues/5554)).
 - World rendering behind an unfinished resource-reload overlay is not skipped (gap: [sunrise-org/sunrise#5555](https://github.com/sunrise-org/sunrise/issues/5555)).
-- In-game configuration uses Sunrise's flat **Options → Mods → Dynamic FPS** page rather than a tabbed Cloth Config screen; per-category sound multipliers are edited in `config/dynamicfps.toml` (gap: [sunrise-org/sunrise#1217](https://github.com/sunrise-org/sunrise/issues/1217)).
+- Per-category sound multipliers beyond Master are edited in `config/dynamicfps.toml`, not on the config screen.
 - `run_garbage_collector` does not apply because Sunrise is native Rust with no JVM garbage collector.
 - Real hardware battery polling uses Linux `/sys/class/power_supply`; on other platforms, **Use Mock Battery Data** is available.
 
 ## Configuration
 
-- In-game settings: **Options → Mods → Dynamic FPS**
+- In-game settings: **Mods → Dynamic FPS → Config** (click `<` / `>` or press Left / Right to change page; click, drag or scroll a slider)
 - Full config file (including per-`SoundSource` volume multipliers per state): `config/dynamicfps.toml` (hot-reloaded automatically when edited)
 
 ## Building
