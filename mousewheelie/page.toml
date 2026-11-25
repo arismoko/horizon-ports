@@ -22,3 +22,7 @@ Mouse Wheelie speeds up inventory handling with the wheel and a few modifier key
 A port of Mouse Wheelie by Siphalor, under the Apache-2.0 licence.
 """
 categories = ["utility", "game-mechanics"]
+
+[[screenshots]]
+path = "page/world.png"
+caption = "Container inventory managed with Mouse Wheelie"

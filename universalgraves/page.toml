@@ -23,3 +23,7 @@ Differences from the original:
 - A grave removed by a command or an unusual mod loses its items; blasts and pistons can't remove it.
 """
 categories = ["utility", "game-mechanics"]
+
+[[screenshots]]
+path = "page/world.png"
+caption = "Player grave placed at the death location"
