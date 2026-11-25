@@ -379,11 +379,12 @@ impl TabListState {
         let displayed = health.displayed_value;
         let blink = health.is_blinking(tick);
 
-        let full_hearts = -((-score.max(displayed)).div_euclid(2));
-        let to_render = score.max(displayed.max(20)) / 2;
-        if full_hearts <= 0 || to_render <= 0 {
+        let max_hp = score.max(displayed);
+        if max_hp <= 0 {
             return;
         }
+        let full_hearts = max_hp.div_ceil(2);
+        let to_render = max_hp.max(20) / 2;
 
         let per_heart = ((right - left - 4) as f32 / to_render as f32)
             .min(9.0)
@@ -636,5 +637,68 @@ mod tests {
         let cfg = BetterPingDisplayConfig::default();
         let draws = state.build_draws(&list, None, 0, 0, &cfg, &FixedMetrics);
         assert!(!draws.is_empty());
+    }
+
+    #[test]
+    fn hearts_extreme_scores_match_vanilla() {
+        let count_heart_sprites = |draws: &[GuiDraw]| {
+            draws
+                .iter()
+                .filter(|d| {
+                    matches!(
+                        d,
+                        GuiDraw::Sprite { sprite, .. } if sprite.starts_with("hud/heart/")
+                    )
+                })
+                .count()
+        };
+
+        let mut state = TabListState::default();
+        let mut draws = Vec::new();
+
+        // i32::MIN: non-positive health draws no hearts and no HP text (no overflow or OOM).
+        state.push_hearts(10, 0, 90, 1, i32::MIN, 0, &FixedMetrics, &mut draws);
+        assert_eq!(count_heart_sprites(&draws), 0);
+        assert!(draws.is_empty());
+
+        // i32::MAX: per_heart = floor(86.0 / (i32::MAX / 2)) = 0 <= 3, so vanilla switches to
+        // compact HP text and draws 0 heart sprites.
+        draws.clear();
+        state.push_hearts(10, 0, 90, 2, i32::MAX, 0, &FixedMetrics, &mut draws);
+        assert_eq!(count_heart_sprites(&draws), 0);
+        assert_eq!(draws.len(), 1);
+        assert!(matches!(
+            &draws[0],
+            GuiDraw::Text {
+                color: 0xFF00_FF00,
+                ..
+            }
+        ));
+
+        // Dropping from positive health to i32::MIN stays safe while displayed health blinks.
+        draws.clear();
+        state.push_hearts(10, 0, 90, 3, 20, 0, &FixedMetrics, &mut draws);
+        assert_eq!(count_heart_sprites(&draws), 20);
+        draws.clear();
+        state.push_hearts(10, 0, 90, 3, i32::MIN, 1, &FixedMetrics, &mut draws);
+        assert_eq!(count_heart_sprites(&draws), 10);
+        draws.clear();
+        state.push_hearts(10, 0, 90, 3, i32::MIN, 4, &FixedMetrics, &mut draws);
+        assert_eq!(count_heart_sprites(&draws), 20);
+
+        // Dropping from high health (>42) to i32::MIN enters compact HP text safely.
+        draws.clear();
+        state.push_hearts(10, 0, 90, 4, 100, 0, &FixedMetrics, &mut draws);
+        draws.clear();
+        state.push_hearts(10, 0, 90, 4, i32::MIN, 1, &FixedMetrics, &mut draws);
+        assert_eq!(count_heart_sprites(&draws), 0);
+        assert_eq!(draws.len(), 1);
+        assert!(matches!(
+            &draws[0],
+            GuiDraw::Text {
+                color: 0xFFFF_0000,
+                ..
+            }
+        ));
     }
 }
