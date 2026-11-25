@@ -11,18 +11,18 @@
 //! The server reads the map and sends it to its players, who need it for the item tooltip, the
 //! speed factor their own movement predicts, and the field of view.
 use std::collections::HashMap;
+use std::ops::ControlFlow;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, LazyLock, Mutex, MutexGuard, PoisonError, RwLock};
 
-use mod_api::client::camera::UseItem;
 use mod_api::text::TextStyle;
 use mod_api::{
     AttributeModifier, AttributeOperation, BlockKey, BlockPart, BlockSpeedFactorEvent, ClientHost,
     ComputeFovModifierEvent, DataMapType, DataMapTypesEvent, DataMapsUpdatedEvent,
-    EntityTickListenedEvent, EntityTickPreEvent, Hooks, Host, HostSide, IPayloadContext,
-    IPayloadHandler, Identifier, ItemTooltipEvent, LoopContext, ModifierLifetime, PayloadBytes,
-    PayloadHandleError, PayloadId, PlayerLoggedInEvent, Registrar, RegistrationContext,
-    ReloadContext, ServerHost, SettingSpec, Tag, Text,
+    EntityTickPreEvent, Flow, Hooks, Host, HostSide, IPayloadContext, IPayloadHandler, Identifier,
+    ItemTooltipEvent, LoopContext, ModifierLifetime, PayloadBytes, PayloadHandleError, PayloadId,
+    PlayerLoggedInEvent, Registrar, RegistrationContext, ReloadContext, ServerHost, SettingKey,
+    SettingSpec, Tag, Text,
 };
 
 const MOD_ID: &str = "blockrunner";
@@ -213,8 +213,9 @@ struct Seen {
     tick: u64,
 }
 
-/// Entities not told for this many `entity_tick_pre` calls are forgotten.
-const FORGET_AFTER: u64 = 4096;
+/// Entities not told for this many `entity_tick_pre` calls (one per entity per tick) are
+/// forgotten.
+const FORGET_AFTER: u64 = 1 << 20;
 
 static TICKS: AtomicU64 = AtomicU64::new(0);
 
@@ -281,27 +282,31 @@ fn is_air(block: &str) -> bool {
     )
 }
 
-fn flag(host: &dyn Host, key: &str) -> bool {
-    host.setting(MOD_ID, key)
-        .is_none_or(|text| text.trim() == "true")
+/// The settings' keys as this load's registration returned them.
+static SETTING_KEYS: Mutex<Vec<(&'static str, SettingKey)>> = Mutex::new(Vec::new());
+
+/// The toggle's live value on this side; on until it is registered or while unreadable.
+fn flag(host: &dyn Host, name: &str) -> bool {
+    let key = SETTING_KEYS
+        .lock()
+        .unwrap_or_else(PoisonError::into_inner)
+        .iter()
+        .find(|(n, _)| *n == name)
+        .map(|(_, key)| *key);
+    key.is_none_or(|key| host.setting_bool(key).unwrap_or(true))
 }
 
-/// `AttributeInstance.calculateValue` without the modifier `skip`, clamped to the movement
+/// `AttributeInstance.calculateValue` over only the `kept` modifiers (amount, operation), clamped to the movement
 /// speed's range (`RangedAttribute.sanitizeValue`, 0 to 1024).
-fn speed_without(base: f64, modifiers: &[AttributeModifier], skip: &Identifier) -> f64 {
-    let kept = || modifiers.iter().filter(|m| &m.id != skip);
-    let added = base
-        + kept()
-            .filter(|m| m.operation == AttributeOperation::AddValue)
-            .map(|m| m.amount)
-            .sum::<f64>();
+fn speed_without(base: f64, kept: &[(f64, AttributeOperation)]) -> f64 {
+    let kept = |operation| kept.iter().filter(move |m| m.1 == operation).map(|m| m.0);
+    let added = base + kept(AttributeOperation::AddValue).sum::<f64>();
     let mut value = added
-        + kept()
-            .filter(|m| m.operation == AttributeOperation::AddMultipliedBase)
-            .map(|m| added * m.amount)
+        + kept(AttributeOperation::AddMultipliedBase)
+            .map(|amount| added * amount)
             .sum::<f64>();
-    for m in kept().filter(|m| m.operation == AttributeOperation::AddMultipliedTotal) {
-        value *= 1.0 + m.amount;
+    for amount in kept(AttributeOperation::AddMultipliedTotal) {
+        value *= 1.0 + amount;
     }
     if value.is_nan() {
         0.0
@@ -310,18 +315,19 @@ fn speed_without(base: f64, modifiers: &[AttributeModifier], skip: &Identifier) 
     }
 }
 
-/// `AbstractClientPlayer.getFieldOfViewModifier` before its effect scale, at `movement_speed`.
-fn unscaled_fov(event: &ComputeFovModifierEvent<'_>, movement_speed: f64) -> f32 {
-    let player = event.player;
-    let mut modifier = if player.flying { 1.1 } else { 1.0 };
-    if player.walking_speed != 0.0 {
-        modifier *= (movement_speed as f32 / player.walking_speed + 1.0) / 2.0;
+/// `AbstractClientPlayer.getFieldOfViewModifier`'s product with the movement speed `without`
+/// in place of `with`: its speed term is `(speed / walking speed + 1) / 2`, and the flying and
+/// bow terms do not depend on the speed.
+fn raw_fov_without(raw: f32, walking_speed: f32, with: f64, without: f64) -> f32 {
+    if walking_speed == 0.0 {
+        return raw;
     }
-    if let Some((UseItem::Bow, ticks)) = player.using {
-        let scale = (ticks as f32 / 20.0).min(1.0);
-        modifier *= 1.0 - scale * scale * 0.15;
+    let term = |speed: f64| (speed as f32 / walking_speed + 1.0) / 2.0;
+    let before = term(with);
+    if before == 0.0 {
+        return raw;
     }
-    modifier
+    raw * term(without) / before
 }
 
 #[derive(Default)]
@@ -330,11 +336,15 @@ struct Mod;
 #[mod_api::sunrise_mod]
 impl Hooks for Mod {
     fn register(&self, r: &mut dyn Registrar, _: &RegistrationContext) {
+        let mut keys = Vec::new();
         for (key, name) in SETTINGS {
             let label = format!("{MOD_ID}.config.{name}");
             let spec = SettingSpec::toggle(key, &label, true).tooltip(format!("{label}.tooltip"));
-            let _ = r.register_setting(spec);
+            if let Ok(setting) = r.register_setting(spec) {
+                keys.push((key, setting));
+            }
         }
+        *SETTING_KEYS.lock().unwrap_or_else(PoisonError::into_inner) = keys;
         for block in SLOW_FACTOR_BLOCKS {
             let key: BlockKey = r.block_key(block);
             r.block_part(key, NeutralFactor(block));
@@ -381,18 +391,19 @@ impl Hooks for Mod {
         }
     }
 
-    fn entity_tick_listened(&self, host: HostSide, event: &mut EntityTickListenedEvent) {
-        if matches!(host, HostSide::Server(_)) {
-            event.listened = true;
-        }
-    }
-
     /// Before each tick, as `baseTick` checks the position the last tick's move left, so the
     /// tick's own travel already moves at the new speed.
-    fn entity_tick_pre(&self, host: HostSide, event: &mut EntityTickPreEvent<'_>) {
+    fn entity_tick_pre(&self, host: HostSide, event: &mut EntityTickPreEvent<'_>) -> Flow {
         let HostSide::Server(host) = host else {
-            return;
+            return Flow::Continue;
         };
+        let id = event.entity;
+        let Some(entity) = host.entity(id) else {
+            return Flow::Continue;
+        };
+        if host.living(entity).is_none() {
+            return Flow::Continue;
+        }
         if let Some(bytes) = refresh(&*host) {
             broadcast(host, &bytes);
         }
@@ -400,31 +411,24 @@ impl Hooks for Mod {
         if tick.is_multiple_of(FORGET_AFTER) {
             seen().retain(|_, s| tick - s.tick < FORGET_AFTER);
         }
-        for (&id, &kind) in event.entities.iter().zip(event.kinds) {
-            let Some(entity) = host.entity(id) else {
-                continue;
-            };
-            if host.living(entity).is_none() {
-                continue;
-            }
-            let (Some(pos), Some(on_ground)) =
-                (entity.block_position(&*host), entity.on_ground(&*host))
-            else {
-                continue;
-            };
-            let now = Seen {
-                pos,
-                on_ground,
-                tick,
-            };
-            let before = seen().insert(id, now);
-            // `baseTick`'s `lastPos` starts unset, so an entity's first tick counts as a change;
-            // `checkFallDamage` runs it again on landing, in the last tick's move.
-            let changed = before.is_none_or(|b| b.pos != pos || (on_ground && !b.on_ground));
-            if changed {
-                changed_block(host, id, kind == "minecraft:player");
-            }
+        let (Some(pos), Some(on_ground)) =
+            (entity.block_position(&*host), entity.on_ground(&*host))
+        else {
+            return Flow::Continue;
+        };
+        let now = Seen {
+            pos,
+            on_ground,
+            tick,
+        };
+        let before = seen().insert(id, now);
+        // `baseTick`'s `lastPos` starts unset, so an entity's first tick counts as a change;
+        // `checkFallDamage` runs it again on landing, in the last tick's move.
+        let changed = before.is_none_or(|b| b.pos != pos || (on_ground && !b.on_ground));
+        if changed {
+            changed_block(host, id, event.kind == "minecraft:player");
         }
+        Flow::Continue
     }
 
     fn item_tooltip(&self, host: &dyn ClientHost, event: &mut ItemTooltipEvent<'_>) {
@@ -448,31 +452,35 @@ impl Hooks for Mod {
         if !flag(host, STEADY_FOV) {
             return;
         }
-        let Some(living) = host
-            .local_player()
-            .and_then(|player| host.living(player.entity()))
-        else {
+        let Some(living) = host.living(event.player.entity()) else {
             return;
         };
-        let id = modifier_id();
-        let Some(modifiers) = living.attribute_modifiers(host, MOVEMENT_SPEED) else {
-            return;
-        };
-        if !modifiers.iter().any(|m| m.id == id) {
+        let mut ours = false;
+        let mut kept = Vec::new();
+        let visited = living.visit_attribute_modifiers(host, MOVEMENT_SPEED, &mut |m| {
+            if m.id == MODIFIER {
+                ours = true;
+            } else {
+                kept.push((m.amount, m.operation));
+            }
+            ControlFlow::Continue(())
+        });
+        if visited.is_err() || !ours {
             return;
         }
-        let Some(base) = living.attribute_base(host, MOVEMENT_SPEED) else {
+        let (Some(base), Some(with)) = (
+            living.attribute_base(host, MOVEMENT_SPEED),
+            living.attribute_value(host, MOVEMENT_SPEED),
+        ) else {
             return;
         };
-        // The event gives the scaled modifier only: the effect scale is what turned the
-        // unscaled one into it.
-        let unscaled = unscaled_fov(event, event.player.movement_speed);
-        if unscaled == 1.0 {
+        let Some(walking_speed) = event.player.abilities(host).map(|a| a.walk_speed) else {
             return;
-        }
-        let scale = (event.base - 1.0) / (unscaled - 1.0);
-        let without = unscaled_fov(event, speed_without(base, &modifiers, &id));
-        event.modifier = 1.0 + scale * (without - 1.0);
+        };
+        let without = speed_without(base, &kept);
+        let raw = raw_fov_without(event.raw, walking_speed, with, without);
+        // `Mth.lerp(effectScale, 1, raw)`, as the event's modifier starts.
+        event.modifier = 1.0 + event.effect_scale * (raw - 1.0);
     }
 }
 
@@ -511,13 +519,8 @@ mod tests {
 
     #[test]
     fn the_value_without_the_block_speed_skips_only_it() {
-        let ours = Identifier::parse(MODIFIER).unwrap();
-        let sprint = Identifier::parse("minecraft:sprinting").unwrap();
-        let modifiers = [
-            AttributeModifier::new(ours.clone(), 0.035, AttributeOperation::AddValue),
-            AttributeModifier::new(sprint, 0.3, AttributeOperation::AddMultipliedTotal),
-        ];
-        let without = speed_without(0.1, &modifiers, &ours);
+        let kept = [(0.3, AttributeOperation::AddMultipliedTotal)];
+        let without = speed_without(0.1, &kept);
         assert!((without - 0.13).abs() < 1e-12, "{without}");
     }
 }
