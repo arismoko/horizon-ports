@@ -1,0 +1,14 @@
+Better Ping Display for Sunrise 26.3 (version 0.5.0)
+
+A port of Better Ping Display (1.2.0) by Vlad Marica (Quintinity).
+Original source: https://github.com/vladmarica/better-ping-display-fabric
+Original licence: MIT
+
+Ported to Sunrise by arismoko: the player-list ping rendering, latency colour
+interpolation, and configuration handling are implemented in Rust on Sunrise's
+typed mod API (no Java code is included). This port is distributed under the
+same licence as the original (MIT); the licence text is in LICENSE.
+
+Assets carried from the original repository under the MIT licence:
+- icon.png (from assets/betterpingdisplay/icon.png)
+- assets/betterpingdisplay/lang/en_us.json
