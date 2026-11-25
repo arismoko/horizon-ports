@@ -1,33 +1,30 @@
 //! Where a storage item is: a player's inventory slot, a trinkets slot, or a placed block's block entity; and the
 //! player's inventory as the menu and the upgrades read and write it.
+use std::sync::RwLock;
+
 use mod_api::{
-    AttachmentCodec, AttachmentError, AttachmentType, Compound, Holder, Host, HostTransaction,
-    ItemStack, PlayerRef, ServerHost, Tag, Text,
+    AttachmentKey, Compound, Holder, Host, HostTransaction, ItemStack, PlayerRef, Registrar,
+    ServerHost, Tag, Text,
 };
 
 use crate::contents::{self, Nbt};
 use crate::storage_items::{self, StorageItem};
 
-fn same_compound(c: &Compound) -> Result<Compound, AttachmentError> {
-    Ok(c.clone())
-}
-fn empty() -> Compound {
-    Compound::new()
+/// The key of the trinkets package's worn-stacks attachment (`trinkets:worn`: slot id -> item NBT, as things,
+/// elytraslot and universalgraves read it; the back slot is where Homestead's players wore their backpacks). It is
+/// looked up in `register`: with no trinkets package installed there is no key and nothing is worn there.
+static WORN: RwLock<Option<AttachmentKey<Compound>>> = RwLock::new(None);
+
+/// Looks up the worn-stacks key the trinkets package declared.
+pub fn register_worn(r: &mut dyn Registrar) {
+    if let Ok(key) = r.attachment_key::<Compound>("trinkets:worn") {
+        *WORN.write().unwrap_or_else(|e| e.into_inner()) = Some(key);
+    }
 }
 
-/// native-next/trinkets' worn stacks (slot id -> item NBT), read through the same attachment key, as things,
-/// elytraslot and universalgraves do. The back slot is where Homestead's players wore their backpacks.
-pub static WORN: AttachmentType<Compound> = AttachmentType {
-    namespace: "trinkets",
-    name: "worn",
-    default: empty,
-    codec: Some(AttachmentCodec {
-        encode: same_compound,
-        decode: same_compound,
-    }),
-    copy_on_death: true,
-    sync: true,
-};
+fn worn_key() -> Option<AttachmentKey<Compound>> {
+    WORN.read().unwrap_or_else(|e| e.into_inner()).clone()
+}
 
 pub const BACK: &str = "chest/back";
 
@@ -42,7 +39,9 @@ pub enum Loc {
 }
 
 pub fn worn(host: &mut dyn Host, uuid: u128, slot: &str) -> Option<ItemStack> {
-    let c = WORN.get(host, Holder::Player(uuid)).unwrap_or_default();
+    let c = worn_key()?
+        .get_existing(host, Holder::Player(uuid), |c| c.cloned())
+        .ok()??;
     match c.at(slot) {
         Some(Tag::Compound(t)) => ItemStack::from_nbt(&*host, t),
         _ => None,
@@ -50,7 +49,14 @@ pub fn worn(host: &mut dyn Host, uuid: u128, slot: &str) -> Option<ItemStack> {
 }
 
 pub fn set_worn(host: &mut dyn Host, uuid: u128, slot: &str, stack: Option<ItemStack>) -> bool {
-    let mut c = WORN.get(host, Holder::Player(uuid)).unwrap_or_default();
+    let Some(key) = worn_key() else {
+        return false;
+    };
+    let mut c = key
+        .get_existing(host, Holder::Player(uuid), |c| c.cloned())
+        .ok()
+        .flatten()
+        .unwrap_or_default();
     match stack.and_then(|s| s.to_nbt(&*host)) {
         Some(t) => {
             c.insert(slot.into(), Tag::Compound(t));
@@ -59,7 +65,7 @@ pub fn set_worn(host: &mut dyn Host, uuid: u128, slot: &str, stack: Option<ItemS
             c.del(slot);
         }
     }
-    WORN.set(host, Holder::Player(uuid), c).is_ok()
+    key.set(host, Holder::Player(uuid), c).is_ok()
 }
 
 /// The player's inventory slots 0..=40 (main, armour, off hand), as owned stacks.
@@ -143,7 +149,7 @@ pub fn write(host: &mut dyn ServerHost, uuid: u128, loc: &Loc, stack: Option<Ite
                 .is_ok();
             if ok {
                 let _ = be.set_changed(host);
-                host.block_entity_sync(*pos);
+                let _ = be.sync(host);
             }
             ok
         }

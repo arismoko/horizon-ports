@@ -395,7 +395,7 @@ fn take_items(
                 let _ = item.entity().discard(host);
             }
             Some(rest) => {
-                let _ = item.set_stack(host, rest);
+                let _ = item.set_stack(host, Some(rest));
             }
         }
     }
@@ -413,10 +413,16 @@ fn pull_xp(host: &mut dyn ServerHost, uuid: u128, r: f64) {
     let Some(at) = player.entity().position(&*host) else {
         return;
     };
-    for orb in host.experience_orbs(&dim, min, max) {
-        if let Some(e) = host.entity(orb.id) {
-            let _ = e.teleport_to(host, at, None);
-        }
+    let Some(level) = host.level(&dim) else {
+        return;
+    };
+    let mut orbs = Vec::new();
+    let _ = level.visit_experience_orbs(&*host, min, max, &mut |orb| {
+        orbs.push(orb.entity());
+        std::ops::ControlFlow::Continue(())
+    });
+    for orb in orbs {
+        let _ = orb.teleport_to(host, at, None);
     }
 }
 

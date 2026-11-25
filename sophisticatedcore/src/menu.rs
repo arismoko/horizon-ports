@@ -8,8 +8,8 @@
 //! stack, half with the right button), a click on an inventory stack puts it in (one with the right button),
 //! shift-click on an upgrade in the inventory puts it in an upgrade slot.
 use mod_api::{
-    Compound, Host, Identifier, ItemStack, MenuClickedEvent, MenuReplace, PlayerRef, RecipeInput,
-    ServerHost, Tag, Text,
+    Compound, Host, Identifier, ItemStack, MenuClickedEvent, MenuRef, MenuReplace, PlayerRef,
+    RecipeInput, ServerHost, Tag, Text,
 };
 
 use crate::contents::{self, Contents};
@@ -1416,17 +1416,27 @@ pub fn open(
     };
     let items = render(host, &s, &c);
     let title = title(&*host, &st, kind);
-    match host.open_menu(uuid, rows, Text::literal(title), items, replace) {
-        Ok(Some(w)) => {
-            s.window = w;
+    let player = host.player(uuid)?;
+    match player.open_chest_menu(host, rows, Text::literal(title), items, replace) {
+        Ok(menu) => {
+            let Some(window) = menu.container_id(&*host) else {
+                let _ = menu.close_container(host);
+                return None;
+            };
+            s.window = window;
             Some(s)
         }
-        Ok(None) => None,
         Err(e) => {
-            eprintln!("[sophisticatedcore] open_menu: {e:?}");
+            eprintln!("[sophisticatedcore] open_chest_menu: {e:?}");
             None
         }
     }
+}
+
+/// The player's open menu, when it is the window `window`.
+pub fn live(host: &dyn ServerHost, uuid: u128, window: i32) -> Option<MenuRef> {
+    let menu = host.player(uuid)?.container_menu(host)?;
+    (menu.container_id(host) == Some(window)).then_some(menu)
 }
 
 /// The menu's title: the stack's own name, else the storage's (with its wood: "Oak Chest").

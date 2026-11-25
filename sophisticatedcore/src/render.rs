@@ -6,8 +6,8 @@
 //! the barrel's front: its face is the north face, the origin its lower corner (`front`).
 use mod_api::HostBlockStates;
 use mod_api::{
-    BlockEntityDrawContext, BlockState, ClientHost, Compound, CubeFace, Host, ItemDisplayContext,
-    ItemStack, ModBlockEntity, Tag, Text,
+    BlockEntityDataView, BlockEntityDrawContext, BlockState, ClientHost, Compound, CubeFace, Host,
+    ItemDisplayContext, ItemStack, Tag, Text,
 };
 
 use crate::contents::{
@@ -39,14 +39,14 @@ const LIMITED_MAX_SLOTS: usize = 4;
 
 /// What the server tells clients of the storage in `entity`'s slot 0 (`getUpdateTag`): the colours, the display
 /// flags, the upgrades, and the slots of a stack that holds few enough to be a limited barrel's.
-pub fn update_tag(entity: &ModBlockEntity, open: bool) -> Option<Compound> {
+pub fn update_tag(entity: BlockEntityDataView<'_>, open: bool) -> Option<Compound> {
     let mut tag = Compound::default();
     put(&mut tag, OPEN, Tag::Byte(i8::from(open)));
     // A double chest's other half holds no stack: it only tells whether its lid is up.
-    let Some(stack) = entity.items.first().and_then(Option::as_ref) else {
+    let Some(stack) = entity.copy_item_slot(0) else {
         return open.then_some(tag);
     };
-    let data = custom_data(stack);
+    let data = custom_data(&stack);
     // Every field is always sent: the client's copy only replaces the fields it is told, so one that went away
     // must say so.
     for k in [MAIN, ACCENT] {
@@ -414,10 +414,10 @@ pub fn submit(
     pos: [i32; 3],
     state: BlockState,
     block: &str,
-    entity: &ModBlockEntity,
+    entity: BlockEntityDataView<'_>,
     draw: &mut dyn BlockEntityDrawContext,
 ) {
-    let nbt = &entity.nbt;
+    let nbt = entity.nbt();
     let facing = state
         .property(&host.block_states(), "facing")
         .ok()
