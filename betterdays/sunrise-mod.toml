@@ -1,7 +1,7 @@
 # Better Days for Sunrise: native code in src/.
 id = "betterdays"
 name = "Better Days"
-version = "0.5.2"
+version = "0.5.3"
 description = "Set the length of day and night, and let sleeping speed the night up instead of skipping it."
 authors = ["wendall911", "lavoide", "arismoko"]
 license = "LGPL-3.0-or-later"
