@@ -1,0 +1,11 @@
+Clumps for Sunrise 26.3 (version 0.5.0)
+
+A port of Clumps (26.3) by Jaredlll08.
+Original source: https://github.com/jaredlll08/Clumps
+Original licence: MIT
+
+Ported to Sunrise by arismoko: the experience orb merging and pickup cooldown rules are
+implemented in Rust on Sunrise's typed mod API (no Java code is included).
+The mod icon (`icon.png`) is carried from the original repository under the MIT licence.
+This port is distributed under the same licence as the original (MIT); the licence text
+is in LICENSE.

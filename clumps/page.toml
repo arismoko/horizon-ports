@@ -1,0 +1,22 @@
+summary = "Groups nearby experience orbs into one orb carrying their combined XP and removes the pickup delay."
+description = """
+Experience orbs in the same area merge into a single orb carrying their exact summed XP value, reducing entity lag around farms and boss fights, and players collect orbs without the vanilla 2-tick pickup cooldown.
+
+What it does:
+
+- **Unrestricted XP orb merging:** Any two positive-value experience orbs in merge range combine regardless of their individual XP values or entity IDs, both when spawning (`tryMergeToExisting`) and during periodic neighbour scans (`scanForMerges`).
+- **Single-pickup summed value:** Merged orbs store their combined XP total (`value = sum`, `count = 1`), reset their age on spawn merges, keep the younger orb's age on resident merges, and persist unchanged across world saves and reloads.
+- **No multi-tick pickup cooldown:** Clears `takeXpDelay` to `0` so players do not wait 2 ticks between orb pickups, while preserving vanilla pickup sound, pickup particles, Mending repair (including `xp_repair_ratio`), and `pickup_xp` cancellation.
+- **Overflow-safe clumping:** Merges that would exceed vanilla's signed 16-bit NBT `Value` ceiling (32,767 XP per orb) are cancelled cleanly so excess orbs form a second clump without losing XP.
+
+Server-side only: works in single player and on servers without requiring clients to install it.
+
+Known differences from the original on Dev `3d34bbe`:
+
+- **Multiple touching clumps in the same tick:** Removing `takeXpDelay` lets players collect orbs on every tick (20/s instead of 10/s), and any single clump is collected completely in one tick. When multiple separate clumps touch a player at once, Sunrise collects one orb per tick rather than all touching orbs in the same tick, and singleplayer `tick_experience` does not fire `pickup_xp` or `player_exp_cooldown_change` (gap: TBD-same-tick-xp-pickup).
+- **Per-source-orb Mending distribution:** Mending repairs damaged items with the clump's full XP total (respecting `xp_repair_ratio` and spilling leftover XP to other damaged Mending items), rather than re-rolling a random damaged Mending item for each original source orb merged into the clump (gap: TBD-same-tick-xp-pickup).
+- **Third-party `ValueEvent` and `RepairEvent` API:** Clumps' mod-to-mod `ValueEvent` and `RepairEvent` callbacks are not yet exposed because Sunrise's mod-to-mod event bus is not in this build (gap: TBD-mod-events).
+
+Ported under the MIT licence. Original mod and icon by Jaredlll08.
+"""
+categories = ["optimization", "game-mechanics", "utility"]
