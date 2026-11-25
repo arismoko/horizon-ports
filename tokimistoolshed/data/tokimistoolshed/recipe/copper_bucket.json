@@ -1,0 +1,14 @@
+{
+  "key": {
+    "C": "minecraft:copper_ingot"
+  },
+  "pattern": [
+    "C C",
+    " C "
+  ],
+  "result": {
+    "count": 1,
+    "id": "tokimistoolshed:copper_bucket"
+  },
+  "type": "minecraft:crafting_shaped"
+}
