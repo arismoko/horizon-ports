@@ -1,7 +1,7 @@
 # Ping Wheel for Sunrise: client and server native code in src/ using the typed mod API.
 id = "pingwheel"
 name = "Ping Wheel"
-version = "0.5.1"
+version = "0.5.2"
 description = "Mark locations and entities in the world with HUD ping markers, off-screen direction indicators, channels, and directional audio alerts."
 authors = ["Luken", "RXJpaw", "arismoko"]
 license = "MIT"
