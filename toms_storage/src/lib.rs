@@ -1106,12 +1106,12 @@ impl Shared {
         let mut out: Vec<Option<ItemStack>> = vec![None; OWN_SLOTS];
         let l = layout(s.crafting);
         let filler = item(reader, "minecraft:gray_stained_glass_pane").map(|p| named(p, " ", &[]));
-        for i in OWN_SLOTS - 9..OWN_SLOTS {
-            out[i] = filler.clone();
+        for entry in &mut out[OWN_SLOTS - 9..OWN_SLOTS] {
+            *entry = filler.clone();
         }
         if s.crafting {
-            for i in 27..54 {
-                out[i] = filler.clone();
+            for entry in &mut out[27..54] {
+                *entry = filler.clone();
             }
         }
         s.page = s.page.min(s.pages() - 1);

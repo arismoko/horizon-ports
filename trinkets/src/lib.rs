@@ -423,7 +423,6 @@ impl Shared {
                     }
                 }
                 Plan::Refuse(m) => message = Some(m),
-                _ => {}
             }
         } else {
             return;
