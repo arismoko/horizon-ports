@@ -1,0 +1,8 @@
+{
+  "armor_breaking": {
+    "subtitle": "armorhud.subtitle.armorBreaking",
+    "sounds": [
+      "armorhud:armor_breaking"
+    ]
+  }
+}
