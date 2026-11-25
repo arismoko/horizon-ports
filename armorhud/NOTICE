@@ -1,0 +1,17 @@
+Armor HUD for Sunrise 26.3 (version 0.5.0)
+
+A port of uku's Armor HUD (0.14.0, Minecraft 26.3 branch) by uku (uku3lig), based on
+BerdinskiyBear's Armor HUD, with contributions from AnAwesomGuy and others.
+Original source: https://github.com/uku3lig/armor-hud
+Original licence: MIT
+
+Ported to Sunrise by arismoko: the widget, its settings and the break sound are implemented
+in Rust on Sunrise's typed mod API (no Java code is included). This port is distributed
+under the same licence as the original (MIT); the licence text is in LICENSE.
+
+Assets carried from the original project under the MIT licence:
+- icon.png
+- assets/armorhud/textures/gui/sprites/warn.png (the warning icon)
+- assets/armorhud/sounds/armor_breaking.ogg (the breaking sound)
+- assets/armorhud/lang/en_us.json (the original's translations, namespaced `armorhud`, with
+  added Options > Mods tooltips). The original ships no other languages.

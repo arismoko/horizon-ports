@@ -1,0 +1,39 @@
+# Armor HUD for Sunrise: client-only native code in src/ using the typed mod API.
+id = "armorhud"
+name = "Armor HUD"
+version = "0.5.0"
+description = "A vanilla-style widget beside the hotbar that shows your worn armour, its durability and a low-durability warning."
+authors = ["BerdinskiyBear", "uku", "arismoko"]
+license = "MIT"
+credits = "Original mod by BerdinskiyBear and uku (MIT); ported to Sunrise by arismoko."
+homepage = "https://github.com/arismoko/sunrise-ports"
+side = "client"
+
+[native]
+game = "26.3"
+sunrise = "3d34bbe63d71bb24c098c1e4021ef866be12fe2d"
+summary = "Shows your worn armour in a small vanilla-style widget beside the hotbar, with durability and low-durability warnings."
+description = """
+Armor HUD adds a minimalistic vanilla-style widget that shows what you are wearing:
+
+- **Armour widget**: draws the helmet, chestplate, leggings and boots as items with their durability bars in a vanilla-style slot strip, in the hotbar's own texture or rounded styles (**Hotbar**, **Rounded Corners**, **Rounded**, **None**).
+- **Placement**: anchor to the **Hotbar**, **Top Center**, **Top**, **Vertical Center** or **Bottom**, on the **Left** or **Right**, with X and Y offsets, **Horizontal** or **Vertical** orientation and a **Reversed** order. Beside the hotbar it makes room for the offhand slot (**Always Ignore**, **Adhere**, **Always Leave Space**).
+- **Show Widget**: **Always**, **If Any Present**, **Not Empty** or **Damaged Pieces**, with the vanilla empty-slot icons in empty slots.
+- **Durability display**: a **Bar**, a **Numeric** value or a **Percentage** beside each piece, and optionally the offhand's and the held item's durability on the hotbar.
+- **Low-durability warning**: a small warning icon, with adjustable jitter, at any piece at or under a durability value or percentage you choose, and a breaking sound (with its own subtitle) when a worn piece wears down to the warning.
+- **Pushes other HUD parts aside**: boss bars at Top Center and effect icons at the top right move down for the widget.
+- **Toggle key**: bind **Toggle Armor Hud** in **Options → Controls**; it shows a message when used.
+- **Settings**: everything is in **Options → Mods → Armor HUD**.
+
+Client-side only: works in single player and on any multiplayer server.
+
+Differences from the original:
+
+- The hotbar attack indicator is not read, so beside the hotbar the widget does not make room for it while it charges (gap: TBD-attack-indicator).
+- Subtitles are not pushed up when the widget is at the bottom right, because the game paints them in a later pass the HUD layer wrappers do not reach (gap: TBD-subtitle-push).
+- The widget shows the local player's armour only, not that of the player you spectate (gap: TBD-spectated-armor).
+- Settings use Sunrise's flat **Options → Mods → Armor HUD** page rather than the original's tabbed Style, Position and Warning screen, are kept by Sunrise rather than in a JSON file, and offsets and thresholds have fixed ranges (gap: TBD-settings-sections).
+- The original's compatibility hooks for other HUD mods (opacity, screen safe area) have no counterpart; the English translations are the only ones the original ships.
+
+A port of uku's Armor HUD by uku (uku3lig), based on BerdinskiyBear's Armor HUD, under the MIT licence.
+"""

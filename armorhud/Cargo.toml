@@ -1,0 +1,13 @@
+[package]
+name = "mod-armorhud"
+version = "0.5.0"
+edition = "2024"
+license = "MIT"
+description = "Armor HUD for Sunrise: a vanilla-style widget beside the hotbar showing worn armour with durability warnings"
+# Ported from: uku's Armor HUD 0.14.0 (uku3lig/armor-hud, MIT; based on BerdinskiyBear's Armor HUD).
+# Cargo's name and version are not the mod's identity: sunrise-mod.toml is.
+publish = false
+
+[dependencies]
+# The pinned SDK's API crate, fetched into .sunrise/sdk/ by any `cargo sunrise-mod` command.
+sunrise-mod-api = { path = ".sunrise/sdk/api/crates/sunrise-mod-api" }
