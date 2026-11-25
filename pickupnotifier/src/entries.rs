@@ -637,6 +637,9 @@ pub fn is_arrow_item_id(id: &str) -> bool {
 mod tests {
     use super::*;
 
+    /// A fallback snapshot row: slot, item key, count, and the sample stack's name.
+    type TestSlot = (u32, u32, u32, fn() -> &'static str);
+
     #[test]
     fn shorten_value_matches_original() {
         assert_eq!(shorten_value(1), "1");
@@ -758,15 +761,11 @@ mod tests {
     fn fallback_tracker_handles_inventory_and_xp_overflow_safely() {
         let mut tracker: FallbackTracker<u32> = FallbackTracker::default();
         // Initial snapshot with negative XP (malicious/corrupt server value) and empty inventory.
-        tracker.diff_snapshot(
-            std::iter::empty::<(u32, u32, u32, fn() -> &'static str)>(),
-            Some(i32::MIN),
-            true,
-        );
+        tracker.diff_snapshot(std::iter::empty::<TestSlot>(), Some(i32::MIN), true);
 
         // Next tick: inventory slots sum past u32::MAX, and XP jumps from i32::MIN to i32::MAX.
         tracker.on_take_packet();
-        let overflow_slots: [(u32, u32, u32, fn() -> &'static str); 2] =
+        let overflow_slots: [TestSlot; 2] =
             [(0, 1, u32::MAX - 10, || "slot0"), (1, 1, 100, || "slot1")];
         let (items, xp) = tracker.diff_snapshot(overflow_slots, Some(i32::MAX), true);
         assert_eq!(items, vec![("slot0", u32::MAX)]);
@@ -775,20 +774,12 @@ mod tests {
 
         // Decreasing XP delta is also ignored.
         tracker.on_take_packet();
-        let (_, xp_down) = tracker.diff_snapshot(
-            std::iter::empty::<(u32, u32, u32, fn() -> &'static str)>(),
-            Some(10),
-            true,
-        );
+        let (_, xp_down) = tracker.diff_snapshot(std::iter::empty::<TestSlot>(), Some(10), true);
         assert_eq!(xp_down, 0);
 
         // Normal positive XP gain still works.
         tracker.on_take_packet();
-        let (_, xp_up) = tracker.diff_snapshot(
-            std::iter::empty::<(u32, u32, u32, fn() -> &'static str)>(),
-            Some(25),
-            true,
-        );
+        let (_, xp_up) = tracker.diff_snapshot(std::iter::empty::<TestSlot>(), Some(25), true);
         assert_eq!(xp_up, 15);
     }
 
@@ -796,13 +787,12 @@ mod tests {
     fn fallback_tracker_prefers_sample_from_increased_slot() {
         let mut tracker: FallbackTracker<u32> = FallbackTracker::default();
         // Tick 1: slot 0 already holds a plain sword.
-        let initial_slots: [(u32, u32, u32, fn() -> &'static str); 1] =
-            [(0, 42, 1, || "plain_sword")];
+        let initial_slots: [TestSlot; 1] = [(0, 42, 1, || "plain_sword")];
         tracker.diff_snapshot(initial_slots, Some(0), true);
 
         // Tick 2: player picks up an enchanted/renamed sword into slot 5.
         tracker.on_take_packet();
-        let next_slots: [(u32, u32, u32, fn() -> &'static str); 2] = [
+        let next_slots: [TestSlot; 2] = [
             (0, 42, 1, || "plain_sword"),
             (5, 42, 1, || "enchanted_sword"),
         ];
