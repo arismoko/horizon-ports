@@ -30,6 +30,15 @@ struct LiveShrub {
     edge_bounces: u8,
 }
 
+pub struct ShrubTickContext<'a> {
+    pub level: LevelRef,
+    pub camera_pos: [f64; 3],
+    pub surface_range: i32,
+    pub game_time: i64,
+    pub thunder_level: f32,
+    pub wind_opts: &'a WindOptions,
+}
+
 #[derive(Default)]
 pub struct ShrubManager {
     shrubs: Vec<LiveShrub>,
@@ -89,18 +98,9 @@ impl ShrubManager {
         });
     }
 
-    pub fn tick(
-        &mut self,
-        host: &dyn ClientHost,
-        level: LevelRef,
-        camera_pos: [f64; 3],
-        surface_range: i32,
-        game_time: i64,
-        thunder_level: f32,
-        wind_opts: &WindOptions,
-    ) {
-        let max_dist_sq = ((surface_range as f64) + 0.5).powi(2);
-        let is_thundering = thunder_level > 0.9;
+    pub fn tick(&mut self, host: &dyn ClientHost, ctx: &ShrubTickContext<'_>) {
+        let max_dist_sq = ((ctx.surface_range as f64) + 0.5).powi(2);
+        let is_thundering = ctx.thunder_level > 0.9;
 
         self.shrubs.retain_mut(|s| {
             s.age += 1;
@@ -116,7 +116,7 @@ impl ShrubManager {
             } else {
                 s.wind_strength
             };
-            let w = get_wind(s.pos[0], s.pos[1], s.pos[2], game_time, wind_opts);
+            let w = get_wind(s.pos[0], s.pos[1], s.pos[2], ctx.game_time, ctx.wind_opts);
             s.vel[0] += (w[0] * wind_mul) as f64;
             s.vel[2] += (w[2] * wind_mul) as f64;
 
@@ -130,9 +130,9 @@ impl ShrubManager {
             let speed = (s.vel[0] * s.vel[0] + s.vel[1] * s.vel[1] + s.vel[2] * s.vel[2]).sqrt();
             s.roll += s.rotation_amount * (speed as f32);
 
-            let dx = s.pos[0] - camera_pos[0];
-            let dy = s.pos[1] - camera_pos[1];
-            let dz = s.pos[2] - camera_pos[2];
+            let dx = s.pos[0] - ctx.camera_pos[0];
+            let dy = s.pos[1] - ctx.camera_pos[1];
+            let dz = s.pos[2] - ctx.camera_pos[2];
             if dx * dx + dy * dy + dz * dz > max_dist_sq {
                 return false;
             }
@@ -142,8 +142,9 @@ impl ShrubManager {
                 s.pos[1].floor() as i32,
                 s.pos[2].floor() as i32,
             ];
-            if let Some(state) = level.block_state(host, bp) {
-                let boxes = level
+            if let Some(state) = ctx.level.block_state(host, bp) {
+                let boxes = ctx
+                    .level
                     .block_shape(host, state, bp, mod_api::BlockShapeKind::Collision)
                     .unwrap_or_default();
                 if !boxes.is_empty() {

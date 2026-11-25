@@ -1,4 +1,4 @@
-# Particle Rain for Sunrise: client-only native code in src/ using the typed mod API.
+# Particle Rain for Sunrise: native code in src/ using the typed mod API.
 id = "particlerain"
 name = "Particle Rain"
 version = "0.5.0"
@@ -7,7 +7,8 @@ authors = ["PigCart", "arismoko"]
 license = "MIT"
 credits = "Original mod by PigCart (MIT); ported to Sunrise by arismoko."
 homepage = "https://github.com/arismoko/sunrise-ports"
-side = "client"
+# Uses side = "both" because Sunrise's register_particle_type requires side = "both" (gap: sunrise-org/sunrise#5611).
+side = "both"
 
 [native]
 game = "26.3"

@@ -278,7 +278,7 @@ impl ParticleSpawnerState {
             let height = if speed < 0.8 {
                 let a = self.rng.next_f32();
                 let b = self.rng.next_f32();
-                let h = (a * a - b * b).abs() * -1.0 + 1.0;
+                let h = 1.0 - (a * a - b * b).abs();
                 h * (0.4 + 0.6)
             } else {
                 self.rng.next_f32()

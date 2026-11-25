@@ -10,10 +10,9 @@ Particle Rain enhances Minecraft's weather with configurable particle effects, w
 - **Commands and F3 debug entries**: includes `/particlerain debug`, `/particlerain biometags`, and `particlerain:debug` / `particlerain:biome_tags` F3 overlays.
 - **Options screen and hot-reloaded config**: core controls live in **Options → Mods → Particle Rain**; full per-preset configuration and block/biome filters live in `config/particlerain.toml`.
 
-Client-side only: works in single player and on any multiplayer server.
-
 Differences from the original:
 
+- Uses `side = "both"` instead of `side = "client"`, so the port must be installed on the server as well as the client, because Sunrise's `Registrar::register_particle_type` requires `side = "both"` (gap: sunrise-org/sunrise#5611).
 - Vanilla rain and snow weather columns cannot be suppressed yet, so they continue to render alongside Particle Rain's particles (gap: sunrise-org/sunrise#968).
 - Vanilla rain splash particles cannot be suppressed yet (gap: sunrise-org/sunrise#5614).
 - Biome water tinting applies to Particle Rain's own rain, ripple, and streak particles, but cannot recolor vanilla water/splash/drip particles on creation (gap: sunrise-org/sunrise#5615).

@@ -69,7 +69,7 @@ fn push_pixels(outputs: &mut Vec<SpriteSourceOutput>, id: &str, image: RgbaImage
 
 /// Desaturate an RGBA image using max-channel value (`TextureUtil.desaturate`).
 pub fn desaturate(img: &mut RgbaImage) {
-    for px in img.rgba.chunks_exact_mut(4) {
+    for px in img.rgba.as_chunks_mut::<4>().0 {
         let gray = px[0].max(px[1]).max(px[2]);
         px[0] = gray;
         px[1] = gray;
@@ -79,7 +79,14 @@ pub fn desaturate(img: &mut RgbaImage) {
 
 /// Boost alpha proportionally so the maximum non-zero alpha approaches 255 (`TextureUtil.boostAlpha`).
 pub fn boost_alpha(img: &mut RgbaImage) {
-    let highest = img.rgba.chunks_exact(4).map(|px| px[3]).max().unwrap_or(0);
+    let highest = img
+        .rgba
+        .as_chunks::<4>()
+        .0
+        .iter()
+        .map(|px| px[3])
+        .max()
+        .unwrap_or(0);
     if highest == 0 || highest == 255 {
         return;
     }
@@ -87,7 +94,7 @@ pub fn boost_alpha(img: &mut RgbaImage) {
     if multiplier <= 1 {
         return;
     }
-    for px in img.rgba.chunks_exact_mut(4) {
+    for px in img.rgba.as_chunks_mut::<4>().0 {
         px[3] = ((px[3] as u32) * multiplier).min(255) as u8;
     }
 }
@@ -405,7 +412,13 @@ mod tests {
         let img = generate_ripple(3, 16);
         assert_eq!(img.width, 16);
         assert_eq!(img.height, 16);
-        let lit = img.rgba.chunks_exact(4).filter(|p| p[3] == 255).count();
+        let lit = img
+            .rgba
+            .as_chunks::<4>()
+            .0
+            .iter()
+            .filter(|p| p[3] == 255)
+            .count();
         assert!(lit >= 8, "expected lit ring pixels, got {lit}");
     }
 
@@ -424,7 +437,14 @@ mod tests {
             ],
         };
         let merged = merge_sprites(&sheet, 0, 2, 1, 2, 2);
-        let max_alpha = merged.rgba.chunks_exact(4).map(|p| p[3]).max().unwrap();
+        let max_alpha = merged
+            .rgba
+            .as_chunks::<4>()
+            .0
+            .iter()
+            .map(|p| p[3])
+            .max()
+            .unwrap();
         assert_eq!(max_alpha, 250);
     }
 }

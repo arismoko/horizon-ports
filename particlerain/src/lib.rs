@@ -18,7 +18,7 @@ use crate::particles::{
     ParticleSharedState, StreakOptions, StreakParticleProvider, WeatherParticleOptions,
     WeatherParticleProvider,
 };
-use crate::shrub::ShrubManager;
+use crate::shrub::{ShrubManager, ShrubTickContext};
 use crate::spawner::{
     DEFAULT_CLOUD_HEIGHT, ParticleHandles, ParticleSpawnerState, precipitation_at,
 };
@@ -590,12 +590,14 @@ impl Hooks for ParticleRainMod {
         );
         shrubs.tick(
             &*host,
-            level,
-            camera.position,
-            config_snap.perf.surface_range,
-            game_time,
-            thunder_level,
-            &config_snap.wind,
+            &ShrubTickContext {
+                level,
+                camera_pos: camera.position,
+                surface_range: config_snap.perf.surface_range,
+                game_time,
+                thunder_level,
+                wind_opts: &config_snap.wind,
+            },
         );
         shrubs.resolve_models(&*host);
 

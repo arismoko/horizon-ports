@@ -72,10 +72,7 @@ pub fn decode_png(data: &[u8]) -> Result<RgbaImage, String> {
                 if !payload.len().is_multiple_of(3) {
                     return Err("invalid PLTE length".into());
                 }
-                palette = payload
-                    .chunks_exact(3)
-                    .map(|c| [c[0], c[1], c[2]])
-                    .collect();
+                palette = payload.as_chunks::<3>().0.to_vec();
             }
             b"tRNS" => {
                 trns = payload.to_vec();
@@ -136,8 +133,8 @@ pub fn decode_png(data: &[u8]) -> Result<RgbaImage, String> {
                 }
             }
             2 => {
-                for px in curr_row.chunks_exact(3) {
-                    rgba.extend_from_slice(&[px[0], px[1], px[2], 255]);
+                for &[r, g, b] in curr_row.as_chunks::<3>().0 {
+                    rgba.extend_from_slice(&[r, g, b, 255]);
                 }
             }
             3 => {
@@ -148,8 +145,8 @@ pub fn decode_png(data: &[u8]) -> Result<RgbaImage, String> {
                 }
             }
             4 => {
-                for px in curr_row.chunks_exact(2) {
-                    rgba.extend_from_slice(&[px[0], px[0], px[0], px[1]]);
+                for &[g, a] in curr_row.as_chunks::<2>().0 {
+                    rgba.extend_from_slice(&[g, g, g, a]);
                 }
             }
             6 => {

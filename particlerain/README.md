@@ -1,6 +1,6 @@
 # Particle Rain
 
-A Sunrise 26.3 client-only port of [Particle Rain](https://github.com/PigCart/particle-rain) by PigCart (MIT).
+A Sunrise 26.3 port of [Particle Rain](https://github.com/PigCart/particle-rain) by PigCart (MIT).
 
 ## What it does
 
@@ -13,10 +13,9 @@ A Sunrise 26.3 client-only port of [Particle Rain](https://github.com/PigCart/pa
 - **Commands and F3 debug entries**: adds `/particlerain`, `/particlerain debug`, and `/particlerain biometags`, plus `particlerain:debug` and `particlerain:biome_tags` F3 debug entries.
 - **Settings, hot-reloaded config, and translations**: core controls live in **Options → Mods → Particle Rain**; full per-preset configuration and block/biome filters live in `config/particlerain.toml` and reload automatically. Includes all 8 translations from the original mod (`en_us`, `es_mx`, `ko_kr`, `pl_pl`, `ru_ru`, `uk_ua`, `zh_cn`, `zh_tw`).
 
-Client-side only: works in single player and on any multiplayer server.
-
 ## Differences from the original
 
+- The package declares `side = "both"` instead of `side = "client"`, so the port must be installed on the server as well as the client, because Sunrise's `Registrar::register_particle_type` requires `side = "both"` (gap: sunrise-org/sunrise#5611).
 - Vanilla rain and snow weather columns cannot be suppressed yet, so they continue to render alongside Particle Rain's custom particles (`renderDefaultRain` / `renderDefaultSnow` are preserved in config) (gap: sunrise-org/sunrise#968).
 - Vanilla rain splash particles cannot be suppressed yet (`doDefaultSplashing` is preserved in config) (gap: sunrise-org/sunrise#5614).
 - Biome water tinting applies to Particle Rain's own rain, ripple, and streak particles, but cannot recolor vanilla `minecraft:rain`, `minecraft:splash`, or water-drip particles on creation (gap: sunrise-org/sunrise#5615).
