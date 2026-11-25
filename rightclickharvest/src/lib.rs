@@ -281,8 +281,15 @@ fn complete(
             )
         })
         .collect();
-    if replant && let Some(item) = rules::replant_item(&cell.id) {
-        rules::take_replant(&mut named, item);
+    if replant {
+        // `getCloneItemStack`: the block's own pick item, so a modded crop keeps back its seed.
+        let picked = click
+            .player
+            .clone_item_stack(host, click.level, pos, false)
+            .and_then(|stack| stack.item().id(&*host).map(str::to_owned));
+        if let Some(item) = picked.as_deref().or_else(|| rules::replant_item(&cell.id)) {
+            rules::take_replant(&mut named, item);
+        }
     }
     for (stack, (_, count)) in drops.into_iter().zip(&named) {
         if *count == 0 {
