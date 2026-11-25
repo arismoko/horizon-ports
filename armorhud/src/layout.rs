@@ -712,8 +712,10 @@ mod tests {
 
     #[test]
     fn offhand_makes_space_on_the_far_side_only() {
-        let mut cfg = ArmorHudConfig::default();
-        cfg.side = Side::Right;
+        let mut cfg = ArmorHudConfig {
+            side: Side::Right,
+            ..ArmorHudConfig::default()
+        };
         let mut f = frame();
         f.offhand_filled = true;
         // Main arm not on the widget's side: the offhand is there.
@@ -731,8 +733,10 @@ mod tests {
 
     #[test]
     fn other_anchors() {
-        let mut cfg = ArmorHudConfig::default();
-        cfg.anchor = Anchor::TopCenter;
+        let mut cfg = ArmorHudConfig {
+            anchor: Anchor::TopCenter,
+            ..ArmorHudConfig::default()
+        };
         let r = widget_rect(&cfg, &frame(), 2).unwrap();
         assert_eq!((r.x, r.y, r.w, r.h), ((400 - 42) / 2, 0, 42, 22));
         cfg.anchor = Anchor::VerticalCenter;
@@ -742,7 +746,7 @@ mod tests {
         cfg.offset_y = -4;
         let r = widget_rect(&cfg, &frame(), 2).unwrap();
         assert_eq!((r.w, r.h), (22, 42));
-        assert_eq!(r.x, -5 + (22 - 400) * -1);
+        assert_eq!(r.x, -5 - (22 - 400));
         assert_eq!(r.y, (240 - 42) / 2 - 4);
         cfg.anchor = Anchor::Bottom;
         assert_eq!(widget_rect(&cfg, &frame(), 2).unwrap().y, 240 - 42 + 4);
@@ -750,9 +754,11 @@ mod tests {
 
     #[test]
     fn effective_rect_grows_away_from_the_edge() {
-        let mut cfg = ArmorHudConfig::default();
-        cfg.anchor = Anchor::Top;
-        cfg.durability_display = DurabilityDisplay::Numeric;
+        let mut cfg = ArmorHudConfig {
+            anchor: Anchor::Top,
+            durability_display: DurabilityDisplay::Numeric,
+            ..ArmorHudConfig::default()
+        };
         let rect = Rect {
             x: 0,
             y: 5,
@@ -819,9 +825,11 @@ mod tests {
 
     #[test]
     fn slot_plan_places_text_and_warning() {
-        let mut cfg = ArmorHudConfig::default();
-        cfg.durability_display = DurabilityDisplay::Numeric;
-        cfg.warning_bob = 0;
+        let mut cfg = ArmorHudConfig {
+            durability_display: DurabilityDisplay::Numeric,
+            warning_bob: 0,
+            ..ArmorHudConfig::default()
+        };
         let rect = Rect {
             x: 10,
             y: 100,
@@ -843,12 +851,14 @@ mod tests {
 
     #[test]
     fn vertical_slot_plan_uses_the_extras_side() {
-        let mut cfg = ArmorHudConfig::default();
-        cfg.orientation = Orientation::Vertical;
-        cfg.durability_display = DurabilityDisplay::Numeric;
-        cfg.warning_bob = 0;
-        cfg.anchor = Anchor::Top;
-        cfg.side = Side::Left; // extras go right
+        let cfg = ArmorHudConfig {
+            orientation: Orientation::Vertical,
+            durability_display: DurabilityDisplay::Numeric,
+            warning_bob: 0,
+            anchor: Anchor::Top,
+            side: Side::Left, // extras go right
+            ..ArmorHudConfig::default()
+        };
         let rect = Rect {
             x: 0,
             y: 0,
@@ -864,8 +874,10 @@ mod tests {
 
     #[test]
     fn bob_stays_within_the_original_range() {
-        let mut cfg = ArmorHudConfig::default();
-        cfg.durability_display = DurabilityDisplay::Bar;
+        let cfg = ArmorHudConfig {
+            durability_display: DurabilityDisplay::Bar,
+            ..ArmorHudConfig::default()
+        };
         let rect = Rect {
             x: 0,
             y: 100,
@@ -882,9 +894,11 @@ mod tests {
 
     #[test]
     fn hand_plans() {
-        let mut cfg = ArmorHudConfig::default();
-        cfg.durability_display = DurabilityDisplay::Percentage;
-        cfg.warning_bob = 0;
+        let mut cfg = ArmorHudConfig {
+            durability_display: DurabilityDisplay::Percentage,
+            warning_bob: 0,
+            ..ArmorHudConfig::default()
+        };
         let f = frame();
         let hand = plan_offhand(&cfg, &f, true, &facts(245, 250), &mut |_| 0);
         assert_eq!(hand.label.as_ref().unwrap().x, 200 - 91 - 29 + 11);
