@@ -8,5 +8,3 @@ A port of [Universal Bone Meal](https://github.com/Fuzss/universal-bone-meal) 26
 
 - Data packs can't change the growth rules: the original's `universalbonemeal:bonemealables` data map and its behaviour and predicate registries are the port's code (sunrise-org/sunrise#5368).
 - Copied plants and grown mushrooms follow vanilla's survival rules for their kind; another mod's plant with a rule of its own is judged by the vanilla one (sunrise-org/sunrise#3596).
-- Sky light over dirt is judged from the block's shape and fluid, air from `#minecraft:air`, and another mod's bone-mealable block is left to it only when it is a valid target (sunrise-org/sunrise#5364).
-- A damageable fertiliser wears without Unbreaking (sunrise-org/sunrise#5369).
