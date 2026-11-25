@@ -1,6 +1,6 @@
 [package]
 name = "mod-tokimistoolshed"
-version = "0.1.0"
+version = "0.1.1"
 edition = "2024"
 license = "CC0-1.0"
 description = "Tokimi's Toolshed for Sunrise: hammers, excavators, scythes, lumber axes, clippers, copper buckets and more"
