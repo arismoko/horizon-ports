@@ -29,7 +29,6 @@ use mod_api::{
     PlayerTurnEvent, RegisterGuiLayersEvent, Registrar, RegistrationContext, RenderGuiPostEvent,
     RenderPlayerPreEvent, SettingChangedEvent, VanillaKeyMappingRef,
 };
-use std::borrow::Cow;
 use std::sync::{LazyLock, Mutex, MutexGuard};
 
 /// `(id, default key)` of the original's key mappings, in the order of `InputHandler`.
