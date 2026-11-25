@@ -553,10 +553,19 @@ pub enum WatchedSlot {
 }
 
 /// A stack as the break sound remembers it between ticks.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Remembered<K> {
     pub item: Option<K>,
     pub damage: u32,
+}
+
+impl<K> Default for Remembered<K> {
+    fn default() -> Self {
+        Self {
+            item: None,
+            damage: 0,
+        }
+    }
 }
 
 /// Whether the change from `last` to `current` should play the armour breaking sound.
