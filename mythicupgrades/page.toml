@@ -11,3 +11,7 @@ Eight gems (sapphire, ametrine, topaz, ruby, peridot, aquamarine, citrine and ja
 A port of Mythic Upgrades by TriQue, under the MIT licence.
 """
 categories = ["equipment", "game-mechanics"]
+
+[[screenshots]]
+path = "page/world.png"
+caption = "Player wearing ruby armour and holding a ruby sword"
