@@ -1,0 +1,23 @@
+summary = "Anvils keep their items, repair with iron blocks, support formatting codes in names, and let you tune repair costs and prior work penalties."
+description = """
+Easy Anvils overhauls vanilla anvils without breaking balance:
+
+- **Persistent contents**: items stay inside anvils when you close the screen, persist across saves, survive damage and repair stages, drop when broken, and work with hoppers and redstone comparators.
+- **Configurable costs & prior work penalty**: removes the "Too Expensive!" cap by default (`too_expensive_limit = -1`), caps prior work penalty growth (`LIMITED`, `VANILLA`, or `NONE`), makes renames free (`ALL_ITEMS`, `NAME_TAGS_ONLY`, or `NEVER`), halves enchanted book costs, and lets you tune repair costs and durability bonuses.
+- **Iron block anvil repair**: right-click or dispense an iron block onto a chipped or damaged anvil to repair it by one damage stage.
+- **Formatted renaming**: use `§` colour and style codes in the anvil rename field, with a `?` formatting guide tooltip in the top-right corner.
+- **Lower break chance & risk-free renaming**: reduces anvil wear to 5% by default and prevents breakage when only renaming.
+
+Server options are configured in `config/easyanvils-server.toml` and synced to clients. Client options are available in **Options → Mods → Easy Anvils**.
+
+Needed on both the server and the client.
+
+Differences from the original:
+
+- Items stored inside an anvil are not drawn on top of the anvil in the world (`render_anvil_contents`), because vanilla anvils cannot yet attach a world-space item renderer on the mod API (gap: TBD-world-item-render).
+- Other mods' custom `anvil_update` recipes are not invoked inside Easy Anvils' custom anvil menu, because a mod menu cannot dispatch `anvil_update` to other mods (gap: TBD-mod-anvil-update-dispatch).
+- Unaltered vanilla anvils (`convert_vanilla_anvil_when_interacting = false` or `#easyanvils:unaltered_anvils`) keep vanilla's 12% break chance, because `anvil_craft_pre` does not expose a break-chance modifier (gap: TBD-unaltered-anvil-break-chance).
+
+A port of Easy Anvils by Fuzs, under the MPL-2.0 licence.
+"""
+categories = ["game-mechanics", "utility"]

@@ -1,0 +1,9 @@
+Easy Anvils for Sunrise 26.3 (version 0.5.0)
+
+A port of Easy Anvils by Fuzs (v26.3.1).
+Original source: https://github.com/Fuzss/easyanvils
+Original licence: MPL-2.0
+
+Ported to Sunrise by arismoko: the rules are re-implemented in Rust on Sunrise's typed mod API (no Java code is included). This port is distributed under the same licence as the original (MPL-2.0); the licence text is in LICENSE.
+
+Language translations (en_us, es_es, es_mx, it_it) and the unaltered_anvils block tag are carried from the original project under MPL-2.0. None of the original project's All-Rights-Reserved image assets (LICENSE-ASSETS.md) are included.
