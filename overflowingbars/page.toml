@@ -1,6 +1,3 @@
-[native]
-game = "26.3"
-sunrise = "3d34bbe63d71bb24c098c1e4021ef866be12fe2d"
 summary = "Stacks health, armor and armor toughness into coloured rows with row counts instead of piling up vertically."
 description = """
 Overflowing Bars keeps the status bars compact. Health, absorption, armor and armor toughness that would climb the screen stack into coloured rows instead:

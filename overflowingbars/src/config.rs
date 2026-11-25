@@ -4,8 +4,6 @@
 use crate::logic::MAX_ROW_SHIFT;
 use mod_api::{ClientHost, Registrar, SettingSpec};
 
-pub const MOD_ID: &str = "overflowingbars";
-
 /// The dye colours' translation keys, in vanilla's order.
 const DYE_KEYS: [&str; 16] = [
     "color.minecraft.white",

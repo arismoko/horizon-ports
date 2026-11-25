@@ -107,7 +107,6 @@ pub enum HeartStyle {
     Normal,
     Poisoned,
     Withered,
-    Frozen,
     Absorbing,
     /// This mod's colour for the second and later rows.
     Layer,
@@ -131,7 +130,6 @@ pub fn heart_sprite_id(s: HeartSprite) -> String {
         HeartStyle::Normal => format!("hud/heart/{half}{blink}"),
         HeartStyle::Poisoned => format!("hud/heart/poisoned_{half}{blink}"),
         HeartStyle::Withered => format!("hud/heart/withered_{half}{blink}"),
-        HeartStyle::Frozen => format!("hud/heart/frozen_{half}{blink}"),
         HeartStyle::Absorbing => format!("hud/heart/absorbing_{half}{blink}"),
     }
 }
@@ -245,7 +243,7 @@ pub fn plan_hearts(input: &HeartInput, x: i32, y: i32, tick: i64) -> Vec<SpriteO
             if abs_slot < absorption {
                 let max_abs = max_abs_hearts * 2;
                 let half = abs_slot + 1 == absorption % max_abs;
-                let layer = absorption > max_abs && abs_slot + 1 <= (absorption - 1) % max_abs + 1;
+                let layer = absorption > max_abs && abs_slot < (absorption - 1) % max_abs + 1;
                 if half && layer {
                     blit(
                         heart_style(base, true, false, inverse),
@@ -261,7 +259,7 @@ pub fn plan_hearts(input: &HeartInput, x: i32, y: i32, tick: i64) -> Vec<SpriteO
         if blink && heart * 2 < 20.min(display) {
             let top = (display - 1) % 20 + 1;
             let half = heart * 2 + 1 == top;
-            let layer = display > 20 && heart * 2 + 1 <= top;
+            let layer = display > 20 && heart * 2 < top;
             if half && layer {
                 blit(
                     heart_style(base, false, false, inverse),
@@ -271,7 +269,7 @@ pub fn plan_hearts(input: &HeartInput, x: i32, y: i32, tick: i64) -> Vec<SpriteO
                     false,
                 );
             }
-            let colored = layer || (colorize_first_row && heart * 2 + 1 <= top);
+            let colored = layer || (colorize_first_row && heart * 2 < top);
             blit(
                 heart_style(base, false, colored, inverse),
                 px,
@@ -283,7 +281,7 @@ pub fn plan_hearts(input: &HeartInput, x: i32, y: i32, tick: i64) -> Vec<SpriteO
         if heart * 2 < 20.min(current) {
             let top = (current - 1) % 20 + 1;
             let half = heart * 2 + 1 == top;
-            let layer = current > 20 && heart * 2 + 1 <= top;
+            let layer = current > 20 && heart * 2 < top;
             if half && layer {
                 blit(
                     heart_style(base, false, false, inverse),
@@ -293,7 +291,7 @@ pub fn plan_hearts(input: &HeartInput, x: i32, y: i32, tick: i64) -> Vec<SpriteO
                     false,
                 );
             }
-            let colored = layer || (colorize_first_row && heart * 2 + 1 <= top);
+            let colored = layer || (colorize_first_row && heart * 2 < top);
             blit(
                 heart_style(base, false, colored, inverse),
                 px,
@@ -615,11 +613,12 @@ mod tests {
 
     #[test]
     fn java_random_matches_the_known_sequence() {
-        // new Random(0).nextBoolean() runs true, true, true, false, true; nextInt(2) is the
+        // new Random(0).nextInt() runs -1155484576, -723955400, 1033096058, -1690734402,
+        // -1557280266, so the top bit (nextBoolean, nextInt(2)) runs 1, 1, 0, 1, 1; nextInt(2) is the
         // same top bit.
         let mut r = JavaRandom::new(0);
         let got: Vec<i32> = (0..5).map(|_| r.next_int_pow2(2)).collect();
-        assert_eq!(got, vec![1, 1, 1, 0, 1]);
+        assert_eq!(got, vec![1, 1, 0, 1, 1]);
     }
 
     #[test]
