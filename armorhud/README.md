@@ -10,7 +10,7 @@ A Sunrise 26.3 client-only port of [uku's Armor HUD](https://github.com/uku3lig/
 - **Durability display**: a **Bar**, a **Numeric** value or a **Percentage** beside each piece, and optionally the offhand's and the held item's durability on the hotbar.
 - **Low-durability warning**: a small warning icon, with adjustable jitter, at any piece at or under a durability value or percentage you choose, and a breaking sound (with its own subtitle) when a worn piece wears down to the warning.
 - **Toggle key**: bind **Toggle Armor Hud** in **Options → Controls**; it shows a message when used.
-- **Settings**: everything is in **Options → Mods → Armor HUD**.
+- **Settings**: everything is in **Options → Mods → Armor HUD**; **Config** opens the original's tabbed screen (**Style**, **Position**, **Warning**).
 
 Client-side only: works in single player and on any multiplayer server.
 
@@ -18,7 +18,7 @@ Client-side only: works in single player and on any multiplayer server.
 
 - Boss bars, effect icons and subtitles are not moved out of the widget's way: the original's **Push Bossbars**, **Push Effect Icons** and **Push Subtitles** options are left out, and vanilla keeps their placement. A HUD layer wrapper's pose does not reach the layer it wraps, and the game paints subtitles in a later pass (gap: sunrise-org/sunrise#5652). NeoForge lets a `RenderGuiLayerEvent.Pre` listener translate the `GuiGraphics` pose for the layer.
 - The widget shows the local player's armour only, not that of the player you spectate (gap: sunrise-org/sunrise#5498).
-- Settings use Sunrise's flat **Options → Mods → Armor HUD** page rather than the original's tabbed Style, Position and Warning screen, are kept by Sunrise rather than in a JSON file, and offsets and thresholds have fixed ranges (gap: sunrise-org/sunrise#1174).
+- Settings are kept by Sunrise rather than in a JSON file, and offsets and thresholds have fixed ranges.
 - The original's compatibility hooks for other HUD mods (opacity, screen safe area) have no counterpart; the English translations are the only ones the original ships.
 
 A port of uku's Armor HUD by uku (uku3lig), based on BerdinskiyBear's Armor HUD, under the MIT licence.
