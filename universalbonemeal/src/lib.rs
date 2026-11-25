@@ -349,7 +349,8 @@ impl<'a> Reads<'a> {
     fn shape(self, pos: [i32; 3], kind: BlockShapeKind) -> Option<Vec<[f64; 6]>> {
         let state = self.state(pos)?;
         let mut boxes = Vec::new();
-        let _ = self.level
+        let _ = self
+            .level
             .visit_block_shape(self.host, state, pos, kind, &mut |b| {
                 boxes.push(b);
                 ControlFlow::Continue(())
