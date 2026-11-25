@@ -1,0 +1,13 @@
+[package]
+name = "mod-pingwheel"
+version = "0.5.0"
+edition = "2024"
+license = "MIT"
+description = "Ping Wheel for Sunrise: mark world locations and entities with HUD markers and directional audio alerts"
+# Ported from: Ping Wheel 1.12.2 (LukenSkyne/Minecraft-Ping-Wheel, MIT).
+# Cargo's name and version are not the mod's identity: sunrise-mod.toml is.
+publish = false
+
+[dependencies]
+# The pinned SDK's API crate, fetched into .sunrise/sdk/ by any `cargo sunrise-mod` command.
+sunrise-mod-api = { path = ".sunrise/sdk/api/crates/sunrise-mod-api" }
