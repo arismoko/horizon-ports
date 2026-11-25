@@ -1,7 +1,7 @@
 # Armor Statues for Sunrise: native code in src/, menu declaration in data/, translations in assets/.
 id = "armorstatues"
 name = "Armor Statues"
-version = "0.5.2"
+version = "0.5.3"
 description = "Sneak and use an armor stand with an empty hand to pose, style, scale, align, move and equip it."
 authors = ["Fuzs", "lavoide", "arismoko"]
 license = "MPL-2.0"
