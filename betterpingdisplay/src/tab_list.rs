@@ -383,7 +383,7 @@ impl TabListState {
         if max_hp <= 0 {
             return;
         }
-        let full_hearts = max_hp.div_ceil(2);
+        let full_hearts = max_hp / 2 + max_hp % 2;
         let to_render = max_hp.max(20) / 2;
 
         let per_heart = ((right - left - 4) as f32 / to_render as f32)
