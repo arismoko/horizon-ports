@@ -1,6 +1,6 @@
 [package]
 name = "mod-cutthrough"
-version = "0.5.0"
+version = "0.5.1"
 edition = "2024"
 license = "MPL-2.0"
 description = "Cut Through for Sunrise: swing through blocks without a collision shape, like tall grass, to hit mobs behind them"
