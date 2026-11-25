@@ -1,0 +1,14 @@
+# Convenient Name Tags for Sunrise: native code in src/ on the typed mod API (no [[native.mixin]] rows).
+id = "convenientnametags"
+name = "Convenient Name Tags"
+version = "1.1.0"
+description = "Named mobs drop their name tag on death, shears take a name off as a tag, and a name tag with the mob's own name isn't wasted."
+authors = ["Mim1q", "arismoko"]
+license = "Apache-2.0"
+credits = "Ported to Sunrise by arismoko."
+homepage = "https://github.com/arismoko/sunrise-ports"
+side = "server"
+
+[native]
+game = "26.3"
+sunrise = "bdad86d2d398ff9293002d2dc08702822aea7265"
