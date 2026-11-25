@@ -336,11 +336,11 @@ impl Hooks for InvMove {
                 let key = |rt: &mut Runtime, mapping: &str| {
                     Runtime::key_allowed(host, mapping) && rt.pressed(host, mapping)
                 };
-                let forward = key(&mut *rt, "key.forward");
-                let backward = key(&mut *rt, "key.back");
-                let left = key(&mut *rt, "key.left");
-                let right = key(&mut *rt, "key.right");
-                let jump = key(&mut *rt, "key.jump");
+                let forward = key(&mut rt, "key.forward");
+                let backward = key(&mut rt, "key.back");
+                let left = key(&mut rt, "key.left");
+                let right = key(&mut rt, "key.right");
+                let jump = key(&mut rt, "key.jump");
                 let sneak = sneak_when_allowed(opts.sneak, inputs, &mut rt.sneak);
                 let sprint = if host.input_options().toggle_sprint {
                     if sprint_phys && !rt.sprint_prev_down {
