@@ -1,12 +1,14 @@
-//! InvMove's settings (Options > Mods) and its config file `config/invmove.toml`, which holds
-//! what a flat settings page cannot: the extra keys it may update and the per-screen choices
-//! for screens it has not been told about.
+//! InvMove's settings (shown on its own config screen) and its config file
+//! `config/invmove.toml`, which holds what a setting cannot: the extra keys it may update and the
+//! per-screen choices for screens it has not been told about.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashMap};
 
-use mod_api::{ClientHost, Config, ConfigKind, Registrar, SettingSpec};
+use mod_api::{
+    ClientHost, ConfigKind, ConfigSpec, Registrar, SettingKey, SettingKind, SettingSpec,
+};
 
-use crate::logic::{KNOWN_SCREENS, PauseScreenMode, SneakConfig, SneakMode};
+use crate::logic::{KNOWN_SCREENS, PauseScreenMode, ScreenKey, SneakConfig, SneakMode};
 
 pub const MOD_ID: &str = "invmove";
 pub const CONFIG_FILE_NAME: &str = "invmove.toml";
@@ -62,7 +64,7 @@ impl FileConfig {
         out.push_str("[keys]\n");
         out.push_str(
             "# Vanilla key mappings besides the seven movement keys that InvMove also updates\n\
-             # inside screens, for example \"key.attack\". The movement keys are Options > Mods.\n",
+             # inside screens, for example \"key.attack\". The movement keys are on the InvMove config screen.\n",
         );
         let extra: Vec<String> = self
             .extra_keys
@@ -241,9 +243,83 @@ fn parse_string_array(value: &str) -> Vec<String> {
     items
 }
 
-pub fn register_mod_configs(configs: &mut Vec<Config>) {
-    let default_toml = FileConfig::default().to_toml();
-    configs.push(Config::new(MOD_ID, ConfigKind::Client, &default_toml).file(CONFIG_FILE_NAME));
+/// The declaration of `config/invmove.toml`, read once on the window and reloaded when saved.
+pub fn config_spec() -> ConfigSpec {
+    ConfigSpec::new(ConfigKind::Client, FileConfig::default().to_toml()).file(CONFIG_FILE_NAME)
+}
+
+/// Writes the file under the game's `config/` folder; a failed write is dropped, as the next
+/// change writes it again.
+pub fn write_config_file(host: &dyn ClientHost, text: &str) {
+    let path = host.config_dir().join(CONFIG_FILE_NAME);
+    if let Some(parent) = path.parent() {
+        let _ = std::fs::create_dir_all(parent);
+    }
+    let _ = std::fs::write(path, text);
+}
+
+/// What the config screen shows of a registered setting.
+#[derive(Clone, Debug)]
+pub struct Meta {
+    /// Translation key of the label.
+    pub label: String,
+    /// Translation key of the tooltip, if any.
+    pub tooltip: Option<String>,
+    /// Translation keys of a choice's options; `None` for a toggle.
+    pub options: Option<Vec<String>>,
+}
+
+/// The owner-bound handles of every setting, issued at registration.
+#[derive(Clone, Debug)]
+pub struct Keys {
+    pub enable: SettingKey,
+    pub movement: SettingKey,
+    pub sneak: SettingKey,
+    pub sneak_disallowed: SettingKey,
+    pub sneak_flying: SettingKey,
+    pub dismount: SettingKey,
+    pub text_field: SettingKey,
+    pub recipe_book: SettingKey,
+    pub unrecognized_movement: SettingKey,
+    pub background: SettingKey,
+    pub hide_on_pause: SettingKey,
+    pub unrecognized_background: SettingKey,
+    /// The allowed-key switches, by vanilla mapping, in `MOVEMENT_KEYS` order.
+    pub allowed: Vec<(&'static str, SettingKey)>,
+    pub screen_movement: Vec<(ScreenKey, SettingKey)>,
+    pub screen_background: Vec<(ScreenKey, SettingKey)>,
+    pub meta: HashMap<SettingKey, Meta>,
+}
+
+impl Keys {
+    /// The switch of a movement key by its vanilla mapping name.
+    pub fn allowed_key(&self, mapping: &str) -> Option<SettingKey> {
+        self.allowed
+            .iter()
+            .find(|(name, _)| *name == mapping)
+            .map(|(_, key)| *key)
+    }
+
+    pub fn screen_movement_key(&self, screen: &str) -> Option<SettingKey> {
+        self.screen_movement
+            .iter()
+            .find(|(name, _)| *name == screen)
+            .map(|(_, key)| *key)
+    }
+
+    pub fn screen_background_key(&self, screen: &str) -> Option<SettingKey> {
+        self.screen_background
+            .iter()
+            .find(|(name, _)| *name == screen)
+            .map(|(_, key)| *key)
+    }
+
+    /// Whether the player marked the movement key as one InvMove may read.
+    pub fn key_allowed(&self, host: &dyn ClientHost, mapping: &str) -> bool {
+        self.allowed_key(mapping)
+            .and_then(|key| host.setting_bool(key).ok())
+            .unwrap_or(true)
+    }
 }
 
 /// The settings as read this tick.
@@ -261,24 +337,24 @@ pub struct Options {
 }
 
 impl Options {
-    pub fn read(host: &dyn ClientHost) -> Self {
-        let toggle = |key: &str, default: bool| host.setting_bool(key).unwrap_or(default);
-        let choice = |key: &str, default: u32| host.setting_choice(key).unwrap_or(default);
+    pub fn read(host: &dyn ClientHost, keys: &Keys) -> Self {
+        let toggle = |key: SettingKey, default: bool| host.setting_bool(key).unwrap_or(default);
+        let choice = |key: SettingKey, default: u32| host.setting_choice(key).unwrap_or(default);
         Self {
-            enabled: toggle(GENERAL_ENABLE, true),
-            movement: toggle(MOVEMENT_ENABLE, true),
+            enabled: toggle(keys.enable, true),
+            movement: toggle(keys.movement, true),
             sneak: SneakConfig {
-                sneak: SneakMode::from_choice(choice(MOVEMENT_SNEAK, 1)),
-                flying: SneakMode::from_choice(choice(MOVEMENT_SNEAK_FLYING, 2)),
-                disallowed: SneakMode::from_choice(choice(MOVEMENT_SNEAK_DISALLOWED, 1)),
-                dismount: toggle(MOVEMENT_DISMOUNT, false),
+                sneak: SneakMode::from_choice(choice(keys.sneak, 1)),
+                flying: SneakMode::from_choice(choice(keys.sneak_flying, 2)),
+                disallowed: SneakMode::from_choice(choice(keys.sneak_disallowed, 1)),
+                dismount: toggle(keys.dismount, false),
             },
-            text_field_disables: toggle(MOVEMENT_TEXT_FIELD, true),
-            recipe_book: toggle(MOVEMENT_RECIPE_BOOK, true),
-            unrecognized_movement: toggle(MOVEMENT_UNRECOGNIZED, true),
-            background: toggle(BACKGROUND_ENABLE, true),
-            hide_on_pause: PauseScreenMode::from_choice(choice(BACKGROUND_HIDE_ON_PAUSE, 0)),
-            unrecognized_background: toggle(BACKGROUND_UNRECOGNIZED, true),
+            text_field_disables: toggle(keys.text_field, true),
+            recipe_book: toggle(keys.recipe_book, true),
+            unrecognized_movement: toggle(keys.unrecognized_movement, true),
+            background: toggle(keys.background, true),
+            hide_on_pause: PauseScreenMode::from_choice(choice(keys.hide_on_pause, 0)),
+            unrecognized_background: toggle(keys.unrecognized_background, true),
         }
     }
 }
@@ -290,8 +366,14 @@ const SNEAK_OPTIONS: [&str; 4] = [
     "config.invmove.sneak.maintain_while_pressed",
 ];
 
-/// Registers every setting on Options > Mods > InvMove.
-pub fn register_settings(r: &mut dyn Registrar) {
+pub const PAUSE_OPTIONS: [&str; 3] = [
+    "config.invmove.pause.show",
+    "config.invmove.pause.show_sp",
+    "config.invmove.pause.allow_hide",
+];
+
+/// Every setting, in registration order.
+fn setting_specs() -> Vec<SettingSpec> {
     let mut specs = vec![
         SettingSpec::toggle(GENERAL_ENABLE, "config.invmove.general.enable", true)
             .tooltip("tooltip.config.invmove.general.enable"),
@@ -352,11 +434,7 @@ pub fn register_settings(r: &mut dyn Registrar) {
         SettingSpec::choice(
             BACKGROUND_HIDE_ON_PAUSE,
             "config.invmove.background.hideOnPause",
-            [
-                "config.invmove.pause.show",
-                "config.invmove.pause.show_sp",
-                "config.invmove.pause.allow_hide",
-            ],
+            PAUSE_OPTIONS,
             0,
         )
         .tooltip("tooltip.config.invmove.background.hideOnPause"),
@@ -383,9 +461,56 @@ pub fn register_settings(r: &mut dyn Registrar) {
             true,
         ));
     }
-    for spec in specs {
-        let _ = r.register_setting(spec);
+    specs
+}
+
+/// Registers every setting and returns the handles the mod reads and writes them by; `None` when
+/// the game refused one.
+pub fn register_settings(r: &mut dyn Registrar) -> Option<Keys> {
+    let mut issued: HashMap<String, SettingKey> = HashMap::new();
+    let mut meta = HashMap::new();
+    for spec in setting_specs() {
+        let name = spec.key.clone();
+        let described = Meta {
+            label: spec.label.clone(),
+            tooltip: spec.tooltip.clone(),
+            options: match &spec.kind {
+                SettingKind::Choice { options, .. } => Some(options.clone()),
+                _ => None,
+            },
+        };
+        let key = r.register_setting(spec).ok()?;
+        issued.insert(name, key);
+        meta.insert(key, described);
     }
+    let get = |name: &str| issued.get(name).copied();
+    Some(Keys {
+        enable: get(GENERAL_ENABLE)?,
+        movement: get(MOVEMENT_ENABLE)?,
+        sneak: get(MOVEMENT_SNEAK)?,
+        sneak_disallowed: get(MOVEMENT_SNEAK_DISALLOWED)?,
+        sneak_flying: get(MOVEMENT_SNEAK_FLYING)?,
+        dismount: get(MOVEMENT_DISMOUNT)?,
+        text_field: get(MOVEMENT_TEXT_FIELD)?,
+        recipe_book: get(MOVEMENT_RECIPE_BOOK)?,
+        unrecognized_movement: get(MOVEMENT_UNRECOGNIZED)?,
+        background: get(BACKGROUND_ENABLE)?,
+        hide_on_pause: get(BACKGROUND_HIDE_ON_PAUSE)?,
+        unrecognized_background: get(BACKGROUND_UNRECOGNIZED)?,
+        allowed: MOVEMENT_KEYS
+            .iter()
+            .map(|(mapping, key)| Some((*mapping, get(key)?)))
+            .collect::<Option<Vec<_>>>()?,
+        screen_movement: KNOWN_SCREENS
+            .iter()
+            .map(|(screen, _)| Some((*screen, get(&screen_movement_key(screen))?)))
+            .collect::<Option<Vec<_>>>()?,
+        screen_background: KNOWN_SCREENS
+            .iter()
+            .map(|(screen, _)| Some((*screen, get(&screen_background_key(screen))?)))
+            .collect::<Option<Vec<_>>>()?,
+        meta,
+    })
 }
 
 #[cfg(test)]
@@ -430,32 +555,16 @@ mod tests {
     }
 
     #[test]
-    fn the_config_file_is_owned_by_the_mod() {
-        let mut configs = Vec::new();
-        register_mod_configs(&mut configs);
-        assert_eq!(configs.len(), 1);
-        assert_eq!(configs[0].mod_id, MOD_ID);
-        assert_eq!(configs[0].kind, ConfigKind::Client);
-        assert!(mod_api::ConfigPath::new(&configs[0].file).is_ok_and(|p| p.owned_by(MOD_ID)));
-    }
-
-    #[test]
-    fn setting_keys_are_valid() {
-        let mut keys = vec![
-            GENERAL_ENABLE.to_owned(),
-            MOVEMENT_SNEAK.to_owned(),
-            BACKGROUND_HIDE_ON_PAUSE.to_owned(),
-        ];
-        for (screen, _) in KNOWN_SCREENS {
-            keys.push(screen_movement_key(screen));
-            keys.push(screen_background_key(screen));
+    fn setting_keys_are_valid_and_unique() {
+        let specs = setting_specs();
+        let mut seen = std::collections::HashSet::new();
+        for spec in &specs {
+            assert!(spec.check().is_ok(), "{}", spec.key);
+            assert!(seen.insert(spec.key.clone()), "{}", spec.key);
         }
-        for (_, key) in MOVEMENT_KEYS {
-            keys.push(key.to_owned());
-        }
-        for key in keys {
-            let spec = SettingSpec::toggle(key.clone(), "label", true);
-            assert!(spec.check().is_ok(), "{key}");
-        }
+        assert_eq!(
+            specs.len(),
+            12 + MOVEMENT_KEYS.len() + 2 * KNOWN_SCREENS.len()
+        );
     }
 }
