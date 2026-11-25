@@ -26,3 +26,15 @@ InvMove lets you move with your normal movement keys while a screen is open, so 
 A port of InvMove by PieKing1215, under the LGPL-3.0-only licence.
 """
 categories = ["utility", "game-mechanics"]
+
+[[screenshots]]
+path = "page/inventory.png"
+caption = "The player keeps walking, jumping and sneaking with the inventory open."
+
+[[screenshots]]
+path = "page/chest.png"
+caption = "The same inside a chest."
+
+[[screenshots]]
+path = "page/settings.png"
+caption = "Per-screen movement and sneak settings under Options > Mods."
