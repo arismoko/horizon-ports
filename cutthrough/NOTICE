@@ -1,0 +1,12 @@
+Cut Through for Sunrise 26.3 (version 0.5.0)
+
+A port of Cut Through (26.3.0) by Fuzs.
+Original source: https://github.com/Fuzss/cut-through
+Original licence: MPL-2.0 (the original's assets are All Rights Reserved)
+
+Ported to Sunrise by arismoko: the targeting rules are implemented in Rust on Sunrise's
+typed mod API (no Java code is included). This port is distributed under the same
+licence as the original (MPL-2.0); the licence text is in LICENSE.
+
+None of the original project's All-Rights-Reserved assets are included: the mod icon is
+original work for this port, and the language file is written for this port.

@@ -49,6 +49,7 @@ Releases are tagged `<folder>/v<version>`; the shared Sunrise release workflow b
 | [accelerateddecay](accelerateddecay/) | Leaves decay quickly after a tree is cut. | [Accelerated Decay](https://github.com/ErrorMikey/AcceleratedDecay) by ErrorMikey | GPL-3.0-only | Being ported |
 | [armorstatues](armorstatues/) | Sneak and use an armor stand with an empty hand to pose, style and move it. | [Armor Statues](https://github.com/Fuzss/armorstatues) by Fuzs | MPL-2.0 | Being ported |
 | [easymagic](easymagic/) | Enchanting tables keep their items and can re-roll. | [Easy Magic](https://github.com/Fuzss/easymagic) by Fuzs | MPL-2.0 | Being ported |
+| [cutthrough](cutthrough/) | Attacks pass through tall grass and flowers to hit mobs behind them. | [Cut Through](https://github.com/Fuzss/cut-through) by Fuzs | MPL-2.0 | Being ported |
 
 Some arismoko ports live in their own repositories, such as the YUNG's and Macaw's ports, Iron Furnaces and Jade; their pages on the registry link to them.
 

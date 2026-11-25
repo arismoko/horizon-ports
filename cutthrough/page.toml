@@ -1,0 +1,18 @@
+summary = "Swing through tall grass and other blocks without a collision shape to hit mobs behind them, without breaking the plant."
+description = """
+Cut Through lets attacks and interactions pass through blocks that have no collision shape, so you can hit a mob standing behind tall grass or flowers without destroying them:
+
+- **Attacks and use pass through plants**: blocks without a collision shape (tall grass, flowers, ferns, vines, torches and the like) no longer stop the crosshair. A mob standing behind one is targeted instead, so you can swing at it without breaking the plant. Solid blocks still block the pick, and reach and line of sight follow vanilla's rules (the server checks are unchanged).
+- **Target Alive Only** (default on): intended to ignore mobs that already died and only remain for their death animation, and to suspend block mining for 5 ticks after hitting a mob, so a held attack does not break the plant once the mob is gone.
+- Client-side only: works in single player and on any multiplayer server.
+
+Differences from the original:
+
+- Targeting alive entities only cannot be enforced: the mod API reads liveness only on the server and for the local player, so a mob in its death animation can still be targeted and absorb hits. **Target Alive Only** therefore only controls the mining delay below (gap: TBD-alive-targets).
+- After you attack a mob, vanilla's block-mining delay is not reset by this mod; instead held attacks on a block are cancelled for 5 ticks after an entity attack, which has the same effect but also suppresses a swing (gap: TBD-destroy-delay).
+- Collision shapes along the pick ray are read with an empty collision context, so blocks whose shape depends on the player (such as powder snow or scaffolding) can differ from the original's `ClipContext` (gap: TBD-collision-context).
+- Settings are one toggle in **Options → Mods → Cut Through** and `config/cutthrough-client.toml`; the original's Puzzles Lib config screen and `cutthrough-client.toml` layout are not reproduced. The original ships no translations, so only `en_us` is provided.
+
+A port of Cut Through by Fuzs, under the MPL-2.0 licence.
+"""
+categories = ["utility"]
