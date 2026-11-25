@@ -46,5 +46,5 @@ Differences from the original:
 categories = ["storage", "equipment"]
 
 [[screenshots]]
-file = "page/world.png"
-title = "Sophisticated backpacks, chests and barrels in game"
+path = "page/world.png"
+caption = "Sophisticated backpacks, chests and barrels in game"

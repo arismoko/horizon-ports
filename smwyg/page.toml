@@ -12,5 +12,5 @@ A port of Show Me What You Got by Apace, under the MIT licence.
 categories = ["social", "utility"]
 
 [[screenshots]]
-file = "page/chat.png"
-title = "Linked item in chat with hover tooltip and item icon"
+path = "page/chat.png"
+caption = "Linked item in chat with hover tooltip and item icon"

@@ -20,5 +20,5 @@ A port of Sooty Chimneys by mortuusars, under the MIT licence.
 categories = ["decoration"]
 
 [[screenshots]]
-file = "page/world.png"
-title = "Iron, copper and brick chimneys emitting smoke"
+path = "page/world.png"
+caption = "Iron, copper and brick chimneys emitting smoke"
