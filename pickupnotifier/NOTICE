@@ -8,6 +8,7 @@ Ported to Sunrise by arismoko: the pickup tracking, HUD layout, and configuratio
 implemented in Rust on Sunrise's typed mod API (no Java code is included). This port is
 distributed under the same licence as the original (MPL-2.0); the licence text is in LICENSE.
 
-LICENSE is the original project's MPL-2.0 licence. `icon.png` is taken from
-`Fuzss/pickupnotifier` (`assets/logo.png`, MPL-2.0). The experience orb HUD graphics are
-procedurally generated original work for this port.
+LICENSE is the original project's MPL-2.0 licence. None of the original project's
+All-Rights-Reserved image assets (LICENSE-ASSETS.md) are included: `icon.png`,
+`assets/pickupnotifier/lang/en_us.json`, and the experience orb HUD graphics are
+original work for this port.

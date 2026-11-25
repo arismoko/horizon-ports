@@ -9,7 +9,8 @@ mod hud;
 mod payloads;
 
 use crate::config::{
-    CLIENT_CONFIG_FILE, ClientConfig, MOD_ID, ServerConfig, register_mod_configs, register_settings,
+    CLIENT_CONFIG_FILE, ClientConfig, CombineEntries, MOD_ID, ServerConfig, register_mod_configs,
+    register_settings,
 };
 use crate::entries::{
     ClientFallbackTracker, DisplayEntry, EntryCollector, ItemPickup, count_in_local_inventory,
@@ -27,10 +28,68 @@ use mod_api::{
     PlayerPickupArrowEvent, RegisterConfigsEvent, RegisterGuiLayersEvent, Registrar,
     RegistrationContext, RenderFramePreEvent, ServerHost, SettingChangedEvent, Text, TriState,
 };
+use std::collections::VecDeque;
 use std::sync::{LazyLock, Mutex, MutexGuard, PoisonError, RwLock};
 
 const HUD_LAYER_ID: &str = "pickupnotifier:pick_up_entries";
 const VANILLA_STATUS_EFFECTS_LAYER: &str = "minecraft:effects";
+
+/// Upper bound on queued server item payloads.
+///
+/// The original HUD retains at most `(gui_height / display_scale) * max_height / 18 - 1`
+/// entries (~22 at default 1080p settings, ~89 at 4K `max_height = 1.0`), so 128 covers
+/// realistic display limits with headroom while bounding memory under server floods.
+const MAX_PENDING_ITEMS: usize = 128;
+
+/// Upper bound on queued server XP payloads when `combine_entries == Never`.
+/// When combining is enabled, all queued XP payloads coalesce into a single entry.
+const MAX_PENDING_XP: usize = 64;
+
+/// Maximum number of queued item or XP payloads drained per tick/frame so a burst
+/// cannot stall the client thread.
+const MAX_DRAIN_PER_TICK: usize = 32;
+
+struct PendingQueue<T> {
+    entries: VecDeque<T>,
+    cap: usize,
+}
+
+impl<T> PendingQueue<T> {
+    fn new(cap: usize) -> Self {
+        Self {
+            entries: VecDeque::new(),
+            cap: cap.max(1),
+        }
+    }
+
+    fn clear(&mut self) {
+        self.entries.clear();
+    }
+
+    /// Coalesces `incoming` into an existing entry matching `matches` using `merge`,
+    /// or pushes to the back (evicting the oldest entry if already at capacity).
+    fn push_coalescing(
+        &mut self,
+        incoming: T,
+        mut matches: impl FnMut(&T, &T) -> bool,
+        merge: impl FnOnce(&mut T, T),
+    ) {
+        if let Some(existing) = self.entries.iter_mut().find(|e| matches(e, &incoming)) {
+            merge(existing, incoming);
+            return;
+        }
+        while self.entries.len() >= self.cap {
+            self.entries.pop_front();
+        }
+        self.entries.push_back(incoming);
+    }
+
+    /// Drains at most `max_count` entries from the front in FIFO order.
+    fn drain_up_to(&mut self, max_count: usize) -> Vec<T> {
+        let count = self.entries.len().min(max_count);
+        self.entries.drain(..count).collect()
+    }
+}
 
 struct ClientState {
     config: ClientConfig,
@@ -38,8 +97,8 @@ struct ClientState {
     collector: EntryCollector,
     fallback: ClientFallbackTracker,
     server_payloads_seen: bool,
-    pending_items: Vec<TakeItemPayload>,
-    pending_xp: Vec<TakeXpPayload>,
+    pending_items: PendingQueue<TakeItemPayload>,
+    pending_xp: PendingQueue<TakeXpPayload>,
     partial_tick: f32,
     xp_texture_ready: bool,
 }
@@ -52,8 +111,8 @@ impl Default for ClientState {
             collector: EntryCollector::default(),
             fallback: ClientFallbackTracker::default(),
             server_payloads_seen: false,
-            pending_items: Vec::new(),
-            pending_xp: Vec::new(),
+            pending_items: PendingQueue::new(MAX_PENDING_ITEMS),
+            pending_xp: PendingQueue::new(MAX_PENDING_XP),
             partial_tick: 0.0,
             xp_texture_ready: false,
         }
@@ -193,11 +252,13 @@ fn add_xp_entry(state: &mut ClientState, host: &dyn ClientHost, value: u32, coun
 }
 
 fn drain_pending_payloads(state: &mut ClientState, host: &dyn ClientHost) {
-    let items = std::mem::take(&mut state.pending_items);
-    let xps = std::mem::take(&mut state.pending_xp);
     if state.config.general.client_only {
+        state.pending_items.clear();
+        state.pending_xp.clear();
         return;
     }
+    let items = state.pending_items.drain_up_to(MAX_DRAIN_PER_TICK);
+    let xps = state.pending_xp.drain_up_to(MAX_DRAIN_PER_TICK);
     for item in items {
         add_item_entry(state, host, item.stack, item.amount, item.is_arrow);
     }
@@ -228,16 +289,33 @@ impl Hooks for PickUpNotifier {
             net.play_to_client_typed::<TakeItemPayload>(id_take_item(), |payload, _| {
                 let mut state = lock_client();
                 state.server_payloads_seen = true;
-                if !state.config.general.client_only {
-                    state.pending_items.push(payload);
+                if !state.config.general.client_only && payload.amount > 0 {
+                    state.pending_items.push_coalescing(
+                        payload,
+                        |existing, incoming| {
+                            existing.is_arrow == incoming.is_arrow
+                                && existing.stack.is_stackable_with(&incoming.stack)
+                        },
+                        |existing, incoming| {
+                            existing.amount = existing.amount.saturating_add(incoming.amount);
+                        },
+                    );
                 }
                 Ok(())
             });
         let take_xp = net.play_to_client_typed::<TakeXpPayload>(id_take_xp(), |payload, _| {
             let mut state = lock_client();
             state.server_payloads_seen = true;
-            if !state.config.general.client_only {
-                state.pending_xp.push(payload);
+            if !state.config.general.client_only && (payload.value > 0 || payload.count > 0) {
+                let combine_xp = state.config.behavior.combine_entries != CombineEntries::Never;
+                state.pending_xp.push_coalescing(
+                    payload,
+                    |_, _| combine_xp,
+                    |existing, incoming| {
+                        existing.value = existing.value.saturating_add(incoming.value);
+                        existing.count = existing.count.saturating_add(incoming.count);
+                    },
+                );
             }
             Ok(())
         });
@@ -496,7 +574,6 @@ impl Hooks for PickUpNotifier {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::config::CombineEntries;
 
     #[test]
     fn default_config_uses_exclude_named_combining() {
@@ -504,6 +581,97 @@ mod tests {
         assert_eq!(
             state.config.behavior.combine_entries,
             CombineEntries::ExcludeNamed
+        );
+    }
+
+    #[test]
+    fn pending_item_queue_caps_coalesces_and_drains_per_tick() {
+        let mut queue: PendingQueue<(u32, u32)> = PendingQueue::new(MAX_PENDING_ITEMS);
+
+        // Coalesce repeated pickups of the same item, saturating on overflow.
+        queue.push_coalescing(
+            (1, u32::MAX - 5),
+            |a, b| a.0 == b.0,
+            |a, b| a.1 = a.1.saturating_add(b.1),
+        );
+        queue.push_coalescing(
+            (1, 20),
+            |a, b| a.0 == b.0,
+            |a, b| a.1 = a.1.saturating_add(b.1),
+        );
+        assert_eq!(queue.entries.len(), 1);
+        assert_eq!(queue.entries[0], (1, u32::MAX));
+
+        // Flood with distinct items well past MAX_PENDING_ITEMS.
+        for id in 2..500u32 {
+            queue.push_coalescing(
+                (id, 1),
+                |a, b| a.0 == b.0,
+                |a, b| a.1 = a.1.saturating_add(b.1),
+            );
+        }
+        assert_eq!(queue.entries.len(), MAX_PENDING_ITEMS);
+        // Oldest entries were evicted; newest entries are retained in order.
+        let expected_first_id = 500 - MAX_PENDING_ITEMS as u32;
+        assert_eq!(queue.entries.front().copied(), Some((expected_first_id, 1)));
+        assert_eq!(queue.entries.back().copied(), Some((499, 1)));
+
+        // Draining is capped at MAX_DRAIN_PER_TICK per tick in FIFO order.
+        let batch1 = queue.drain_up_to(MAX_DRAIN_PER_TICK);
+        assert_eq!(batch1.len(), MAX_DRAIN_PER_TICK);
+        assert_eq!(batch1[0], (expected_first_id, 1));
+        assert_eq!(queue.entries.len(), MAX_PENDING_ITEMS - MAX_DRAIN_PER_TICK);
+    }
+
+    #[test]
+    fn pending_xp_queue_coalesces_and_bounds_when_uncombined() {
+        let mut combined: PendingQueue<TakeXpPayload> = PendingQueue::new(MAX_PENDING_XP);
+        for _ in 0..500 {
+            combined.push_coalescing(
+                TakeXpPayload {
+                    value: 10,
+                    count: 1,
+                },
+                |_, _| true,
+                |a, b| {
+                    a.value = a.value.saturating_add(b.value);
+                    a.count = a.count.saturating_add(b.count);
+                },
+            );
+        }
+        assert_eq!(combined.entries.len(), 1);
+        assert_eq!(
+            combined.entries[0],
+            TakeXpPayload {
+                value: 5_000,
+                count: 500
+            }
+        );
+
+        let mut uncombined: PendingQueue<TakeXpPayload> = PendingQueue::new(MAX_PENDING_XP);
+        for i in 1..=200u32 {
+            uncombined.push_coalescing(
+                TakeXpPayload { value: i, count: 1 },
+                |_, _| false,
+                |a, b| {
+                    a.value = a.value.saturating_add(b.value);
+                    a.count = a.count.saturating_add(b.count);
+                },
+            );
+        }
+        assert_eq!(uncombined.entries.len(), MAX_PENDING_XP);
+        assert_eq!(
+            uncombined.entries.front(),
+            Some(&TakeXpPayload {
+                value: 201 - MAX_PENDING_XP as u32,
+                count: 1
+            })
+        );
+        let drained = uncombined.drain_up_to(MAX_DRAIN_PER_TICK);
+        assert_eq!(drained.len(), MAX_DRAIN_PER_TICK);
+        assert_eq!(
+            uncombined.entries.len(),
+            MAX_PENDING_XP - MAX_DRAIN_PER_TICK
         );
     }
 }
