@@ -37,3 +37,7 @@ caption = "Swap shoulder moves the camera to the other side."
 [[screenshots]]
 path = "page/settings.png"
 caption = "Camera offset options under Options > Mods."
+
+[[screenshots]]
+path = "page/offset-right.png"
+caption = "Holding the adjust-right key moves the camera further along the shoulder."
