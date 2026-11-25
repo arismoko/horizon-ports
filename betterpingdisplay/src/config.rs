@@ -1,7 +1,9 @@
 //! Configuration model, TOML persistence, Options > Mods settings, and ping text formatting.
 
 use crate::color::ALPHA_MASK;
-use mod_api::{ClientHost, Config, ConfigKind, Registrar, SettingSpec};
+use mod_api::{
+    ClientHost, ConfigKind, ConfigSpec, Registrar, SettingKey, SettingSpec, SettingValue,
+};
 
 pub const MOD_ID: &str = "betterpingdisplay";
 pub const CONFIG_FILE_NAME: &str = "betterpingdisplay.toml";
@@ -122,63 +124,42 @@ impl BetterPingDisplayConfig {
     }
 
     /// Mirror this config into Sunrise's Options > Mods settings store.
-    pub fn write_to_host_settings(&self, host: &dyn ClientHost) {
-        host.set_setting(
-            MOD_ID,
-            SET_AUTO_COLOR,
-            if self.auto_color_ping_text {
-                "true"
-            } else {
-                "false"
-            },
+    pub fn write_to_host_settings(&self, host: &mut dyn ClientHost, keys: SettingKeys) {
+        let _ = host.set_setting(
+            keys.auto_color,
+            SettingValue::Toggle(self.auto_color_ping_text),
         );
-        host.set_setting(
-            MOD_ID,
-            SET_RENDER_PING_BARS,
-            if self.render_ping_bars {
-                "true"
-            } else {
-                "false"
-            },
+        let _ = host.set_setting(
+            keys.render_ping_bars,
+            SettingValue::Toggle(self.render_ping_bars),
         );
-        host.set_setting(
-            MOD_ID,
-            SET_PING_TEXT_COLOR,
-            &format!("#{:06x}", self.ping_text_color & 0x00FF_FFFF),
+        let _ = host.set_setting(
+            keys.ping_text_color,
+            SettingValue::Color(self.ping_text_color & 0x00FF_FFFF),
         );
     }
 
     /// Apply one changed Options > Mods setting, returning `true` if the value changed.
-    pub fn apply_single_setting(&mut self, host: &dyn ClientHost, key: &str) -> bool {
-        match key {
-            SET_AUTO_COLOR => {
-                if let Some(v) = host.setting_bool(SET_AUTO_COLOR)
-                    && v != self.auto_color_ping_text
-                {
-                    self.auto_color_ping_text = v;
+    pub fn apply_single_setting(&mut self, key: &str, value: SettingValue) -> bool {
+        match (key, value) {
+            (SET_AUTO_COLOR, SettingValue::Toggle(v)) if v != self.auto_color_ping_text => {
+                self.auto_color_ping_text = v;
+                true
+            }
+            (SET_RENDER_PING_BARS, SettingValue::Toggle(v)) if v != self.render_ping_bars => {
+                self.render_ping_bars = v;
+                true
+            }
+            (SET_PING_TEXT_COLOR, SettingValue::Color(v)) => {
+                let masked = v & 0x00FF_FFFF;
+                if masked != self.ping_text_color {
+                    self.ping_text_color = masked;
                     return true;
                 }
+                false
             }
-            SET_RENDER_PING_BARS => {
-                if let Some(v) = host.setting_bool(SET_RENDER_PING_BARS)
-                    && v != self.render_ping_bars
-                {
-                    self.render_ping_bars = v;
-                    return true;
-                }
-            }
-            SET_PING_TEXT_COLOR => {
-                if let Some(v) = host.setting_color(SET_PING_TEXT_COLOR) {
-                    let masked = v & 0x00FF_FFFF;
-                    if masked != self.ping_text_color {
-                        self.ping_text_color = masked;
-                        return true;
-                    }
-                }
-            }
-            _ => {}
+            _ => false,
         }
-        false
     }
 }
 
@@ -218,37 +199,61 @@ pub fn format_ping(format_str: &str, latency: i32) -> String {
     out
 }
 
-/// Register the client config file `config/betterpingdisplay.toml`.
-pub fn register_mod_configs(configs: &mut Vec<Config>) {
-    let default_toml = BetterPingDisplayConfig::default().to_toml();
-    configs.push(Config::new(MOD_ID, ConfigKind::Client, &default_toml).file(CONFIG_FILE_NAME));
+/// The client config file `config/betterpingdisplay.toml` with its default text.
+pub fn config_spec() -> ConfigSpec {
+    ConfigSpec::new(
+        ConfigKind::Client,
+        BetterPingDisplayConfig::default().to_toml(),
+    )
+    .file(CONFIG_FILE_NAME)
+}
+
+/// The owner-bound handles of this mod's Options > Mods settings.
+#[derive(Clone, Copy, Debug)]
+pub struct SettingKeys {
+    pub auto_color: SettingKey,
+    pub render_ping_bars: SettingKey,
+    pub ping_text_color: SettingKey,
 }
 
 /// Register the in-game settings on Sunrise's Options > Mods > Better Ping Display page.
-pub fn register_settings(r: &mut dyn Registrar) {
-    let specs = [
-        SettingSpec::toggle(
-            SET_AUTO_COLOR,
-            "betterpingdisplay.settings.autoColorPingText",
-            true,
+/// Returns `None` if the game refused one of them.
+pub fn register_settings(r: &mut dyn Registrar) -> Option<SettingKeys> {
+    let auto_color = r
+        .register_setting(
+            SettingSpec::toggle(
+                SET_AUTO_COLOR,
+                "betterpingdisplay.settings.autoColorPingText",
+                true,
+            )
+            .tooltip("betterpingdisplay.settings.autoColorPingText.description"),
         )
-        .tooltip("betterpingdisplay.settings.autoColorPingText.description"),
-        SettingSpec::color(
-            SET_PING_TEXT_COLOR,
-            "betterpingdisplay.settings.pingTextColor",
-            DEFAULT_PING_TEXT_COLOR,
+        .ok()?;
+    let ping_text_color = r
+        .register_setting(
+            SettingSpec::color(
+                SET_PING_TEXT_COLOR,
+                "betterpingdisplay.settings.pingTextColor",
+                DEFAULT_PING_TEXT_COLOR,
+            )
+            .tooltip("betterpingdisplay.settings.pingTextColor.description"),
         )
-        .tooltip("betterpingdisplay.settings.pingTextColor.description"),
-        SettingSpec::toggle(
-            SET_RENDER_PING_BARS,
-            "betterpingdisplay.settings.renderPingBars",
-            false,
+        .ok()?;
+    let render_ping_bars = r
+        .register_setting(
+            SettingSpec::toggle(
+                SET_RENDER_PING_BARS,
+                "betterpingdisplay.settings.renderPingBars",
+                false,
+            )
+            .tooltip("betterpingdisplay.settings.renderPingBars.description"),
         )
-        .tooltip("betterpingdisplay.settings.renderPingBars.description"),
-    ];
-    for spec in specs {
-        let _ = r.register_setting(spec);
-    }
+        .ok()?;
+    Some(SettingKeys {
+        auto_color,
+        render_ping_bars,
+        ping_text_color,
+    })
 }
 
 fn strip_toml_comment(line: &str) -> &str {
