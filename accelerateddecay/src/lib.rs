@@ -9,16 +9,18 @@
 //! attachment and breaks up to 5 queued leaves per tick, playing break sound and particles only
 //! for the first position taken in that tick.
 use std::collections::{HashMap, HashSet, VecDeque};
-use std::sync::{Mutex, RwLock};
+use std::sync::{Mutex, OnceLock, RwLock};
 
 use mod_api::{
     AttachmentCodec, AttachmentDescriptor, AttachmentError, AttachmentKey, BlockChangedEvent,
     Compound, GameEventContext, Holder, Hooks, HostSide, JavaString, LevelHost, LevelRef,
-    LevelTickPostEvent, LevelUnloadEvent, Registrar, RegistrationContext, ServerHost, Tag,
+    LevelTickPostEvent, LevelUnloadEvent, Registrar, RegistrationContext, ServerHost, Tag, TagKey,
 };
 
 /// Block tag identifying leaves eligible for accelerated decay.
 pub const LEAVES_TAG: &str = "minecraft:leaves";
+/// `LEAVES_TAG` resolved once at registration (`BlockState.is(BlockTags.LEAVES)`).
+static LEAVES: OnceLock<TagKey> = OnceLock::new();
 /// Distance value vanilla sets on a leaf with no supporting log within range.
 pub const DECAY_DISTANCE: &str = "7";
 /// Maximum queued leaf positions processed per level per server tick.
@@ -143,7 +145,10 @@ fn break_decaying_leaf(
     let Some(state) = level.block_state(&*host, pos) else {
         return false;
     };
-    if host.block_in_tag(state.block(), LEAVES_TAG) != Some(true) {
+    let is_leaves = LEAVES
+        .get()
+        .is_some_and(|&tag| state.block().is_in_tag(host.tags(), tag) == Some(true));
+    if !is_leaves {
         return false;
     }
 
@@ -219,6 +224,7 @@ impl Mod {
 #[mod_api::sunrise_mod]
 impl Hooks for Mod {
     fn register(&self, r: &mut dyn Registrar, _cx: &RegistrationContext) {
+        let _ = LEAVES.set(r.tag_key(LEAVES_TAG));
         match r.register_attachment_type(break_data_descriptor()) {
             Ok(key) => {
                 *self.break_data.write().unwrap_or_else(|e| e.into_inner()) = Some(key);
@@ -228,8 +234,11 @@ impl Hooks for Mod {
     }
 
     fn block_changed(&self, level: &dyn LevelHost, event: &mut BlockChangedEvent) {
-        let old_is_leaves = level.block_in_tag(event.old.block(), LEAVES_TAG) == Some(true);
-        let new_is_leaves = level.block_in_tag(event.new.block(), LEAVES_TAG) == Some(true);
+        let Some(&leaves) = LEAVES.get() else {
+            return;
+        };
+        let old_is_leaves = event.old.block().is_in_tag(level.tags(), leaves) == Some(true);
+        let new_is_leaves = event.new.block().is_in_tag(level.tags(), leaves) == Some(true);
         if !old_is_leaves || !new_is_leaves {
             return;
         }
