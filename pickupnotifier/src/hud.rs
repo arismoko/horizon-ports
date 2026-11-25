@@ -5,7 +5,8 @@ use crate::entries::{
     DisplayEntry, ELEMENT_HEIGHT, EntryKind, ITEM_STACK_POP_TIME, TEXT_ITEM_MARGIN,
     covered_area_alpha, shorten_value, vertical_move_offset, xp_orb_color, xp_texture_index,
 };
-use mod_api::{ClientHost, DrawContext, GuiDraw, HudMode, Identifier, PoseOp, Text};
+use mod_api::client::hud_layout::PoseOp;
+use mod_api::{ClientHost, DrawContext, GuiDraw, HudMode, Identifier, Text};
 
 pub const XP_ORB_TEXTURE_PATH: &str = "xp_orb_sheet";
 pub const XP_ORB_SPRITE_ID: &str = "pickupnotifier:xp_orb_sheet";
@@ -244,7 +245,7 @@ fn render_single_entry(
             EntryKind::Item {
                 stack, pop_time, ..
             } => {
-                // DrawContext::item_stack does not yet support partial alpha tinting (gap: TBD-gui-item-alpha).
+                // DrawContext::item_stack does not yet support partial alpha tinting (gap: sunrise-org/sunrise#5594).
                 if alpha > 0.05 {
                     let (draw_x, draw_y, item_size) = if *pop_time > 0 {
                         let pt = (*pop_time as f32 - partial_tick).max(0.0);

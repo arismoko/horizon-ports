@@ -23,9 +23,9 @@ use mod_api::{
     ClientDisconnectingEvent, ClientHost, ClientPacketEvent, ClientPlayerCloneEvent,
     ClientPlayerLoggingOutEvent, ClientTickPostEvent, ConfigContext, ConfigKind,
     ConfigLoadingEvent, ConfigPath, ConfigReloadingEvent, Flow, GuiLayerPlacement, Hooks, HostSide,
-    Identifier, ItemPickedUpPostEvent, ItemStack, PickupXpEvent, PlayerPickupArrowEvent,
-    RegisterConfigsEvent, RegisterGuiLayersEvent, Registrar, RegistrationContext,
-    RenderFramePreEvent, ServerHost, SettingChangedEvent, Text,
+    Identifier, ItemPickedUpEvent, ItemPickedUpPostEvent, ItemStack, PickupXpEvent,
+    PlayerPickupArrowEvent, RegisterConfigsEvent, RegisterGuiLayersEvent, Registrar,
+    RegistrationContext, RenderFramePreEvent, ServerHost, SettingChangedEvent, Text, TriState,
 };
 use std::sync::{LazyLock, Mutex, MutexGuard, PoisonError, RwLock};
 
@@ -259,7 +259,7 @@ impl Hooks for PickUpNotifier {
             ConfigKind::Server => {
                 set_server_config(ServerConfig::parse_toml(&event.config.text));
             }
-            ConfigKind::Common => {}
+            _ => {}
         }
     }
 
@@ -276,7 +276,7 @@ impl Hooks for PickUpNotifier {
             ConfigKind::Server => {
                 set_server_config(ServerConfig::parse_toml(&event.config.text));
             }
-            ConfigKind::Common => {}
+            _ => {}
         }
     }
 
@@ -396,6 +396,34 @@ impl Hooks for PickUpNotifier {
         state.fallback.reset();
     }
 
+    #[listener(priority = -100)]
+    fn item_picked_up(&self, host: &mut dyn ServerHost, event: &mut ItemPickedUpEvent<'_>) {
+        if !host.on(MOD_ID) || !server_config().backpack_integration {
+            return;
+        }
+        if *event.can_pickup != TriState::False {
+            return;
+        }
+        if event.item.pickup_delay(&*host) != Some(0) {
+            return;
+        }
+        let Some(Some(stack)) = event.item.with_stack(&*host, |view| view.project()) else {
+            return;
+        };
+        let amount = stack.count();
+        if amount == 0 {
+            return;
+        }
+        if let (Some(ch), Some(player)) = (channels(), host.player(event.player)) {
+            let payload = TakeItemPayload {
+                stack,
+                amount,
+                is_arrow: false,
+            };
+            let _ = ch.take_item.send(host, player, &payload);
+        }
+    }
+
     fn item_picked_up_post(
         &self,
         host: &mut dyn ServerHost,
@@ -450,8 +478,8 @@ impl Hooks for PickUpNotifier {
         if !host.on(MOD_ID) {
             return Flow::Continue;
         }
-        let value = (*event.value).max(0) as u32;
-        let count = *event.count;
+        let value = event.value.max(0) as u32;
+        let count = event.count;
         if value > 0
             && count > 0
             && let (Some(ch), Some(player)) = (channels(), host.player(event.player))

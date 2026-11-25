@@ -1,7 +1,8 @@
 //! Pick-up notification entries, combining/merging rules, expiry, layout math, and client-side diffing.
 
 use crate::config::{ClientConfig, CombineEntries};
-use mod_api::{ClientHost, ItemKey, ItemStack, JavaString, Tag, Text, TextStyle};
+use mod_api::text::TextStyle;
+use mod_api::{ClientHost, ItemKey, ItemStack, JavaString, Tag, Text};
 use std::collections::HashMap;
 
 pub const ELEMENT_HEIGHT: i32 = 18;

@@ -13,10 +13,9 @@ Client-side only: works in single player and on any multiplayer server.
 
 Differences from the original:
 
-- Item icons cannot be drawn with partial alpha transparency or non-uniform pop-in squash/stretch yet; text, backgrounds, count overlays, and experience orbs fade smoothly while item icons stay opaque until the entry fades out (gap: TBD-gui-item-alpha).
-- On multiplayer servers without Pick Up Notifier installed (or in `client_only` mode), client-side tracking uses inventory and experience diffing rather than decoded `take_item_entity` packet fields, so individual orb counts (`experience_value = false`), Mending-absorbed XP, and creative pick-ups are not detected there (gap: TBD-client-take-entity-packet).
-- `backpack_integration` is preserved in `config/pickupnotifier-server.toml` but cannot observe another mod's cancelled `item_picked_up` pre-hook across listener priorities yet (gap: TBD-hook-priority).
-- Experience orb HUD icons use a procedural 11-tier orb sprite sheet with vanilla's oscillating color tint rather than reading `textures/entity/experience/experience_orb.png` from resource packs (gap: TBD-entity-atlas-gui-blit).
+- Item icons cannot be drawn with partial alpha transparency or non-uniform pop-in squash/stretch yet; text, backgrounds, count overlays, and experience orbs fade smoothly while item icons stay opaque until the entry fades out (gap: sunrise-org/sunrise#5594).
+- On multiplayer servers without Pick Up Notifier installed (or in `client_only` mode), client-side tracking uses inventory and experience diffing rather than decoded `take_item_entity` packet fields, so individual orb counts (`experience_value = false`), Mending-absorbed XP, and creative pick-ups are not detected there (gap: sunrise-org/sunrise#5595).
+- Experience orb HUD icons use a procedural 11-tier orb sprite sheet with vanilla's oscillating color tint rather than reading `textures/entity/experience/experience_orb.png` from resource packs (gap: sunrise-org/sunrise#4633).
 
 A port of Pick Up Notifier by Fuzs, under the MPL-2.0 licence.
 """
