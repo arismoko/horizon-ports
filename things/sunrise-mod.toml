@@ -1,7 +1,7 @@
 # Things for Sunrise: native code in src/, items and blocks in data/, models and textures in assets/.
 id = "things"
 name = "Things"
-version = "0.5.0"
+version = "0.5.1"
 description = "Trinkets and gadgets: monocle, socks, gloves, an item magnet, an infernal scepter and more."
 authors = ["glisco", "lavoide", "arismoko"]
 license = "MIT"
