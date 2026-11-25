@@ -7,21 +7,19 @@
 //! | `random_tick` | [`Rain`] | remembers the block that ticked, and stops the game's own growth when the debug switch says so |
 //! | `crop_grow_pre` | this module | remembers a bamboo stalk that is about to grow |
 //! | `level_tick_post` | [`grow_queued`] | rolls each remembered block's extra growth and applies it |
-//! | `register_configs`, `config_loading`, `config_reloading` | this module | `config/cropsloverain-common.toml` |
+//! | `register` (config listener: loading, reloading) | this module | `config/cropsloverain-common.toml` |
 
 pub mod rules;
 
-use std::sync::{Mutex, MutexGuard};
+use std::sync::{Arc, Mutex, MutexGuard};
 
 use mod_api::{
-    BlockPart, BlockUpdateFlags, Config as ModConfig, ConfigContext, ConfigKind,
-    ConfigLoadingEvent, CropGrowPreEvent, Flow, Hooks, HostBlockStates, HostSide, LevelRandomHost,
-    LevelRef, LevelTickPostEvent, LevelWriteHost, LightLayer, RandomTickEvent,
-    RegisterConfigsEvent, Registrar, RegistrationContext, ServerHost, TriState,
+    BlockPart, BlockUpdateFlags, ConfigEvent, ConfigKind, ConfigSnapshot, ConfigSpec,
+    CropGrowPreEvent, Flow, Hooks, HostBlockStates, HostSide, LevelRandomHost, LevelRef,
+    LevelTickPostEvent, LevelWriteHost, LightLayer, RandomTickEvent, Registrar,
+    RegistrationContext, ServerHost, TriState,
 };
 use rules::{Config, CropType, Leaves};
-
-const MOD: &str = "cropsloverain";
 
 static SETTINGS: Mutex<Config> = Mutex::new(Config {
     use_rain_growth_speed: true,
@@ -463,6 +461,15 @@ struct Mod;
 impl Hooks for Mod {
     fn register(&self, r: &mut dyn Registrar, _: &RegistrationContext) {
         declare(r);
+        let spec = ConfigSpec::new(ConfigKind::Common, rules::DEFAULT_CONFIG);
+        let listener = |event: ConfigEvent<'_>, snapshot: &ConfigSnapshot| -> Result<(), String> {
+            if matches!(event, ConfigEvent::Loading(_) | ConfigEvent::Reloading(_)) {
+                *SETTINGS.lock().unwrap_or_else(|e| e.into_inner()) = Config::parse(&snapshot.text);
+            }
+            Ok(())
+        };
+        // A refused declaration leaves the built-in defaults in force.
+        let _ = r.register_config(spec, Some(Arc::new(listener)));
     }
 
     /// A bamboo stalk the game is about to grow: the extra growth follows its own roll.
@@ -481,26 +488,6 @@ impl Hooks for Mod {
     fn level_tick_post(&self, host: HostSide<'_>, event: &mut LevelTickPostEvent) {
         if let HostSide::Server(host) = host {
             grow_queued(host, event.level);
-        }
-    }
-
-    fn register_configs(&self, _: &dyn ConfigContext, event: &mut RegisterConfigsEvent<'_>) {
-        event.configs.push(ModConfig::new(
-            MOD,
-            ConfigKind::Common,
-            rules::DEFAULT_CONFIG,
-        ));
-    }
-
-    fn config_loading(&self, _: &dyn ConfigContext, event: &mut ConfigLoadingEvent<'_>) {
-        if event.config.mod_id == MOD {
-            *SETTINGS.lock().unwrap_or_else(|e| e.into_inner()) = Config::parse(&event.config.text);
-        }
-    }
-
-    fn config_reloading(&self, _: HostSide, event: &mut mod_api::ConfigReloadingEvent<'_>) {
-        if event.config.mod_id == MOD {
-            *SETTINGS.lock().unwrap_or_else(|e| e.into_inner()) = Config::parse(&event.config.text);
         }
     }
 }
