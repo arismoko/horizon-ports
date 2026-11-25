@@ -1,0 +1,13 @@
+[package]
+name = "mod-badwithernocookie"
+version = "0.5.0"
+edition = "2024"
+license = "MIT"
+description = "Bad Wither No Cookie - Reloaded for Sunrise: silences loud global and mob sounds with configurable toggles, Silence books, and operator commands"
+# Ported from: Bad Wither No Cookie - Reloaded 4.0.5 (kreezxil/BadWitherNoCookie, MIT).
+# Cargo's name and version are not the mod's identity: sunrise-mod.toml is.
+publish = false
+
+[dependencies]
+# The pinned SDK's API crate, fetched into .sunrise/sdk/ by any `cargo sunrise-mod` command.
+sunrise-mod-api = { path = ".sunrise/sdk/api/crates/sunrise-mod-api" }

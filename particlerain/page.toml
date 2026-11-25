@@ -1,0 +1,38 @@
+summary = "Replaces weather effects with particle rain, snow, sandstorms, splashes, ripples, rain streaks, tumbling shrubs, and fog."
+description = """
+Particle Rain enhances Minecraft's weather with configurable particle effects, wind gusts, and biome-specific ambient sounds:
+
+- **16 built-in weather effects**: rain, heavy rain, snow, heavy snow, desert dust, skittering dust, rain splashes, water ripples, steam on hot blocks, rain streaks sliding down walls and dripping off edges, tumbling 3D desert shrubs, horizontal and vertical wet-biome fog, after-rain fog, and desert dust haze.
+- **Resource-pack-aware weather sprites**: automatically splits vanilla or resource-pack `rain.png` and `snow.png` textures into individual and heavy particle sprites, and procedurally generates concentric water ripples.
+- **Dynamic wind**: sine-wave wind gusts with configurable strength, gust frequency, modulation speed, storm scaling, and altitude falloff below Y 50.
+- **Biome and block tinting**: blends biome water and fog colors onto rain, ripples, and streaks; tints fog by biome fog color; tints desert dust by ground block map color.
+- **Ambient weather sounds**: adjusts vanilla rain volume and adds custom snow and desert sandstorm sounds, including muffled overhead variants when under cover.
+- **Commands and F3 debug entries**: includes `/particlerain debug`, `/particlerain biometags`, and `particlerain:debug` / `particlerain:biome_tags` F3 overlays.
+- **Options screen and hot-reloaded config**: core controls live in **Options → Mods → Particle Rain**; full per-preset configuration and block/biome filters live in `config/particlerain.toml`.
+
+Differences from the original:
+
+- Uses `side = "both"` instead of `side = "client"`, so the port must be installed on the server as well as the client, because Sunrise's `Registrar::register_particle_type` requires `side = "both"` (gap: sunrise-org/sunrise#5611).
+- Vanilla rain and snow weather columns cannot be suppressed yet, so they continue to render alongside Particle Rain's particles (gap: sunrise-org/sunrise#968).
+- Vanilla rain splash particles cannot be suppressed yet (gap: sunrise-org/sunrise#5614).
+- Biome water tinting applies to Particle Rain's own rain, ripple, and streak particles, but cannot recolor vanilla water/splash/drip particles on creation (gap: sunrise-org/sunrise#5615).
+- Active shader packs cannot be detected automatically yet for `dontTintWithShaders` (gap: sunrise-org/sunrise#5371).
+- Automatic `spawnHeightLimit = 0` uses vanilla Overworld's default cloud height (`192`) instead of querying custom dimensions' cloud height (gap: sunrise-org/sunrise#5385).
+- `BLENDED` fog particles draw on Sunrise's translucent particle layer rather than a custom blended particle pipeline (gap: sunrise-org/sunrise#5616).
+- In-game settings use Sunrise's flat **Options → Mods → Particle Rain** screen rather than a tabbed per-particle editor; per-preset options live in `config/particlerain.toml` (gap: [sunrise-org/sunrise#1217](https://github.com/sunrise-org/sunrise/issues/1217)).
+
+A port of Particle Rain by PigCart, under the MIT licence.
+"""
+categories = ["decoration"]
+
+[[screenshots]]
+path = "page/plains-rain.png"
+caption = "Particle Rain droplets and splashes in a plains biome during rain."
+
+[[screenshots]]
+path = "page/plains-thunder.png"
+caption = "Heavier Particle Rain droplets during a thunderstorm."
+
+[[screenshots]]
+path = "page/snowy-snow.png"
+caption = "Snowflake particles falling in a snowy plains biome."
