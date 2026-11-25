@@ -1,11 +1,9 @@
-use serde_json::Value;
+use crate::catalog_data::{GROUPS, GroupEntry, MOBS, MobEntry};
 use std::collections::HashMap;
 use std::sync::OnceLock;
 
-const CATALOG_JSON: &str = include_str!("bwncr_mobs.json");
-
-/// Mob and environment-group Silence enchantment catalog, parsed once from the embedded
-/// `bwncr_mobs.json` shipped alongside the data-driven enchantments and recipes.
+/// Mob and environment-group Silence enchantment catalog, built once from the static
+/// Rust tables matching the data-driven enchantments and recipes.
 pub struct Catalog {
     mobs_by_enchantment: HashMap<String, Vec<String>>,
     groups_by_enchantment: HashMap<String, Vec<String>>,
@@ -14,53 +12,27 @@ pub struct Catalog {
 static CATALOG: OnceLock<Catalog> = OnceLock::new();
 
 pub fn catalog() -> &'static Catalog {
-    CATALOG.get_or_init(|| Catalog::parse(CATALOG_JSON))
+    CATALOG.get_or_init(|| Catalog::from_entries(MOBS, GROUPS))
 }
 
 impl Catalog {
-    pub fn parse(raw: &str) -> Self {
-        let mut mobs_by_enchantment = HashMap::new();
-        let mut groups_by_enchantment = HashMap::new();
-
-        let Ok(root) = serde_json::from_str::<Value>(raw) else {
-            return Self {
-                mobs_by_enchantment,
-                groups_by_enchantment,
-            };
-        };
-
-        if let Some(mobs) = root.get("mobs").and_then(Value::as_array) {
-            for entry in mobs {
-                let Some(id) = entry.get("id").and_then(Value::as_str) else {
-                    continue;
-                };
-                let sound = entry.get("sound").and_then(Value::as_str).unwrap_or(id);
-                let mut prefixes =
-                    vec![format!("entity.{sound}."), format!("entity.baby_{sound}.")];
-                if let Some(extra) = entry.get("extra").and_then(Value::as_array) {
-                    for prefix in extra.iter().filter_map(Value::as_str) {
-                        prefixes.push(prefix.to_owned());
-                    }
-                }
-                mobs_by_enchantment.insert(format!("silence_{id}"), prefixes);
+    pub fn from_entries(mobs: &[MobEntry], groups: &[GroupEntry]) -> Self {
+        let mut mobs_by_enchantment = HashMap::with_capacity(mobs.len());
+        for entry in mobs {
+            let sound = entry.sound.unwrap_or(entry.id);
+            let mut prefixes = Vec::with_capacity(2 + entry.extra.len());
+            prefixes.push(format!("entity.{sound}."));
+            prefixes.push(format!("entity.baby_{sound}."));
+            for extra in entry.extra {
+                prefixes.push((*extra).to_owned());
             }
+            mobs_by_enchantment.insert(format!("silence_{}", entry.id), prefixes);
         }
 
-        if let Some(groups) = root.get("groups").and_then(Value::as_array) {
-            for entry in groups {
-                let Some(id) = entry.get("id").and_then(Value::as_str) else {
-                    continue;
-                };
-                let prefixes: Vec<String> = entry
-                    .get("prefixes")
-                    .and_then(Value::as_array)
-                    .into_iter()
-                    .flatten()
-                    .filter_map(Value::as_str)
-                    .map(str::to_owned)
-                    .collect();
-                groups_by_enchantment.insert(format!("silence_{id}"), prefixes);
-            }
+        let mut groups_by_enchantment = HashMap::with_capacity(groups.len());
+        for entry in groups {
+            let prefixes = entry.prefixes.iter().map(|p| (*p).to_owned()).collect();
+            groups_by_enchantment.insert(format!("silence_{}", entry.id), prefixes);
         }
 
         Self {
@@ -123,9 +95,19 @@ mod tests {
     }
 
     #[test]
-    fn invalid_json_returns_empty_catalog_without_panicking() {
-        let cat = Catalog::parse("{not valid json");
-        assert_eq!(cat.mob_count(), 0);
-        assert_eq!(cat.group_count(), 0);
+    fn custom_sound_and_extra_prefixes_are_preserved() {
+        let cat = catalog();
+
+        let puffer = cat
+            .prefixes_for_enchantment("silence_pufferfish")
+            .expect("pufferfish entry");
+        assert!(puffer.iter().any(|p| p == "entity.puffer_fish."));
+        assert!(puffer.iter().any(|p| p == "entity.baby_puffer_fish."));
+
+        let cave_spider = cat
+            .prefixes_for_enchantment("silence_cave_spider")
+            .expect("cave_spider entry");
+        assert!(cave_spider.iter().any(|p| p == "entity.cave_spider."));
+        assert!(cave_spider.iter().any(|p| p == "entity.spider."));
     }
 }

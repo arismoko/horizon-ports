@@ -18,10 +18,9 @@ Works on the client, on the server, or both.
 
 ## Differences from the original
 
-- Server-side silencing of global level events (1023 Wither spawn, 1028 Ender Dragon death, 1038 End Portal spawn) and sound-only level events (1000–1054) for vanilla clients without the mod is not available yet; clients with the mod installed silence all of them (gap: TBD-server-level-event-sound-filter).
-- Per-player server-side sound filtering (so Silence books worn on headwear silence sounds for vanilla clients without affecting other players) is not available yet because server level-sound hooks cancel level-wide; clients with the mod installed filter per wearer (gap: TBD-per-player-server-sound-filter).
-- Clearing only the `playSound` flag on server explosion packets (`ClientboundExplodePacket`) for vanilla clients when `silenceExplosion` is enabled is not available yet; clients with the mod installed silence the explosion sound while keeping knockback and particles (gap: TBD-explosion-packet-sound-toggle).
-- The `silenceUs` string list cannot be edited in **Options → Mods** (which shows the 6 boolean toggles); edit `silenceUs` with `/bwncr silenceUs`, `/bwncr listen mute <sound>`, or `config/badwithernocookie-common.toml` (gap: TBD-config-string-list-setting).
+- Server-side silencing of global level events (1023 Wither spawn, 1028 Ender Dragon death, 1038 End Portal spawn) and sound-only level events (1000–1054) for vanilla clients without the mod is not available yet; clients with the mod installed silence all of them (gap: sunrise-org/sunrise#5597).
+- Per-player server-side sound filtering (so Silence books worn on headwear silence sounds for vanilla clients without affecting other players) is not available yet because server level-sound hooks cancel level-wide; clients with the mod installed filter per wearer (gap: sunrise-org/sunrise#4773).
+- The `silenceUs` string list cannot be edited in **Options → Mods** (which shows the 6 boolean toggles); edit `silenceUs` with `/bwncr silenceUs`, `/bwncr listen mute <sound>`, or `config/badwithernocookie-common.toml` (gap: sunrise-org/sunrise#1174).
 - The config file is named `config/badwithernocookie-common.toml` (matching the Sunrise mod id) rather than `config/bwncr-common.toml`, and no separate `.example.cf` file is written.
 
 ## Configuration

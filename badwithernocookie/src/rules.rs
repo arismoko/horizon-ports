@@ -1,6 +1,7 @@
 use crate::catalog::catalog;
 use crate::config::{LEGACY_NAMESPACE, MOD_ID, SilenceSettings};
-use mod_api::{ItemStack, JavaString, SoundSource, Tag, Text, TextStyle};
+use mod_api::text::TextStyle;
+use mod_api::{ItemStack, JavaString, SoundSource, Tag, Text};
 
 pub const GENERAL_PATH: &str = "silence";
 pub const ALL_PATH: &str = "silence_all";
@@ -112,8 +113,12 @@ fn read_component_enchantment_ids(stack: &ItemStack, component_name: &str) -> Ve
         return Vec::new();
     };
     let key = JavaString::from(component_name);
-    let Some(Tag::Compound(levels)) = components.as_nbt().get(&key) else {
+    let Some(Tag::Compound(entry)) = components.as_nbt().get(&key) else {
         return Vec::new();
+    };
+    let levels = match entry.get(&JavaString::from("levels")) {
+        Some(Tag::Compound(inner)) => inner,
+        _ => entry,
     };
     levels
         .iter()
@@ -225,14 +230,10 @@ pub fn is_entity_sound(path: &str, source: Option<SoundSource>) -> bool {
 
 /// The aqua/red chat line shown by `/bwncr listen`, matching the original mod.
 pub fn listen_message(sound_path: &str) -> Text {
-    let aqua = TextStyle {
-        color: Some("aqua".to_owned()),
-        ..TextStyle::default()
-    };
-    let red = TextStyle {
-        color: Some("red".to_owned()),
-        ..TextStyle::default()
-    };
+    let mut aqua = TextStyle::default();
+    aqua.color = Some("aqua".to_owned());
+    let mut red = TextStyle::default();
+    red.color = Some("red".to_owned());
     Text::literal("Sound is ")
         .with_style(aqua)
         .append(Text::literal(sound_path).with_style(red))
@@ -240,10 +241,8 @@ pub fn listen_message(sound_path: &str) -> Text {
 
 /// Gray translatable tooltip line for Silence books and enchanted headwear.
 pub fn gray_translate(key: &str) -> Text {
-    let gray = TextStyle {
-        color: Some("gray".to_owned()),
-        ..TextStyle::default()
-    };
+    let mut gray = TextStyle::default();
+    gray.color = Some("gray".to_owned());
     Text::translate(key, Vec::new()).with_style(gray)
 }
 

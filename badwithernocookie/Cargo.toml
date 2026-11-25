@@ -11,4 +11,3 @@ publish = false
 [dependencies]
 # The pinned SDK's API crate, fetched into .sunrise/sdk/ by any `cargo sunrise-mod` command.
 sunrise-mod-api = { path = ".sunrise/sdk/api/crates/sunrise-mod-api" }
-serde_json = "1"

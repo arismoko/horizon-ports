@@ -4,6 +4,7 @@
 //! with configurable toggles, craftable Silence books for headwear, and operator commands.
 
 mod catalog;
+mod catalog_data;
 mod commands;
 mod config;
 mod rules;
@@ -292,14 +293,13 @@ impl Hooks for BadWitherNoCookie {
         let profile = if enabled {
             let reader: &dyn Host = &*host;
             host.local_player()
-                .and_then(|player| {
-                    player
-                        .living()
-                        .with_equipment(reader, EquipmentSlot::Head, |view| {
-                            view.project()
-                                .map(|stack| SilenceProfile::from_stack(&stack))
-                                .unwrap_or_default()
-                        })
+                .and_then(|player| reader.living(player.entity()))
+                .and_then(|living| {
+                    living.with_equipment(reader, EquipmentSlot::Head, |view| {
+                        view.project()
+                            .map(|stack| SilenceProfile::from_stack(&stack))
+                            .unwrap_or_default()
+                    })
                 })
                 .unwrap_or_default()
         } else {
@@ -326,11 +326,7 @@ impl Hooks for BadWitherNoCookie {
         reset_client_state();
     }
 
-    fn client_disconnecting(
-        &self,
-        _host: &mut dyn ClientHost,
-        _event: &mut ClientDisconnectingEvent,
-    ) {
+    fn client_disconnecting(&self, _host: &dyn ClientHost, _event: &mut ClientDisconnectingEvent) {
         reset_client_state();
     }
 
