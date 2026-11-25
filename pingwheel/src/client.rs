@@ -13,11 +13,11 @@ use crate::screen;
 use mod_api::client::hud_layout::{Blend, PoseOp};
 use mod_api::text::TextStyle;
 use mod_api::{
-    ClientHost, ClipBlock, ClipFluid, Command, CrosshairTarget, DrawContext, Flow, GuiDraw,
-    Identifier, ItemStack, KeyConflictContext, KeyRegistration, ModKeyMappingRef, PackType,
-    Registrar, SoundPlay, SoundRef, SoundSource, SoundState, Text, VanillaKeyMappingRef,
+    ClientCommandRegistration, ClientHost, ClipBlock, ClipFluid, Command, CommandArgumentValue,
+    CrosshairTarget, DrawContext, GuiBlitRegion, GuiCanvas, GuiDrawError, Identifier, ItemStack,
+    KeyConflictContext, KeyRegistration, ModKeyMappingRef, PackType, Registrar, SoundPlay,
+    SoundRef, SoundSource, SoundState, Text, VanillaKeyMappingRef,
 };
-use std::borrow::Cow;
 use std::collections::VecDeque;
 use std::f32::consts::{FRAC_PI_4, PI};
 use std::sync::{Mutex, MutexGuard, OnceLock};
@@ -27,7 +27,7 @@ pub const KEY_OPEN_SETTINGS: &str = "open_settings";
 
 const SHADOW_BLACK: u32 = 0x4000_0000;
 const ARROW_SPRITE: &str = "pingwheel:arrow";
-const PING_SPRITE: &str = "pingwheel:ping";
+const PING_TEXTURE: &str = "pingwheel:textures/ping.png";
 const PING_SOUND: &str = "pingwheel:ping";
 
 /// Cap on queued incoming `PingLocationS2C` packets before dropping the oldest.
@@ -280,7 +280,7 @@ pub fn on_client_tick_pre(host: &mut dyn ClientHost) {
         let mut state = lock_state();
         if !state.settings_synced {
             state.settings_synced = true;
-            cfg.write_to_host_settings(&*host);
+            cfg.write_to_host_settings(host);
         }
         if !state.custom_texture_checked {
             state.custom_texture_checked = true;
@@ -428,17 +428,15 @@ pub fn on_client_tick_pre(host: &mut dyn ClientHost) {
     }
 }
 
+/// Whether a resource pack overrides the shipped `textures/ping.png`, which the HUD then
+/// blits directly (`GuiCanvas::texture` reads standalone textures outside the GUI atlas).
 fn check_custom_ping_texture(host: &dyn ClientHost) -> bool {
-    let Ok(tex_id) = Identifier::parse("pingwheel:textures/ping.png") else {
-        return false;
-    };
-    let Ok(sprite_id) = Identifier::parse(PING_SPRITE) else {
+    let Ok(tex_id) = Identifier::parse(PING_TEXTURE) else {
         return false;
     };
     host.resource_stack(PackType::ClientResources, &tex_id)
         .len()
         > 1
-        && host.gui_sprite(&sprite_id).is_some()
 }
 
 fn consume_ping_hotkey(host: &mut dyn ClientHost) -> bool {
@@ -628,6 +626,10 @@ pub fn on_render_gui_post(host: &dyn ClientHost, draw: &mut dyn DrawContext) {
         (held, state.has_custom_ping_texture)
     };
 
+    let ping_texture = has_custom_ping
+        .then(|| Identifier::parse(PING_TEXTURE).ok())
+        .flatten();
+
     let safe_tl = [cfg.safe_zone_left as f32, cfg.safe_zone_top as f32];
     let safe_br = [
         (screen_size[0] - cfg.safe_zone_right as f32).max(safe_tl[0] + 1.0),
@@ -689,49 +691,48 @@ pub fn on_render_gui_post(host: &dyn ClientHost, draw: &mut dyn DrawContext) {
             let offset_x = (angle + PI).cos() * 12.0;
             let offset_y = (angle + PI).sin() * 12.0;
             let ping_size = cfg.ping_size as f32 / 100.0;
-
-            let mut ops = Vec::new();
-            ops.push(GuiDraw::Push(vec![PoseOp::Translate(edge[0], edge[1])]));
-
             let draw_item = cfg.item_icon_visible && ping.item_stack.is_some();
-            if !draw_item {
-                ops.push(GuiDraw::Push(vec![
-                    PoseOp::Scale(ping.scale, ping.scale),
-                    PoseOp::Translate(offset_x, offset_y),
-                ]));
-                push_ping_icon(&mut ops, has_custom_ping, ping_color);
-                ops.push(GuiDraw::Pop);
-            }
 
-            // Direction arrow
-            ops.push(GuiDraw::Push(vec![
-                PoseOp::Rotate(angle),
-                PoseOp::Scale(ping_size * 0.25, ping_size * 0.25),
-                PoseOp::Translate(-5.0, 0.0),
-            ]));
-            if has_arrow_sprite {
-                ops.push(GuiDraw::Sprite {
-                    sprite: Cow::Borrowed(ARROW_SPRITE),
-                    x: -5,
-                    y: -5,
-                    w: 10,
-                    h: 10,
-                    region: None,
-                    color: ping_color,
-                    blend: Blend::Textured,
-                });
-            } else {
-                ops.push(GuiDraw::Fill {
-                    x0: -4,
-                    y0: -4,
-                    x1: 4,
-                    y1: 4,
-                    color: ping_color,
-                });
-            }
-            ops.push(GuiDraw::Pop);
-            ops.push(GuiDraw::Pop);
-            let _ = draw.gui_paint(&ops);
+            let _ = draw.draw_gui(&mut |canvas| {
+                canvas.scope(
+                    &[PoseOp::Translate(edge[0], edge[1])],
+                    None,
+                    &mut |at_edge| {
+                        if !draw_item {
+                            at_edge.scope(
+                                &[
+                                    PoseOp::Scale(ping.scale, ping.scale),
+                                    PoseOp::Translate(offset_x, offset_y),
+                                ],
+                                None,
+                                &mut |icon| draw_ping_icon(icon, ping_texture.as_ref(), ping_color),
+                            )?;
+                        }
+                        // Direction arrow
+                        at_edge.scope(
+                            &[
+                                PoseOp::Rotate(angle),
+                                PoseOp::Scale(ping_size * 0.25, ping_size * 0.25),
+                                PoseOp::Translate(-5.0, 0.0),
+                            ],
+                            None,
+                            &mut |arrow| {
+                                if has_arrow_sprite {
+                                    arrow.blit_sprite(
+                                        ARROW_SPRITE,
+                                        [-5.0, -5.0, 10.0, 10.0],
+                                        None,
+                                        ping_color,
+                                        Blend::Textured,
+                                    )
+                                } else {
+                                    arrow.fill([-4.0, -4.0, 8.0, 8.0], ping_color)
+                                }
+                            },
+                        )
+                    },
+                )
+            });
 
             if let Some(stack) = ping.item_stack.as_ref().filter(|_| cfg.item_icon_visible) {
                 let item_size = 16.0 * ping.scale;
@@ -743,48 +744,46 @@ pub fn on_render_gui_post(host: &dyn ClientHost, draw: &mut dyn DrawContext) {
 
         if !behind {
             let dist_str = format_meters(host, ping.distance);
-            let mut ops = Vec::new();
-            ops.push(GuiDraw::Push(vec![
-                PoseOp::Translate(sp.x, sp.y),
-                PoseOp::Scale(ping.scale, ping.scale),
-            ]));
-
-            push_label(
-                &mut ops,
-                draw,
-                &dist_str,
-                -1.5,
-                if compact_player {
-                    Some(ping.author_uuid)
-                } else {
-                    None
-                },
-                distance_color,
-            );
-
-            let draw_item = cfg.item_icon_visible && ping.item_stack.is_some();
-            if !draw_item {
-                push_ping_icon(&mut ops, has_custom_ping, ping_color);
-            }
-
-            if show_verbose_player && !ping.author_name.is_empty() {
-                let name_color = if label_use_team_color {
+            let dist_face = compact_player.then_some(ping.author_uuid);
+            let dist_label = Label {
+                text: &dist_str,
+                width: label_width(draw, &dist_str, dist_face.is_some()),
+                y_offset: -1.5,
+                player_face: dist_face,
+                color: distance_color,
+            };
+            let name_label = (show_verbose_player && !ping.author_name.is_empty()).then(|| Label {
+                text: &ping.author_name,
+                width: label_width(draw, &ping.author_name, true),
+                y_offset: 1.75,
+                player_face: Some(ping.author_uuid),
+                color: if label_use_team_color {
                     team_argb
                 } else {
                     WHITE
-                };
-                push_label(
-                    &mut ops,
-                    draw,
-                    &ping.author_name,
-                    1.75,
-                    Some(ping.author_uuid),
-                    name_color,
-                );
-            }
+                },
+            });
+            let draw_item = cfg.item_icon_visible && ping.item_stack.is_some();
 
-            ops.push(GuiDraw::Pop);
-            let _ = draw.gui_paint(&ops);
+            let _ = draw.draw_gui(&mut |canvas| {
+                canvas.scope(
+                    &[
+                        PoseOp::Translate(sp.x, sp.y),
+                        PoseOp::Scale(ping.scale, ping.scale),
+                    ],
+                    None,
+                    &mut |at_ping| {
+                        draw_label(at_ping, &dist_label)?;
+                        if !draw_item {
+                            draw_ping_icon(at_ping, ping_texture.as_ref(), ping_color)?;
+                        }
+                        if let Some(label) = &name_label {
+                            draw_label(at_ping, label)?;
+                        }
+                        Ok(())
+                    },
+                )
+            });
 
             if let Some(stack) = ping.item_stack.as_ref().filter(|_| cfg.item_icon_visible) {
                 let item_size = 16.0 * ping.scale;
@@ -804,150 +803,133 @@ fn format_meters(host: &dyn ClientHost, distance: f64) -> String {
     }
 }
 
-fn push_ping_icon(ops: &mut Vec<GuiDraw>, has_custom_ping: bool, color: u32) {
-    if has_custom_ping {
-        ops.push(GuiDraw::Sprite {
-            sprite: Cow::Borrowed(PING_SPRITE),
-            x: -6,
-            y: -6,
-            w: 12,
-            h: 12,
-            region: None,
+fn draw_ping_icon(
+    canvas: &mut dyn GuiCanvas,
+    custom_texture: Option<&Identifier>,
+    color: u32,
+) -> Result<(), GuiDrawError> {
+    match custom_texture {
+        // The whole texture, whatever its pixel size: uv 0..1 over a 1x1 divisor.
+        Some(texture) => canvas.texture(
+            texture,
+            [-6.0, -6.0, 12.0, 12.0],
+            GuiBlitRegion::new([0.0, 0.0], [1, 1], [1, 1]),
             color,
-            blend: Blend::Textured,
-        });
-    } else {
-        ops.push(GuiDraw::Push(vec![
-            PoseOp::Rotate(FRAC_PI_4),
-            PoseOp::Translate(-2.5, -2.5),
-        ]));
-        ops.push(GuiDraw::Fill {
-            x0: 0,
-            y0: 0,
-            x1: 5,
-            y1: 5,
-            color,
-        });
-        ops.push(GuiDraw::Pop);
+        ),
+        None => canvas.scope(
+            &[PoseOp::Rotate(FRAC_PI_4), PoseOp::Translate(-2.5, -2.5)],
+            None,
+            &mut |diamond| diamond.fill([0.0, 0.0, 5.0, 5.0], color),
+        ),
     }
 }
 
-fn push_label(
-    ops: &mut Vec<GuiDraw>,
-    draw: &dyn DrawContext,
-    text: &str,
+/// A ping label: text on a translucent plate, optionally led by the author's head.
+struct Label<'a> {
+    text: &'a str,
+    /// The plate's text width in GUI pixels, including the head.
+    width: i32,
     y_offset: f32,
     player_face: Option<u128>,
     color: u32,
-) {
-    let extra_w: i32 = if player_face.is_some() { 10 } else { 0 };
-    let text_w = draw.text_width(text).ceil() as i32 + extra_w;
+}
+
+fn label_width(draw: &dyn DrawContext, text: &str, with_face: bool) -> i32 {
+    let extra_w: i32 = if with_face { 10 } else { 0 };
+    draw.text_width(text).ceil() as i32 + extra_w
+}
+
+fn draw_label(canvas: &mut dyn GuiCanvas, label: &Label<'_>) -> Result<(), GuiDrawError> {
+    let extra_w: i32 = if label.player_face.is_some() { 10 } else { 0 };
     let line_h = 9_i32;
-    let ox = -(text_w as f32) * 0.5;
-    let oy = -(line_h as f32) * 0.5 + (line_h as f32) * y_offset;
+    let ox = -(label.width as f32) * 0.5;
+    let oy = -(line_h as f32) * 0.5 + (line_h as f32) * label.y_offset;
 
-    ops.push(GuiDraw::Push(vec![PoseOp::Translate(ox, oy)]));
-    ops.push(GuiDraw::Fill {
-        x0: -2,
-        y0: -2,
-        x1: text_w + 1,
-        y1: line_h,
-        color: SHADOW_BLACK,
-    });
-    ops.push(GuiDraw::Text {
-        text: Text::literal(text),
-        x: extra_w,
-        y: 0,
-        color,
-        shadow: false,
-    });
-    if let Some(uuid) = player_face {
-        ops.push(GuiDraw::PlayerFace {
-            uuid,
-            x: 0,
-            y: 0,
-            size: 8,
-            hat: true,
-            flip: false,
-            color: WHITE,
-        });
-    }
-    ops.push(GuiDraw::Pop);
-}
-
-pub fn register_client_commands(commands: &mut Vec<Command>) {
-    commands.push(Command::new("pingwheel"));
-    commands.push(Command::new("pingwheel help"));
-    commands.push(Command::new("pingwheel config"));
-    commands.push(Command::new("pingwheel channel"));
-    commands.push(Command::new("pingwheel channel <channel_name:string>"));
-}
-
-pub fn handle_client_command(host: &mut dyn ClientHost, raw_command: &str) -> Flow {
-    let trimmed = raw_command.trim();
-    if trimmed != "pingwheel" && !trimmed.starts_with("pingwheel ") {
-        return Flow::Continue;
-    }
-
-    let rest = trimmed.strip_prefix("pingwheel").unwrap_or("").trim();
-    if rest.is_empty() || rest == "help" {
-        send_client_help(host);
-        return Flow::Cancel;
-    }
-
-    if rest == "config" {
-        let _ = host.mod_screen_open(MOD_ID);
-        return Flow::Cancel;
-    }
-
-    if rest == "channel" {
-        let addr = current_server_address(&*host);
-        let ch = client_config().active_channel(addr.as_deref());
-        let line = if ch.is_empty() {
-            Text::translate("command.pingwheel.channel.get.response.default", Vec::new())
-        } else {
-            Text::translate(
-                "command.pingwheel.channel.get.response",
-                vec![colored(Text::literal(ch), "yellow")],
-            )
-        };
-        let _ = host.chat_line(line);
-        return Flow::Cancel;
-    }
-
-    if let Some(arg) = rest.strip_prefix("channel ") {
-        let new_channel = parse_command_string_arg(arg.trim());
-        if new_channel.chars().count() > MAX_CHANNEL_LENGTH {
-            let _ = host.chat_line(colored(
-                Text::translate(
-                    "command.pingwheel.channel.set.reject",
-                    vec![Text::literal(MAX_CHANNEL_LENGTH.to_string())],
-                ),
-                "red",
-            ));
-            return Flow::Cancel;
+    canvas.scope(&[PoseOp::Translate(ox, oy)], None, &mut |plate| {
+        plate.fill(
+            [-2.0, -2.0, (label.width + 3) as f32, (line_h + 2) as f32],
+            SHADOW_BLACK,
+        )?;
+        plate.text(
+            &Text::literal(label.text),
+            [extra_w as f32, 0.0],
+            label.color,
+            false,
+        )?;
+        if let Some(uuid) = label.player_face {
+            plate.player_face(uuid, [0.0, 0.0], 8.0, true, false, WHITE)?;
         }
-        let addr = current_server_address(&*host);
-        let updated = update_client_config(|c| {
-            c.set_active_channel(addr.as_deref(), &new_channel);
-        });
-        persist_client_config(&*host, &updated);
-        send_channel_update(host);
+        Ok(())
+    })
+}
 
-        let line = if new_channel.is_empty() {
-            Text::translate("command.pingwheel.channel.set.response.default", Vec::new())
-        } else {
-            Text::translate(
-                "command.pingwheel.channel.set.response",
-                vec![colored(Text::literal(new_channel), "yellow")],
-            )
-        };
-        let _ = host.chat_line(line);
-        return Flow::Cancel;
-    }
+pub fn register_client_commands(commands: &mut Vec<ClientCommandRegistration>) {
+    commands.push(Command::new("pingwheel").executes_client(|host, _| {
+        send_client_help(host);
+        Some(1)
+    }));
+    commands.push(Command::new("pingwheel help").executes_client(|host, _| {
+        send_client_help(host);
+        Some(1)
+    }));
+    commands.push(Command::new("pingwheel config").executes_client(|host, _| {
+        let _ = host.mod_screen_open(MOD_ID);
+        Some(1)
+    }));
+    commands.push(
+        Command::new("pingwheel channel").executes_client(|host, _| {
+            let addr = current_server_address(&*host);
+            let ch = client_config().active_channel(addr.as_deref());
+            let line = if ch.is_empty() {
+                Text::translate("command.pingwheel.channel.get.response.default", Vec::new())
+            } else {
+                Text::translate(
+                    "command.pingwheel.channel.get.response",
+                    vec![colored(Text::literal(ch), "yellow")],
+                )
+            };
+            let _ = host.chat_line(line);
+            Some(1)
+        }),
+    );
+    commands.push(
+        Command::new("pingwheel channel <channel_name:string>").executes_client(
+            |host, invocation| {
+                let Some(CommandArgumentValue::String(new_channel)) =
+                    invocation.argument("channel_name")
+                else {
+                    return None;
+                };
+                if new_channel.chars().count() > MAX_CHANNEL_LENGTH {
+                    let _ = host.chat_line(colored(
+                        Text::translate(
+                            "command.pingwheel.channel.set.reject",
+                            vec![Text::literal(MAX_CHANNEL_LENGTH.to_string())],
+                        ),
+                        "red",
+                    ));
+                    return None;
+                }
+                let addr = current_server_address(&*host);
+                let updated = update_client_config(|c| {
+                    c.set_active_channel(addr.as_deref(), new_channel);
+                });
+                persist_client_config(host.config_dir(), &updated);
+                send_channel_update(host);
 
-    send_client_help(host);
-    Flow::Cancel
+                let line = if new_channel.is_empty() {
+                    Text::translate("command.pingwheel.channel.set.response.default", Vec::new())
+                } else {
+                    Text::translate(
+                        "command.pingwheel.channel.set.response",
+                        vec![colored(Text::literal(new_channel.clone()), "yellow")],
+                    )
+                };
+                let _ = host.chat_line(line);
+                Some(1)
+            },
+        ),
+    );
 }
 
 fn send_client_help(host: &mut dyn ClientHost) {
@@ -975,35 +957,6 @@ fn colored(text: Text, color: &str) -> Text {
     text.with_style(style)
 }
 
-/// Decodes a Brigadier-style quotable string argument (`""`, `"my channel"`, or `word`).
-pub fn parse_command_string_arg(raw: &str) -> String {
-    if raw.len() >= 2
-        && ((raw.starts_with('"') && raw.ends_with('"'))
-            || (raw.starts_with('\'') && raw.ends_with('\'')))
-    {
-        let quote = raw.as_bytes()[0] as char;
-        let inner = &raw[1..raw.len() - 1];
-        let mut out = String::with_capacity(inner.len());
-        let mut chars = inner.chars();
-        while let Some(ch) = chars.next() {
-            if ch == '\\' {
-                if let Some(next) = chars.next() {
-                    if next == quote || next == '\\' {
-                        out.push(next);
-                    } else {
-                        out.push('\\');
-                        out.push(next);
-                    }
-                }
-            } else {
-                out.push(ch);
-            }
-        }
-        return out;
-    }
-    raw.to_owned()
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1020,15 +973,6 @@ mod tests {
             team_color: None,
             item_stack: None,
         }
-    }
-
-    #[test]
-    fn parses_quoted_and_unquoted_channel_args() {
-        assert_eq!(parse_command_string_arg("\"\""), "");
-        assert_eq!(parse_command_string_arg("\"squad alpha\""), "squad alpha");
-        assert_eq!(parse_command_string_arg("'team_1'"), "team_1");
-        assert_eq!(parse_command_string_arg("alpha"), "alpha");
-        assert_eq!(parse_command_string_arg("\"a\\\"b\""), "a\"b");
     }
 
     #[test]

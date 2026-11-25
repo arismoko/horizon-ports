@@ -9,6 +9,7 @@ A Sunrise 26.3 port of [Ping Wheel](https://github.com/LukenSkyne/Minecraft-Ping
 - **HUD markers and distance scaling**: projects pings onto the HUD with formatted distance labels, distance-based scaling, back-to-front depth sorting, and per-dimension filtering.
 - **Dropped item icons and entity tracking**: pings on moving entities follow the top of the entity's bounding box; pings on dropped items show the item's icon when **Item Icons** is enabled.
 - **Player info and team colors**: display the pinging player's head and name in **Hold** (hold `Tab` / Player List), **Always**, **Compact** (head beside distance), or **Disabled** mode, with configurable **Team Color** tinting (**Full**, **Ping Only**, **Labels Only**, **Disabled**).
+- **Custom ping icon**: a resource pack can replace the marker icon with `assets/pingwheel/textures/ping.png`, drawn directly as a standalone texture.
 - **Off-screen direction indicators**: pings outside your field of view or behind the camera clamp to the configurable screen safe zone with a rotated directional arrow pointing toward them.
 - **Directional ping audio**: plays `pingwheel:ping` as a 3D directional sound whose position tracks the direction from the player toward the ping as you move.
 - **Channels, vanilla teams, and server controls**: isolate pings by named channel (saved per server address) or vanilla scoreboard team (`auto`, `disabled`, `global`, `team_only`), toggle player tracking, and enforce a configurable token-bucket rate limit on the server.
@@ -20,7 +21,6 @@ A Sunrise 26.3 port of [Ping Wheel](https://github.com/LukenSkyne/Minecraft-Ping
 - Block raycasting uses `ClipBlock::Collider` when standing and `ClipBlock::Outline` when sneaking without fluid clipping, because `ClipContext.Block.VISUAL` and `ClipContext.Fluid.ANY` are not exposed on `LevelRef::clip` yet (gap: sunrise-org/sunrise#4677, sunrise-org/sunrise#4630).
 - The server administration command is `/pingwheel-server` instead of `/pingwheel:server`, because Sunrise's command literal parser does not allow `:` in command root names yet (gap: sunrise-org/sunrise#4585).
 - Client-side entity raycasting does not locally filter out spectator entities because `EntityRef::spectator` is server-only (gap: sunrise-org/sunrise#5613).
-- Resource-pack overrides of the ping marker icon must be placed in the GUI sprite atlas (`assets/pingwheel/textures/gui/sprites/ping.png`), because `DrawContext::gui_paint` only blits textures registered in the GUI atlas (gap: sunrise-org/sunrise#4633).
 - Optional third-party integrations for FTB Teams, Simple Voice Chat, and Distant Horizons are omitted; vanilla scoreboard teams work in full.
 
 ## Commands

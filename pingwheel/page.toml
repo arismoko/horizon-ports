@@ -5,6 +5,7 @@ Ping Wheel lets players mark locations and entities in the world for their teamm
 - **Point-and-ping raycasting**: press **Ping Location** (`Mouse 5` by default) to ping blocks or entities up to 1,024 blocks away, with automatic **Pick Item** keybind conflict sharing, a configurable **Correction Period** to reposition recent pings, and quick removal when pinging an existing marker.
 - **HUD markers & entity tracking**: shows distance-scaled ping markers with formatted distance labels, live entity tracking, dropped item icons, player head + name labels (**Hold** `Tab`, **Always**, **Compact**, or **Disabled**), and scoreboard **Team Color** tinting.
 - **Off-screen direction indicators**: clamps off-screen and behind-camera pings to the screen safe zone with a directional arrow pointing toward them.
+- **Custom ping icon**: resource packs can replace the marker with `assets/pingwheel/textures/ping.png`.
 - **Directional audio alerts**: plays a spatialized ping sound that updates its direction relative to the player as you move.
 - **Channels & server moderation**: supports per-server private channels (`/pingwheel channel`), vanilla scoreboard team scoping (`auto`, `disabled`, `global`, `team_only`), a player-tracking toggle, and a configurable rate limiter via `/pingwheel-server` and `config/pingwheel-server.toml`.
 - **In-game settings & 9 languages**: open the settings screen with `/pingwheel config`, the **Open Settings** keybind, or **Options → Mods → Ping Wheel**.
@@ -16,7 +17,6 @@ Differences from the original:
 - Standing block raycasts use collision shapes rather than `ClipContext.Block.VISUAL`, and sneaking raycasts use block outlines without hitting fluids (`ClipContext.Fluid.ANY`) (gap: sunrise-org/sunrise#4677, sunrise-org/sunrise#4630).
 - The server admin command is `/pingwheel-server` instead of `/pingwheel:server` because `:` is not accepted in command root literals yet (gap: sunrise-org/sunrise#4585).
 - Client-side entity raycasting cannot locally check `Entity.isSpectator` because `EntityRef::spectator` is server-only (gap: sunrise-org/sunrise#5613).
-- Custom ping icon resource packs must provide `assets/pingwheel/textures/gui/sprites/ping.png` rather than a standalone `textures/ping.png` outside the GUI atlas (gap: sunrise-org/sunrise#4633).
 - Optional third-party integrations for FTB Teams, Simple Voice Chat, and Distant Horizons are omitted; vanilla scoreboard teams work in full.
 
 A port of Ping Wheel by Luken (LukenSkyne) and contributor RXJpaw, under the MIT licence.
