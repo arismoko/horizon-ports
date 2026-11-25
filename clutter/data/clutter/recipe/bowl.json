@@ -1,0 +1,9 @@
+{
+  "type": "minecraft:crafting_shapeless",
+  "ingredients": [
+    "minecraft:bowl"
+  ],
+  "result": {
+    "id": "clutter:bowl"
+  }
+}

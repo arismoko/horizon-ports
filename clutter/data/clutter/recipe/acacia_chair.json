@@ -1,0 +1,19 @@
+{
+  "type": "minecraft:crafting_shaped",
+  "category": "misc",
+  "group": "chairs",
+  "key": {
+    "L": "minecraft:acacia_log",
+    "P": "minecraft:acacia_planks"
+  },
+  "pattern": [
+    "P  ",
+    "PP ",
+    "LL "
+  ],
+  "result": {
+    "count": 4,
+    "id": "clutter:acacia_chair"
+  },
+  "show_notification": true
+}

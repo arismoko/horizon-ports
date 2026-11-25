@@ -1,0 +1,9 @@
+{
+  "template": "minecraft:stripped_spruce_wood",
+  "properties": {
+    "hardness": 2.0,
+    "explosion_resistance": 2.0,
+    "sounds": "minecraft:stripped_spruce_wood",
+    "requires_tool": false
+  }
+}

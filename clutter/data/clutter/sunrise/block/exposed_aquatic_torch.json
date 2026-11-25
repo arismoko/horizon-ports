@@ -1,0 +1,50 @@
+{
+  "template": "minecraft:stone",
+  "properties": {
+    "hardness": 3.5,
+    "explosion_resistance": 3.5,
+    "sounds": "minecraft:lantern",
+    "requires_tool": true,
+    "light": 10,
+    "occludes": false,
+    "random_ticks": true
+  },
+  "shapes": {
+    "default": [
+      [
+        0.375,
+        0.5,
+        0.375,
+        0.625,
+        0.5625,
+        0.625
+      ],
+      [
+        0.375,
+        0.0,
+        0.375,
+        0.625,
+        0.125,
+        0.625
+      ],
+      [
+        0.4375,
+        0.125,
+        0.4375,
+        0.5625,
+        0.5,
+        0.5625
+      ],
+      [
+        0.304688,
+        0.554688,
+        0.304688,
+        0.695312,
+        0.945312,
+        0.695312
+      ]
+    ]
+  },
+  "item": false,
+  "block_item": "clutter:exposed_aquatic_torch"
+}

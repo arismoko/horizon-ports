@@ -1,0 +1,10 @@
+{
+  "template": "minecraft:soul_lantern",
+  "properties": {
+    "hardness": 3.5,
+    "explosion_resistance": 3.5,
+    "sounds": "minecraft:soul_lantern",
+    "requires_tool": true,
+    "light": 10
+  }
+}

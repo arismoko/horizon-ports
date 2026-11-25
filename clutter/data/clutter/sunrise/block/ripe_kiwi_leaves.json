@@ -1,0 +1,24 @@
+{
+  "template": "minecraft:jungle_leaves",
+  "properties": {
+    "hardness": 0.2,
+    "explosion_resistance": 0.2,
+    "sounds": "minecraft:jungle_leaves",
+    "requires_tool": false,
+    "random_ticks": true
+  },
+  "state_properties": {
+    "age": {
+      "type": "enum",
+      "values": [
+        "0",
+        "1",
+        "2",
+        "3"
+      ]
+    }
+  },
+  "default_state": {
+    "age": "0"
+  }
+}

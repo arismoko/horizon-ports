@@ -1,0 +1,14 @@
+{
+  "type": "minecraft:crafting_shaped",
+  "pattern": [
+    "S S",
+    "ISI"
+  ],
+  "key": {
+    "S": "#minecraft:wooden_slabs",
+    "I": "minecraft:iron_nugget"
+  },
+  "result": {
+    "id": "clutter:wooden_mug"
+  }
+}

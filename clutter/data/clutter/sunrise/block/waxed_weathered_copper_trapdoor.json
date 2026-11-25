@@ -1,0 +1,9 @@
+{
+  "template": "minecraft:waxed_copper_trapdoor",
+  "properties": {
+    "hardness": 5.0,
+    "explosion_resistance": 5.0,
+    "sounds": "minecraft:iron_trapdoor",
+    "requires_tool": true
+  }
+}

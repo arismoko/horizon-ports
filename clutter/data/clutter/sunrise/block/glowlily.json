@@ -1,0 +1,35 @@
+{
+  "template": "minecraft:dandelion",
+  "properties": {
+    "hardness": 0.0,
+    "explosion_resistance": 0.0,
+    "sounds": "minecraft:sweet_berry_bush",
+    "requires_tool": false,
+    "light": 0,
+    "occludes": false,
+    "random_ticks": true
+  },
+  "state_properties": {
+    "age": {
+      "type": "enum",
+      "values": [
+        "0",
+        "1",
+        "2"
+      ]
+    }
+  },
+  "default_state": {
+    "age": "0"
+  },
+  "state_light": {
+    "properties": [
+      "age"
+    ],
+    "values": {
+      "1": 4,
+      "2": 8
+    },
+    "default": 0
+  }
+}

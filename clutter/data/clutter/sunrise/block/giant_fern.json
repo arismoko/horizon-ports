@@ -1,0 +1,9 @@
+{
+  "template": "minecraft:large_fern",
+  "properties": {
+    "hardness": 0.0,
+    "explosion_resistance": 0.0,
+    "sounds": "minecraft:large_fern",
+    "requires_tool": false
+  }
+}

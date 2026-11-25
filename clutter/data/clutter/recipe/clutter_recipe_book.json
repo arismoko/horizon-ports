@@ -1,0 +1,11 @@
+{
+  "type": "minecraft:crafting_shapeless",
+  "ingredients": [
+    "minecraft:book",
+    "#c:copper_nuggets"
+  ],
+  "result": {
+    "count": 1,
+    "id": "clutter:clutter_recipe_book"
+  }
+}

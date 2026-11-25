@@ -1,0 +1,25 @@
+{
+  "pools": [
+    {
+      "bonus_rolls": 0.0,
+      "condition": {
+        "type": "minecraft:survives_explosion"
+      },
+      "entries": [
+        {
+          "condition": {
+            "blocks": "clutter:oxidized_copper_door",
+            "state": {
+              "half": "lower"
+            },
+            "type": "minecraft:match_block"
+          },
+          "name": "clutter:oxidized_copper_door",
+          "type": "minecraft:item"
+        }
+      ],
+      "rolls": 1.0
+    }
+  ],
+  "type": "minecraft:block"
+}

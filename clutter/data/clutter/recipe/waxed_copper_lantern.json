@@ -1,0 +1,11 @@
+{
+  "type": "minecraft:crafting_shapeless",
+  "category": "building",
+  "ingredients": [
+    "clutter:copper_lantern",
+    "minecraft:honeycomb"
+  ],
+  "result": {
+    "id": "clutter:waxed_copper_lantern"
+  }
+}

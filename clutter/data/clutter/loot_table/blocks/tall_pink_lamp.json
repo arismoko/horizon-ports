@@ -1,0 +1,25 @@
+{
+  "pools": [
+    {
+      "bonus_rolls": 0.0,
+      "condition": {
+        "type": "minecraft:survives_explosion"
+      },
+      "entries": [
+        {
+          "condition": {
+            "blocks": "clutter:tall_pink_lamp",
+            "state": {
+              "half": "lower"
+            },
+            "type": "minecraft:match_block"
+          },
+          "name": "clutter:tall_pink_lamp",
+          "type": "minecraft:item"
+        }
+      ],
+      "rolls": 1.0
+    }
+  ],
+  "type": "minecraft:block"
+}

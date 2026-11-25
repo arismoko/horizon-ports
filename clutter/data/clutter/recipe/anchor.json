@@ -1,0 +1,16 @@
+{
+  "type": "minecraft:crafting_shaped",
+  "pattern": [
+    " N ",
+    " I ",
+    "III"
+  ],
+  "key": {
+    "N": "minecraft:iron_nugget",
+    "I": "minecraft:iron_ingot"
+  },
+  "result": {
+    "count": 1,
+    "id": "clutter:anchor"
+  }
+}

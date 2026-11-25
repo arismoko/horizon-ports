@@ -1,0 +1,107 @@
+{
+  "pools": [
+    {
+      "condition": {
+        "type": "minecraft:survives_explosion"
+      },
+      "entries": [
+        {
+          "modifier": [
+            {
+              "condition": {
+                "blocks": "clutter:golden_coin_stack",
+                "state": {
+                  "coin_layers": "8"
+                },
+                "type": "minecraft:match_block"
+              },
+              "count": 64,
+              "type": "minecraft:set_count"
+            },
+            {
+              "condition": {
+                "blocks": "clutter:golden_coin_stack",
+                "state": {
+                  "coin_layers": "7"
+                },
+                "type": "minecraft:match_block"
+              },
+              "count": 56,
+              "type": "minecraft:set_count"
+            },
+            {
+              "condition": {
+                "blocks": "clutter:golden_coin_stack",
+                "state": {
+                  "coin_layers": "6"
+                },
+                "type": "minecraft:match_block"
+              },
+              "count": 48,
+              "type": "minecraft:set_count"
+            },
+            {
+              "condition": {
+                "blocks": "clutter:golden_coin_stack",
+                "state": {
+                  "coin_layers": "5"
+                },
+                "type": "minecraft:match_block"
+              },
+              "count": 40,
+              "type": "minecraft:set_count"
+            },
+            {
+              "condition": {
+                "blocks": "clutter:golden_coin_stack",
+                "state": {
+                  "coin_layers": "4"
+                },
+                "type": "minecraft:match_block"
+              },
+              "count": 32,
+              "type": "minecraft:set_count"
+            },
+            {
+              "condition": {
+                "blocks": "clutter:golden_coin_stack",
+                "state": {
+                  "coin_layers": "3"
+                },
+                "type": "minecraft:match_block"
+              },
+              "count": 24,
+              "type": "minecraft:set_count"
+            },
+            {
+              "condition": {
+                "blocks": "clutter:golden_coin_stack",
+                "state": {
+                  "coin_layers": "2"
+                },
+                "type": "minecraft:match_block"
+              },
+              "count": 16,
+              "type": "minecraft:set_count"
+            },
+            {
+              "condition": {
+                "blocks": "clutter:golden_coin_stack",
+                "state": {
+                  "coin_layers": "1"
+                },
+                "type": "minecraft:match_block"
+              },
+              "count": 8,
+              "type": "minecraft:set_count"
+            }
+          ],
+          "name": "clutter:golden_coin",
+          "type": "minecraft:item"
+        }
+      ],
+      "rolls": 1
+    }
+  ],
+  "type": "minecraft:block"
+}

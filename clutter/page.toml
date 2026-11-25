@@ -1,0 +1,25 @@
+summary = "Furniture you can sit on, candles, chandeliers and lamps that light up, curtains that open, cupboards, copper, silver and onyx."
+description = """
+Over a thousand decorative blocks: chairs, armchairs, benches and floor seats you can sit on, tables that grow legs from their neighbours, cupboards, mailboxes, cardboard boxes and presents that hold items, candelabras, chandeliers and wall candles, lamps and a tube TV, curtains, plants and crops, coral, copper that weathers, silver and onyx.
+
+- Right-click a seat with an empty hand to sit down.
+- Light candles, chandeliers and bonfires with flint and steel or a fire charge; an empty hand puts a candle out.
+- Lamps switch with a click and follow redstone.
+- Curtains open and close together with the connected curtains of the same colour.
+- An axe strips furniture and scrapes copper back a stage; honeycomb waxes it.
+- Bone meal grows kiwi, thornbloom and glowlily crops, giant lily pads and saplings.
+
+Install it on the server and the clients.
+
+Differences from the original:
+
+- The original's mobs, its two TerraBlender biomes, the brick kiln and some smaller features are left out.
+- A held item is handled by the server only, so the same item in both hands can act once per hand.
+
+A port of Clutter by EmilSG, under the MIT licence.
+"""
+categories = ["decoration"]
+
+[[screenshots]]
+path = "page/world.png"
+caption = "Player seated on an oak bench with Clutter furniture"

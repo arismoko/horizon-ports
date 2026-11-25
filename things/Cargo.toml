@@ -1,0 +1,13 @@
+[package]
+name = "mod-things"
+version = "0.5.0"
+edition = "2024"
+license = "MIT"
+description = "Things for Sunrise: trinkets worn in Trinkets' slots, an item magnet, a scepter and more"
+# Ported from: Things 0.3.3 (glisco03/things, MIT).
+# Cargo's name and version are not the mod's identity: sunrise-mod.toml is.
+publish = false
+
+[dependencies]
+# The pinned SDK's API crate, fetched into .sunrise/sdk/ by any `cargo sunrise-mod` command.
+sunrise-mod-api = { path = ".sunrise/sdk/api/crates/sunrise-mod-api" }

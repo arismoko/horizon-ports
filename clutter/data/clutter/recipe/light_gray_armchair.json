@@ -1,0 +1,17 @@
+{
+  "type": "minecraft:crafting_shaped",
+  "group": "armchairs",
+  "pattern": [
+    "# #",
+    "###",
+    "W W"
+  ],
+  "key": {
+    "#": "minecraft:light_gray_wool",
+    "W": "#minecraft:planks"
+  },
+  "result": {
+    "count": 1,
+    "id": "clutter:light_gray_armchair"
+  }
+}

@@ -1,0 +1,14 @@
+{
+  "type": "minecraft:crafting_shaped",
+  "pattern": [
+    "##",
+    "##"
+  ],
+  "key": {
+    "#": "clutter:cotton"
+  },
+  "result": {
+    "count": 1,
+    "id": "minecraft:white_wool"
+  }
+}

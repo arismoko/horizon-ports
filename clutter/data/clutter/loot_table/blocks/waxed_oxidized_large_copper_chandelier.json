@@ -1,0 +1,25 @@
+{
+  "pools": [
+    {
+      "bonus_rolls": 0.0,
+      "condition": {
+        "type": "minecraft:survives_explosion"
+      },
+      "entries": [
+        {
+          "condition": {
+            "blocks": "clutter:waxed_oxidized_large_copper_chandelier",
+            "state": {
+              "block_shape": "center"
+            },
+            "type": "minecraft:match_block"
+          },
+          "name": "clutter:waxed_oxidized_large_copper_chandelier",
+          "type": "minecraft:item"
+        }
+      ],
+      "rolls": 1.0
+    }
+  ],
+  "type": "minecraft:block"
+}

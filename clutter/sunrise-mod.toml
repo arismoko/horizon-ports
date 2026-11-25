@@ -1,0 +1,14 @@
+# Clutter for Sunrise: native code in src/, blocks' data in data/, models and textures in assets/.
+id = "clutter"
+name = "Clutter"
+version = "0.3.0"
+description = "Decorations by EmilSG: furniture you can sit on, candles, chandeliers and lamps that light up, curtains that open, cupboards, plushies, copper that weathers, silver and onyx, coral, plants and crops"
+authors = ["EmilSG", "arismoko"]
+license = "MIT"
+credits = "Original mod by EmilSG (MIT); ported to Minecraft 26.3 by lavoide, and to Sunrise by arismoko."
+homepage = "https://github.com/arismoko/sunrise-ports"
+side = "both"
+
+[native]
+game = "26.3"
+sunrise = "bdad86d2d398ff9293002d2dc08702822aea7265"

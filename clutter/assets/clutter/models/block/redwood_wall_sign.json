@@ -1,0 +1,7 @@
+{
+  "parent": "minecraft:block/template_wall_sign",
+  "textures": {
+    "all": "clutter:block/redwood_sign",
+    "particle": "clutter:block/redwood_planks"
+  }
+}

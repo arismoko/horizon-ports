@@ -1,0 +1,113 @@
+{
+  "pools": [
+    {
+      "condition": {
+        "type": "minecraft:survives_explosion"
+      },
+      "entries": [
+        {
+          "condition": {
+            "blocks": "clutter:bamboo_trellis",
+            "state": {
+              "plant": "vines"
+            },
+            "type": "minecraft:match_block"
+          },
+          "name": "minecraft:vine",
+          "type": "minecraft:item"
+        },
+        {
+          "condition": {
+            "blocks": "clutter:bamboo_trellis",
+            "state": {
+              "plant": "rose_bush"
+            },
+            "type": "minecraft:match_block"
+          },
+          "name": "minecraft:rose_bush",
+          "type": "minecraft:item"
+        },
+        {
+          "condition": {
+            "blocks": "clutter:bamboo_trellis",
+            "state": {
+              "plant": "peony"
+            },
+            "type": "minecraft:match_block"
+          },
+          "name": "minecraft:peony",
+          "type": "minecraft:item"
+        },
+        {
+          "condition": {
+            "blocks": "clutter:bamboo_trellis",
+            "state": {
+              "plant": "lilac"
+            },
+            "type": "minecraft:match_block"
+          },
+          "name": "minecraft:lilac",
+          "type": "minecraft:item"
+        },
+        {
+          "condition": {
+            "blocks": "clutter:bamboo_trellis",
+            "state": {
+              "plant": "cave_vines"
+            },
+            "type": "minecraft:match_block"
+          },
+          "name": "minecraft:glow_berries",
+          "type": "minecraft:item"
+        },
+        {
+          "condition": {
+            "blocks": "clutter:bamboo_trellis",
+            "state": {
+              "plant": "weeping_vines"
+            },
+            "type": "minecraft:match_block"
+          },
+          "name": "minecraft:weeping_vines",
+          "type": "minecraft:item"
+        },
+        {
+          "condition": {
+            "blocks": "clutter:bamboo_trellis",
+            "state": {
+              "plant": "twisting_vines"
+            },
+            "type": "minecraft:match_block"
+          },
+          "name": "minecraft:twisting_vines",
+          "type": "minecraft:item"
+        },
+        {
+          "condition": {
+            "blocks": "clutter:bamboo_trellis",
+            "state": {
+              "plant": "glow_lichen"
+            },
+            "type": "minecraft:match_block"
+          },
+          "name": "minecraft:glow_lichen",
+          "type": "minecraft:item"
+        }
+      ],
+      "rolls": 1
+    },
+    {
+      "condition": {
+        "type": "minecraft:survives_explosion"
+      },
+      "entries": [
+        {
+          "name": "clutter:bamboo_trellis",
+          "type": "minecraft:item"
+        }
+      ],
+      "rolls": 1
+    }
+  ],
+  "type": "minecraft:block"
+}

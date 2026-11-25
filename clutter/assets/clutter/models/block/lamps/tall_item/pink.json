@@ -1,0 +1,6 @@
+{
+  "parent": "clutter:block/lamps/tall_lamp_item",
+  "textures": {
+    "4": "clutter:block/pink_lampshade"
+  }
+}

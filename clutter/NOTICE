@@ -1,0 +1,12 @@
+Clutter for Sunrise (version 0.3.0)
+
+A port of Clutter 0.6.2 by EmilSG.
+Original source: https://github.com/EmilsGithub/Clutter-Mod-Repository
+Original licence: MIT
+
+Ported to Minecraft 26.3 by lavoide, and to Sunrise by arismoko: the blocks' behaviour is re-implemented
+in Rust on Sunrise's mod API (no Java code is included). The data in data/, the models, textures
+and translations in assets/ and icon.png (built from the mod's own textures) are the original release's.
+This port is distributed under the original's licence (MIT); the licence text is in LICENSE.
+
+LICENSE is the original repository's file ("Copyright (c) 2023 EmilSG").

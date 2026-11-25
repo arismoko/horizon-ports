@@ -1,0 +1,53 @@
+{
+  "pools": [
+    {
+      "entries": [
+        {
+          "children": [
+            {
+              "condition": {
+                "type": "minecraft:match_tool",
+                "predicate": {
+                  "predicates": {
+                    "minecraft:enchantments": [
+                      {
+                        "enchantments": "minecraft:silk_touch",
+                        "levels": {
+                          "min": 1
+                        }
+                      }
+                    ]
+                  }
+                }
+              },
+              "name": "things:gleaming_ore",
+              "type": "minecraft:item"
+            },
+            {
+              "modifier": [
+                {
+                  "enchantment": "minecraft:fortune",
+                  "formula": "minecraft:binomial_with_bonus_count",
+                  "parameters": {
+                    "extra": 0,
+                    "probability": 0.1
+                  },
+                  "type": "minecraft:apply_bonus"
+                },
+                {
+                  "type": "minecraft:explosion_decay"
+                }
+              ],
+              "name": "things:gleaming_powder",
+              "type": "minecraft:item"
+            }
+          ],
+          "type": "minecraft:alternatives"
+        }
+      ],
+      "rolls": 1
+    }
+  ],
+  "type": "minecraft:block",
+  "random_sequence": "things:blocks/gleaming_ore"
+}

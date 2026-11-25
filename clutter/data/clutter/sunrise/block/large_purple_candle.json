@@ -1,0 +1,56 @@
+{
+  "template": "minecraft:stone",
+  "properties": {
+    "hardness": 0.1,
+    "explosion_resistance": 0.1,
+    "sounds": "minecraft:candle",
+    "requires_tool": false,
+    "light": 0,
+    "occludes": false
+  },
+  "state_properties": {
+    "lit": {
+      "type": "boolean"
+    }
+  },
+  "default_state": {
+    "lit": "false"
+  },
+  "state_light": {
+    "properties": [
+      "lit"
+    ],
+    "values": {
+      "true": 12
+    },
+    "default": 0
+  },
+  "shapes": {
+    "default": [
+      [
+        0.3125,
+        0.0,
+        0.3125,
+        0.6875,
+        0.625,
+        0.6875
+      ],
+      [
+        0.4375,
+        0.625,
+        0.5,
+        0.5625,
+        0.75,
+        0.53125
+      ],
+      [
+        0.5,
+        0.625,
+        0.4375,
+        0.53125,
+        0.75,
+        0.5625
+      ]
+    ]
+  }
+}

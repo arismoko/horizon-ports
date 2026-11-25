@@ -1,0 +1,12 @@
+{
+  "type": "neoforge:add_features",
+  "biomes": [
+    "minecraft:swamp",
+    "minecraft:mangrove_swamp"
+  ],
+  "features": [
+    "clutter:giant_lily_pad_seedling_placed",
+    "clutter:small_lily_pads_placed"
+  ],
+  "step": "vegetal_decoration"
+}

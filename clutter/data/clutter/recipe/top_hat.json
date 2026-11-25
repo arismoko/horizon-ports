@@ -1,0 +1,16 @@
+{
+  "type": "minecraft:crafting_shaped",
+  "category": "misc",
+  "key": {
+    "C": "minecraft:black_wool",
+    "S": "minecraft:red_dye"
+  },
+  "pattern": [
+    " C ",
+    "CSC"
+  ],
+  "result": {
+    "id": "clutter:top_hat"
+  },
+  "show_notification": true
+}

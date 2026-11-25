@@ -1,0 +1,15 @@
+{
+  "template": "minecraft:elytra",
+  "components": {
+    "minecraft:max_damage": 486,
+    "minecraft:repairable": {
+      "items": "minecraft:emerald"
+    },
+    "minecraft:equippable": {
+      "slot": "chest",
+      "asset_id": "clutter:emerald_gemstone_elytra",
+      "equip_sound": "minecraft:item.armor.equip_elytra",
+      "damage_on_hurt": false
+    }
+  }
+}

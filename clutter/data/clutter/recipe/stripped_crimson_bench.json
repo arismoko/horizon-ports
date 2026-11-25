@@ -1,0 +1,20 @@
+{
+  "type": "minecraft:crafting_shaped",
+  "category": "misc",
+  "group": "benches",
+  "key": {
+    "L": "minecraft:stripped_crimson_stem",
+    "P": "minecraft:crimson_planks",
+    "S": "minecraft:stick"
+  },
+  "pattern": [
+    "PSP",
+    "PPP",
+    "L L"
+  ],
+  "result": {
+    "count": 4,
+    "id": "clutter:stripped_crimson_bench"
+  },
+  "show_notification": true
+}

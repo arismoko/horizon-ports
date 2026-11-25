@@ -1,0 +1,38 @@
+{
+  "template": "minecraft:stone",
+  "properties": {
+    "hardness": 0.5,
+    "explosion_resistance": 0.5,
+    "sounds": "minecraft:sniffer_egg",
+    "requires_tool": false,
+    "light": 0,
+    "occludes": false
+  },
+  "state_properties": {
+    "hatch": {
+      "type": "enum",
+      "values": [
+        "0",
+        "1",
+        "2"
+      ]
+    }
+  },
+  "default_state": {
+    "hatch": "0"
+  },
+  "shapes": {
+    "default": [
+      [
+        0.3125,
+        0.0,
+        0.3125,
+        0.6875,
+        0.4375,
+        0.6875
+      ]
+    ]
+  },
+  "item": false,
+  "block_item": "clutter:kiwi_bird_egg"
+}

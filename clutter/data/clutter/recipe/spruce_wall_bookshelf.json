@@ -1,0 +1,17 @@
+{
+  "type": "minecraft:crafting_shaped",
+  "category": "misc",
+  "group": "wall_bookshelves",
+  "key": {
+    "B": "minecraft:book",
+    "S": "minecraft:spruce_slab"
+  },
+  "pattern": [
+    "BBB",
+    "SSS"
+  ],
+  "result": {
+    "id": "clutter:spruce_wall_bookshelf"
+  },
+  "show_notification": true
+}

@@ -1,0 +1,18 @@
+{
+  "type": "minecraft:crafting_shapeless",
+  "category": "building",
+  "ingredients": [
+    "clutter:sponge_shard",
+    "clutter:sponge_shard",
+    "clutter:sponge_shard",
+    "clutter:sponge_shard",
+    "clutter:sponge_shard",
+    "clutter:sponge_shard",
+    "clutter:sponge_shard",
+    "clutter:sponge_shard",
+    "clutter:sponge_shard"
+  ],
+  "result": {
+    "id": "minecraft:wet_sponge"
+  }
+}

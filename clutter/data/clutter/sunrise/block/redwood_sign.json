@@ -1,0 +1,11 @@
+{
+  "template": "minecraft:cherry_sign",
+  "properties": {
+    "hardness": 1.0,
+    "explosion_resistance": 1.0,
+    "sounds": "minecraft:cherry_planks",
+    "requires_tool": false
+  },
+  "wood_type": "clutter:redwood",
+  "wall_block": "clutter:redwood_wall_sign"
+}

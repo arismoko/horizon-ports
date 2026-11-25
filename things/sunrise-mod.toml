@@ -1,0 +1,19 @@
+# Things for Sunrise: native code in src/, items and blocks in data/, models and textures in assets/.
+id = "things"
+name = "Things"
+version = "0.5.0"
+description = "Trinkets and gadgets: monocle, socks, gloves, an item magnet, an infernal scepter and more."
+authors = ["glisco", "lavoide", "arismoko"]
+license = "MIT"
+credits = "Ported to Minecraft 26.3 by lavoide, and to Sunrise by arismoko."
+homepage = "https://github.com/arismoko/sunrise-ports"
+side = "both"
+
+[native]
+game = "26.3"
+sunrise = "bdad86d2d398ff9293002d2dc08702822aea7265"
+
+# The trinkets are worn in Trinkets' slots (the G menu) and read from its `trinkets:worn` attachment.
+# Without it the tools, the Container Key, the Recall Potion and the Bater Wucket still work.
+[dependencies]
+trinkets = { version = "^0.5", optional = true, reason = "Things' trinkets (socks, gloves, necklaces, the Monocle) are worn in Trinkets' slots. Without it the tools still work." }

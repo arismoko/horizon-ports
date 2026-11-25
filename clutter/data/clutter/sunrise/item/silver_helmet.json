@@ -1,0 +1,33 @@
+{
+  "template": "minecraft:iron_helmet",
+  "components": {
+    "minecraft:max_damage": 132,
+    "minecraft:enchantable": {
+      "value": 14
+    },
+    "minecraft:repairable": {
+      "items": "clutter:silver_ingot"
+    },
+    "minecraft:equippable": {
+      "asset_id": "clutter:silver",
+      "equip_sound": "minecraft:item.armor.equip_iron",
+      "slot": "head"
+    },
+    "minecraft:attribute_modifiers": [
+      {
+        "type": "minecraft:armor",
+        "amount": 2,
+        "id": "minecraft:armor.helmet",
+        "operation": "add_value",
+        "slot": "head"
+      },
+      {
+        "type": "minecraft:knockback_resistance",
+        "amount": 0.1,
+        "id": "minecraft:armor.helmet",
+        "operation": "add_value",
+        "slot": "head"
+      }
+    ]
+  }
+}

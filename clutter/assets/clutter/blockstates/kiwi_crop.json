@@ -1,0 +1,10 @@
+{
+  "variants": {
+    "age=0": {
+      "model": "clutter:block/crops/kiwi_tree_crop_stage0"
+    },
+    "age=1": {
+      "model": "clutter:block/crops/kiwi_tree_crop_stage1"
+    }
+  }
+}
