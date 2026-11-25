@@ -44,7 +44,3 @@ Differences from the original:
 - The jukebox upgrade plays the vanilla discs only (modded and data-pack discs wait for an API to read a jukebox song); its shuffle plays each disc once per round, and "previous" goes to the disc in the slot before.
 """
 categories = ["storage", "equipment"]
-
-[[screenshots]]
-path = "page/world.png"
-caption = "Backpacks and storage with their screen open."

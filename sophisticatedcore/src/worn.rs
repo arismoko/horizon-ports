@@ -10,8 +10,8 @@ use std::sync::{Arc, Mutex, OnceLock};
 
 use mod_api::{
     BlockEntityDrawContext, BlockState, EntityLayers, EntityRenderLayer, EntityRenderState,
-    EquipmentSlot, FrameModel, Host, HostBlockStates, LayerTarget, LivingRef, PayloadBytes,
-    PayloadId, PlayerModel, ServerHost,
+    EquipmentSlot, FrameModel, Host, LayerTarget, LivingRef, PayloadBytes, PayloadId, PlayerModel,
+    ServerHost,
 };
 
 use crate::contents;
