@@ -20,3 +20,15 @@ Differences from the original:
 A port of Bridging Mod by CG360, under the MIT licence.
 """
 categories = ["utility", "game-mechanics"]
+
+[[screenshots]]
+path = "page/forward-bridging.png"
+caption = "Forward reach-around target outline and horizontal crosshair arrows past a ledge."
+
+[[screenshots]]
+path = "page/upward-bridging.png"
+caption = "Upward reach-around target outline and vertical crosshair arrows above a block."
+
+[[screenshots]]
+path = "page/settings.png"
+caption = "Bridging Mod settings in Options → Mods."
