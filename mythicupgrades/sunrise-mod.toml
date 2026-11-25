@@ -1,7 +1,7 @@
 # Mythic Upgrades for Sunrise: native code in src/ (src/classes.rs lists the blocks), content in data/ and assets/.
 id = "mythicupgrades"
 name = "Mythic Upgrades"
-version = "0.3.1"
+version = "0.3.2"
 description = "Eight gems and necoium with their ores and crystal geodes, and armour sets and tools that each have their own effect."
 authors = ["TriQue", "lavoide", "arismoko"]
 license = "MIT"
