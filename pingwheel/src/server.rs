@@ -236,7 +236,7 @@ fn update_player_channel(player_uuid: u128, channel: &str) {
 
 fn player_team_name(host: &dyn ServerHost, player: PlayerRef) -> Option<String> {
     let team = host.holder_team(ScoreHolder::Player(player))?;
-    team.name(host)
+    team.name(host).map(str::to_owned)
 }
 
 fn player_team_color(host: &dyn ServerHost, player: PlayerRef) -> Option<u32> {
@@ -389,7 +389,7 @@ pub fn register_server_commands(commands: &mut Vec<CommandRegistration>) {
                     return Ok(0);
                 };
                 let updated = update_server_config(|cfg| cfg.default_channel_mode = mode);
-                persist_server_config(host, &updated);
+                persist_server_config(host.config_dir(), &updated);
                 let value = yellow(Text::translate(
                     format!("value.pingwheel.{}", mode.as_str()),
                     Vec::new(),
@@ -426,7 +426,7 @@ pub fn register_server_commands(commands: &mut Vec<CommandRegistration>) {
                     _ => return Ok(0),
                 };
                 let updated = update_server_config(|cfg| cfg.player_tracking_enabled = enabled);
-                persist_server_config(host, &updated);
+                persist_server_config(host.config_dir(), &updated);
                 let _ = host.commands().feedback(
                     Text::translate(
                         "command.pingwheel.player_tracking.set.response",
@@ -459,7 +459,7 @@ pub fn register_server_commands(commands: &mut Vec<CommandRegistration>) {
                     _ => return Ok(0),
                 };
                 let updated = update_server_config(|cfg| cfg.ms_to_regenerate = ms);
-                persist_server_config(host, &updated);
+                persist_server_config(host.config_dir(), &updated);
                 let _ = host.commands().feedback(
                     Text::translate(
                         "command.pingwheel.regen_time.set.response",
@@ -492,7 +492,7 @@ pub fn register_server_commands(commands: &mut Vec<CommandRegistration>) {
                     _ => return Ok(0),
                 };
                 let updated = update_server_config(|cfg| cfg.rate_limit = limit);
-                persist_server_config(host, &updated);
+                persist_server_config(host.config_dir(), &updated);
                 let _ = host.commands().feedback(
                     Text::translate(
                         "command.pingwheel.rate_limit.set.response",

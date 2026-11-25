@@ -7,8 +7,8 @@ use mod_api::client::widgets::{filter_text, utf16_len};
 use mod_api::{
     AttributeModifier, AttributeOperation, ComponentId, EntityInteractEvent, EntityReach,
     EquipmentSlot, Flow, Host, HostSide, HostTransaction, IPayloadContext, Identifier,
-    InteractionResult, ItemPlace, ItemResource, ItemStack, MenuClickedEvent, MenuClosedEvent,
-    MenuContainer, MenuKey, MenuPart, MenuReplace, MenuSlotChangedEvent, MenuSlotPlace,
+    InteractionResult, ItemPlace, ItemResource, ItemStack, MenuClickedEvent, MenuContainer,
+    MenuKey, MenuPart, MenuRemovedEvent, MenuReplace, MenuSlotChangedEvent, MenuSlotPlace,
     MenuSlotRulesEvent, ModMenuOpen, ModifierLifetime, PAYLOAD_DECODE_BUDGET, PREVENT_ARMOR_CHANGE,
     PayloadId, PlayerRef, ServerHost, ServerTickEvent, ServerTickPhase, Tag, Text, ToClient,
     encode_payload,
@@ -202,16 +202,18 @@ pub fn on_entity_interact(
             let menu_key = resolve_menu_key(server_host)?;
             let extra = encode_payload(&snapshot, PAYLOAD_DECODE_BUDGET).ok()?;
             let title = stand
-                .name(server_host)
-                .filter(|name| !name.is_empty())
-                .map_or_else(
-                    || Text::translate("entity.minecraft.armor_stand", vec![]),
-                    Text::literal,
-                );
+                .custom_name(server_host)
+                .ok()
+                .flatten()
+                .unwrap_or_else(|| Text::translate("entity.minecraft.armor_stand", vec![]));
             let mut open = ModMenuOpen::new(menu_key, title);
             open.extra = extra;
             open.replace = MenuReplace::CloseFirst;
-            let window = player.open_mod_menu(server_host, open).ok()??;
+            let menu = player.open_mod_menu(server_host, open).ok()??;
+            let Some(window) = menu.container_id(server_host) else {
+                let _ = menu.close_container(server_host);
+                return None;
+            };
 
             let mut places = Vec::with_capacity(42);
             for &entity_slot in &MENU_EQUIPMENT_ENTITY_INDICES {
@@ -233,11 +235,8 @@ pub fn on_entity_interact(
                     slot: hotbar_slot,
                 });
             }
-            if player
-                .back_mod_menu_slots(server_host, window, places)
-                .is_err()
-            {
-                server_host.close_menu(player.uuid());
+            if menu.back_slots(server_host, places).is_err() {
+                let _ = menu.close_container(server_host);
                 return None;
             }
 
@@ -295,7 +294,7 @@ fn sync_stand_equipment(host: &mut dyn ServerHost, player: PlayerRef, session: &
     }
 }
 
-pub fn on_menu_closed(event: &MenuClosedEvent<'_>) {
+pub fn on_menu_removed(event: &MenuRemovedEvent<'_>) {
     let mut map = sessions();
     if map
         .get(&event.uuid)
@@ -320,14 +319,13 @@ pub fn on_server_tick(host: &mut dyn ServerHost, event: &ServerTickEvent) {
             sessions().remove(&uuid);
             continue;
         };
-        let window_matches = player
+        let Some(menu) = player
             .container_menu(host)
-            .and_then(|m| m.container_id(host))
-            == Some(session.window);
-        if !window_matches {
+            .filter(|m| m.container_id(host) == Some(session.window))
+        else {
             sessions().remove(&uuid);
             continue;
-        }
+        };
         let valid = host.entity(session.entity_id).is_some_and(|stand| {
             host.living(stand)
                 .and_then(|l| l.alive(host))
@@ -338,7 +336,7 @@ pub fn on_server_tick(host: &mut dyn ServerHost, event: &ServerTickEvent) {
         });
         if !valid {
             sessions().remove(&uuid);
-            host.close_menu(uuid);
+            let _ = menu.close_container(host);
             continue;
         }
 
@@ -749,6 +747,10 @@ pub struct ArmorStandMenuPart;
 
 #[mod_api::sunrise_part]
 impl MenuPart for ArmorStandMenuPart {
+    fn menu_removed(&self, _host: &mut dyn ServerHost, event: &mut MenuRemovedEvent<'_>) {
+        on_menu_removed(event);
+    }
+
     fn menu_slot_rules(&self, host: &dyn Host, event: &mut MenuSlotRulesEvent<'_>) {
         if event.container != MenuContainer::Main || event.slot >= 6 {
             return;

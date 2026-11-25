@@ -1,7 +1,7 @@
 # Carry On for Sunrise: native code in src/ with its data/ and assets/.
 id = "carryon"
 name = "Carry On"
-version = "0.5.3"
+version = "0.5.4"
 description = "Hold the carry key and right-click with empty hands to pick up chests, other block entities and small mobs, and carry them."
 authors = ["Tschipp", "Purplicious_Cow", "cy4n", "arismoko"]
 license = "LGPL-3.0-only"
@@ -11,4 +11,4 @@ side = "both"
 
 [native]
 game = "26.3"
-sunrise = "3d34bbe63d71bb24c098c1e4021ef866be12fe2d"
+sunrise = "bdad86d2d398ff9293002d2dc08702822aea7265"

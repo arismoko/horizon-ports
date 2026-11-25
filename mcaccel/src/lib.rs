@@ -304,20 +304,15 @@ impl Hooks for Mod {
     /// `PUMPKIN_BLOCKS` order, so the last one ends up first.
     fn build_creative_mode_tab_contents(
         &self,
-        host: HostSide,
+        _: HostSide,
         event: &mut BuildCreativeModeTabContentsEvent<'_>,
     ) {
         if event.tab != "minecraft:natural_blocks" {
             return;
         }
-        let host: &dyn Host = match &host {
-            HostSide::Server(host) => &**host,
-            HostSide::Client(host) => &**host,
-        };
         let keys = keys();
         for item in &keys.items {
-            let _ = event.edit.insert(
-                host,
+            let _ = event.output.insert(
                 CreativeTabPlacement::After(ItemStack::of(keys.carved_pumpkin)),
                 ItemStack::of(*item),
                 CreativeTabVisibility::Both,

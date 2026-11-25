@@ -5,25 +5,23 @@
 
 mod config;
 mod logic;
+mod screen;
 
 use std::collections::HashMap;
-use std::sync::{Mutex, MutexGuard};
+use std::sync::{Arc, Mutex, MutexGuard, RwLock};
 
-use crate::config::{
-    CONFIG_FILE_NAME, FileConfig, MOD_ID, MOVEMENT_KEYS, Options, register_mod_configs,
-    register_settings, screen_background_key, screen_movement_key,
-};
+use crate::config::{FileConfig, Keys, MOD_ID, Options, config_spec, register_settings};
 use crate::logic::{
     Class, SneakInputs, SneakState, classify, classify_background_name, is_pause_screen,
     is_selection_key, move_vector, sneak_when_allowed, sneak_when_disallowed, toggle_movement,
 };
+use crate::screen::{Ui, mount};
 use mod_api::{
-    ClientHost, ClientTickPreEvent, ConfigContext, ConfigKind, ConfigLoadingEvent, ConfigPath,
-    ConfigReloadingEvent, Flow, Hooks, HostSide, KeyConflictContext, KeyRegistration,
-    MenuBackgroundEvent, ModKeyMappingRef, MovementInputUpdateEvent, RegisterConfigsEvent,
-    Registrar, RegistrationContext, ScreenCharTypedPreEvent, ScreenClosingEvent,
-    ScreenInitPostEvent, ScreenKeyPressedPreEvent, ScreenMouseButtonPressedPreEvent,
-    ScreenRegionKind, ScreenRenderPostEvent, ScreenTransparentBackgroundEvent, ScreenView,
+    ClientHost, ClientTickPreEvent, ConfigEvent, ConfigSnapshot, Flow, Hooks, KeyConflictContext,
+    KeyRegistration, MenuBackgroundEvent, ModKeyMappingRef, MovementInputUpdateEvent, Registrar,
+    RegistrationContext, ScreenCharTypedPreEvent, ScreenClosingEvent, ScreenInitPostEvent,
+    ScreenKeyPressedPreEvent, ScreenMouseButtonPressedPreEvent, ScreenRegionKind,
+    ScreenRenderPostEvent, ScreenTransparentBackgroundEvent, ScreenView, SettingValue,
     VanillaKeyMappingRef,
 };
 
@@ -47,7 +45,16 @@ impl Screen {
         }
     }
 
+    /// Whether this is InvMove's own config screen, which never moves the player or loses its
+    /// tint.
+    fn is_own(&self) -> bool {
+        self.mod_screen.as_deref() == Some(MOD_ID)
+    }
+
     fn class(&self) -> Class {
+        if self.is_own() {
+            return Class::Fixed;
+        }
         classify(&self.id, self.menu.as_deref(), self.mod_screen.as_deref())
     }
 
@@ -70,6 +77,11 @@ struct Runtime {
     toggle_prev_down: bool,
     file: FileConfig,
     file_dirty: bool,
+    /// The config screen's tab and page.
+    ui: Ui,
+    /// A new "Move In Inventories" value the toggle key asked for; written on the next client
+    /// tick, as the input hook has no write access to the settings.
+    pending_movement: Option<bool>,
     toggle_key: Option<ModKeyMappingRef>,
     mappings: HashMap<String, VanillaKeyMappingRef>,
     /// Extra mappings this mod holds down inside a screen.
@@ -98,15 +110,6 @@ impl Runtime {
                 false
             }
         }
-    }
-
-    /// Whether the player marked the movement key as one InvMove may read.
-    fn key_allowed(host: &dyn ClientHost, mapping: &str) -> bool {
-        MOVEMENT_KEYS
-            .iter()
-            .find(|(name, _)| *name == mapping)
-            .and_then(|(_, key)| host.setting_bool(key))
-            .unwrap_or(true)
     }
 
     fn toggle_key_down(&mut self, host: &dyn ClientHost) -> bool {
@@ -163,7 +166,13 @@ impl Runtime {
     }
 
     /// `InvMove.allowMovementInScreen`.
-    fn allow_movement(&mut self, host: &dyn ClientHost, opts: &Options, screen: &Screen) -> bool {
+    fn allow_movement(
+        &mut self,
+        host: &dyn ClientHost,
+        keys: &Keys,
+        opts: &Options,
+        screen: &Screen,
+    ) -> bool {
         if host.local_player().is_none() || !opts.enabled || !opts.movement || host.is_paused() {
             return false;
         }
@@ -177,7 +186,10 @@ impl Runtime {
             return false;
         }
         match screen.class() {
-            Class::Known(key) => host.setting_bool(&screen_movement_key(key)).unwrap_or(true),
+            Class::Known(key) => keys
+                .screen_movement_key(key)
+                .and_then(|setting| host.setting_bool(setting).ok())
+                .unwrap_or(true),
             Class::Fixed | Class::BookEdit => false,
             Class::GameMode => true,
             Class::Unrecognized(key) => self.unrecognized(true, &key, opts.unrecognized_movement),
@@ -188,6 +200,7 @@ impl Runtime {
     fn hide_background(
         &mut self,
         host: &dyn ClientHost,
+        keys: &Keys,
         opts: &Options,
         screen_id: &str,
         class: Class,
@@ -199,11 +212,13 @@ impl Runtime {
             return false;
         }
         match class {
-            Class::Known(key) => host
-                .setting_bool(&screen_background_key(key))
+            Class::Known(key) => keys
+                .screen_background_key(key)
+                .and_then(|setting| host.setting_bool(setting).ok())
                 .unwrap_or(true),
-            Class::BookEdit => host
-                .setting_bool(&screen_background_key("book"))
+            Class::BookEdit => keys
+                .screen_background_key("book")
+                .and_then(|setting| host.setting_bool(setting).ok())
                 .unwrap_or(true),
             Class::Fixed => false,
             Class::GameMode => {
@@ -221,53 +236,62 @@ impl Runtime {
 }
 
 fn write_file(host: &dyn ClientHost, text: Option<String>) {
-    let Some(text) = text else {
-        return;
-    };
-    if let Ok(path) = ConfigPath::new(CONFIG_FILE_NAME) {
-        let _ = host.config_files().write(&path, text.as_bytes());
+    if let Some(text) = text {
+        config::write_config_file(host, &text);
     }
+}
+
+fn lock(runtime: &Mutex<Runtime>) -> MutexGuard<'_, Runtime> {
+    runtime.lock().unwrap_or_else(|e| e.into_inner())
 }
 
 #[derive(Default)]
 struct InvMove {
-    runtime: Mutex<Runtime>,
+    runtime: Arc<Mutex<Runtime>>,
+    /// The settings' handles; absent when registration was refused, which leaves the mod idle.
+    keys: RwLock<Option<Arc<Keys>>>,
 }
 
 impl InvMove {
     fn lock(&self) -> MutexGuard<'_, Runtime> {
-        self.runtime.lock().unwrap_or_else(|e| e.into_inner())
+        lock(&self.runtime)
+    }
+
+    fn keys(&self) -> Option<Arc<Keys>> {
+        self.keys.read().unwrap_or_else(|e| e.into_inner()).clone()
     }
 }
 
 #[mod_api::sunrise_mod]
 impl Hooks for InvMove {
     fn register(&self, r: &mut dyn Registrar, _cx: &RegistrationContext) {
-        register_settings(r);
+        let Some(keys) = register_settings(r) else {
+            return;
+        };
+        *self.keys.write().unwrap_or_else(|e| e.into_inner()) = Some(Arc::new(keys));
         r.register_key_mapping(
             KeyRegistration::new(KEY_TOGGLE_MOVE, UNBOUND)
                 .label("keybind.invmove.toggleMove")
                 .category("key.category.invmove.main")
                 .context(KeyConflictContext::Universal),
         );
-    }
 
-    fn register_configs(&self, _ctx: &dyn ConfigContext, event: &mut RegisterConfigsEvent<'_>) {
-        register_mod_configs(event.configs);
-    }
+        let shared = Arc::clone(&self.runtime);
+        let listener =
+            move |event: ConfigEvent<'_>, snapshot: &ConfigSnapshot| -> Result<(), String> {
+                if matches!(event, ConfigEvent::Loading(_) | ConfigEvent::Reloading(_)) {
+                    lock(&shared).file = FileConfig::parse(&snapshot.text);
+                }
+                Ok(())
+            };
+        let _ = r.register_config(config_spec(), Some(Arc::new(listener)));
 
-    fn config_loading(&self, _ctx: &dyn ConfigContext, event: &mut ConfigLoadingEvent<'_>) {
-        if event.config.mod_id != MOD_ID || event.config.kind != ConfigKind::Client {
-            return;
-        }
-        self.lock().file = FileConfig::parse(&event.config.text);
-    }
-
-    fn config_reloading(&self, _host: HostSide<'_>, event: &mut ConfigReloadingEvent<'_>) {
-        if event.config.mod_id != MOD_ID || event.config.kind != ConfigKind::Client {
-            return;
-        }
-        self.lock().file = FileConfig::parse(&event.config.text);
+        // The Mods screen's Config button opens InvMove's own screen, at its first tab.
+        let shared = Arc::clone(&self.runtime);
+        let _ = r.register_config_screen(Arc::new(move |_host: &dyn ClientHost| {
+            lock(&shared).ui = Ui::default();
+            true
+        }));
     }
 
     /// `InvMove.onInputUpdate`: after the game sampled the keys (all zero behind a screen), put
@@ -277,21 +301,23 @@ impl Hooks for InvMove {
         host: &dyn ClientHost,
         event: &mut MovementInputUpdateEvent<'_>,
     ) {
+        let Some(keys) = self.keys() else {
+            return;
+        };
         if !host.on(MOD_ID) {
             return;
         }
         let Some(player) = host.local_player() else {
             return;
         };
-        let opts = Options::read(host);
+        let opts = Options::read(host, &keys);
         let write;
         {
             let mut rt = self.lock();
             let input = &mut *event.input;
-            let shift_phys =
-                Runtime::key_allowed(host, "key.sneak") && rt.pressed(host, "key.sneak");
+            let shift_phys = keys.key_allowed(host, "key.sneak") && rt.pressed(host, "key.sneak");
             let sprint_phys =
-                Runtime::key_allowed(host, "key.sprint") && rt.pressed(host, "key.sprint");
+                keys.key_allowed(host, "key.sprint") && rt.pressed(host, "key.sprint");
             let toggle_down = rt.toggle_key_down(host);
             let toggle_pressed = toggle_down && !rt.toggle_prev_down;
             rt.toggle_prev_down = toggle_down;
@@ -308,20 +334,20 @@ impl Hooks for InvMove {
                 rt.sprint_prev_down = sprint_phys;
                 if toggle_pressed {
                     let (enabled, _) = toggle_movement(false, false, opts.movement, || false);
-                    host.set_setting(MOD_ID, config::MOVEMENT_ENABLE, bool_text(enabled));
+                    rt.pending_movement = Some(enabled);
                 }
                 return;
             };
 
-            let mut can_move = rt.allow_movement(host, &opts, &screen);
+            let mut can_move = rt.allow_movement(host, &keys, &opts, &screen);
             if toggle_pressed {
                 let (enabled, now) = toggle_movement(true, can_move, opts.movement, || {
                     let mut with_movement = opts;
                     with_movement.movement = true;
-                    rt.allow_movement(host, &with_movement, &screen)
+                    rt.allow_movement(host, &keys, &with_movement, &screen)
                 });
                 if enabled != opts.movement {
-                    host.set_setting(MOD_ID, config::MOVEMENT_ENABLE, bool_text(enabled));
+                    rt.pending_movement = Some(enabled);
                 }
                 can_move = now;
             }
@@ -334,7 +360,7 @@ impl Hooks for InvMove {
             };
             if can_move {
                 let key = |rt: &mut Runtime, mapping: &str| {
-                    Runtime::key_allowed(host, mapping) && rt.pressed(host, mapping)
+                    keys.key_allowed(host, mapping) && rt.pressed(host, mapping)
                 };
                 let forward = key(&mut rt, "key.forward");
                 let backward = key(&mut rt, "key.back");
@@ -375,17 +401,24 @@ impl Hooks for InvMove {
     /// Extra keys the config file lists: their held state follows the physical key while a
     /// screen allows movement.
     fn client_tick_pre(&self, host: &mut dyn ClientHost, _event: &mut ClientTickPreEvent) {
+        let Some(keys) = self.keys() else {
+            return;
+        };
         if !host.on(MOD_ID) {
             return;
         }
-        let opts = Options::read(host);
+        let pending = self.lock().pending_movement.take();
+        if let Some(enabled) = pending {
+            let _ = host.set_setting(keys.movement, SettingValue::Toggle(enabled));
+        }
+        let opts = Options::read(host, &keys);
         let mut wanted: Vec<(VanillaKeyMappingRef, bool)> = Vec::new();
         let write;
         {
             let mut rt = self.lock();
             let host: &dyn ClientHost = &*host;
             let active = match rt.current_screen(host) {
-                Some(screen) => rt.allow_movement(host, &opts, &screen),
+                Some(screen) => rt.allow_movement(host, &keys, &opts, &screen),
                 None => false,
             };
             let names = rt.file.extra_keys.clone();
@@ -419,6 +452,11 @@ impl Hooks for InvMove {
             return;
         }
         self.lock().tracked = Some(Screen::of(event.screen));
+        if event.screen.mod_screen == Some(MOD_ID)
+            && let Some(keys) = self.keys()
+        {
+            mount(event.widgets, event.screen.rect, &self.runtime, &keys);
+        }
     }
 
     fn screen_render_post(&self, host: &dyn ClientHost, event: &mut ScreenRenderPostEvent<'_>) {
@@ -478,8 +516,11 @@ impl Hooks for InvMove {
         if !host.on(MOD_ID) || !is_selection_key(event.key) {
             return Flow::Continue;
         }
-        let opts = Options::read(host);
-        if !opts.enabled || !opts.movement || !Runtime::key_allowed(host, "key.jump") {
+        let Some(keys) = self.keys() else {
+            return Flow::Continue;
+        };
+        let opts = Options::read(host, &keys);
+        if !opts.enabled || !opts.movement || !keys.key_allowed(host, "key.jump") {
             return Flow::Continue;
         }
         if event.screen.menu == Some("minecraft:merchant") {
@@ -493,7 +534,7 @@ impl Hooks for InvMove {
                 .mapping(host, "key.jump")
                 .and_then(|jump| jump.binding(host).ok().map(|name| name == event.key))
                 .unwrap_or(false);
-            cancel = bound && rt.allow_movement(host, &opts, &Screen::of(event.screen));
+            cancel = bound && rt.allow_movement(host, &keys, &opts, &Screen::of(event.screen));
             write = rt.take_file_write();
         }
         write_file(host, write);
@@ -509,7 +550,10 @@ impl Hooks for InvMove {
         if !host.on(MOD_ID) {
             return Flow::Continue;
         }
-        let opts = Options::read(host);
+        let Some(keys) = self.keys() else {
+            return Flow::Continue;
+        };
+        let opts = Options::read(host, &keys);
         let hide;
         let write;
         {
@@ -521,7 +565,7 @@ impl Hooks for InvMove {
                     classify_background_name(event.screen),
                 ),
             };
-            hide = rt.hide_background(host, &opts, &id, class);
+            hide = rt.hide_background(host, &keys, &opts, &id, class);
             write = rt.take_file_write();
         }
         write_file(host, write);
@@ -533,7 +577,10 @@ impl Hooks for InvMove {
         if !host.on(MOD_ID) || event.radius.is_none() {
             return;
         }
-        let opts = Options::read(host);
+        let Some(keys) = self.keys() else {
+            return;
+        };
+        let opts = Options::read(host, &keys);
         let hide;
         let write;
         {
@@ -544,7 +591,7 @@ impl Hooks for InvMove {
             if !is_pause_screen(&screen.id) {
                 return;
             }
-            hide = rt.hide_background(host, &opts, &screen.id, screen.class());
+            hide = rt.hide_background(host, &keys, &opts, &screen.id, screen.class());
             write = rt.take_file_write();
         }
         write_file(host, write);
@@ -552,8 +599,4 @@ impl Hooks for InvMove {
             *event.radius = None;
         }
     }
-}
-
-fn bool_text(value: bool) -> &'static str {
-    if value { "true" } else { "false" }
 }

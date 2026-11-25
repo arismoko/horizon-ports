@@ -1,7 +1,11 @@
 //! Falling Leaves configuration model, defaults, TOML persistence, and Options > Mods settings.
 
-use mod_api::{ClientHost, Config, ConfigKind, Registrar, SettingSpec};
-use std::collections::BTreeMap;
+use mod_api::{
+    ClientHost, ConfigKind, ConfigListener, ConfigSpec, Registrar, SettingKey, SettingSpec,
+    SettingValue,
+};
+use std::collections::{BTreeMap, HashMap};
+use std::sync::{Arc, OnceLock};
 
 pub const MOD_ID: &str = "fallingleaves";
 pub const CONFIG_FILE_NAME: &str = "fallingleaves-client.toml";
@@ -586,168 +590,148 @@ impl FallingLeavesConfig {
         cfg
     }
 
-    pub fn write_to_host_settings(&self, host: &dyn ClientHost) {
-        let set_bool =
-            |k: &str, v: bool| host.set_setting(MOD_ID, k, if v { "true" } else { "false" });
-        let set_f64 = |k: &str, v: f64| host.set_setting(MOD_ID, k, &format!("{v}"));
-
-        set_bool(SET_ENABLED, self.enabled);
-        set_bool(
+    pub fn write_to_host_settings(&self, host: &mut dyn ClientHost) {
+        let Some(keys) = SETTING_KEYS.get() else {
+            return;
+        };
+        let mut set = |k: &str, v: SettingValue| {
+            if let Some(key) = keys.get(k) {
+                let _ = host.set_setting(*key, v);
+            }
+        };
+        set(SET_ENABLED, SettingValue::Toggle(self.enabled));
+        set(
             SET_ALWAYS_USE_VANILLA_PARTICLES,
-            self.always_use_vanilla_particles,
+            SettingValue::Toggle(self.always_use_vanilla_particles),
         );
-        set_bool(SET_USE_VANILLA_TEXTURES, self.use_vanilla_textures);
-        set_f64(SET_LEAF_SIZE, f64::from(self.leaf_size));
-        set_f64(SET_LEAF_LIFESPAN, f64::from(self.leaf_lifespan));
-        set_f64(SET_LEAF_SPAWN_RATE, f64::from(self.leaf_spawn_rate));
-        set_f64(
+        set(
+            SET_USE_VANILLA_TEXTURES,
+            SettingValue::Toggle(self.use_vanilla_textures),
+        );
+        set(
+            SET_LEAF_SIZE,
+            SettingValue::Range(f64::from(self.leaf_size)),
+        );
+        set(
+            SET_LEAF_LIFESPAN,
+            SettingValue::Range(f64::from(self.leaf_lifespan)),
+        );
+        set(
+            SET_LEAF_SPAWN_RATE,
+            SettingValue::Range(f64::from(self.leaf_spawn_rate)),
+        );
+        set(
             SET_CONIFER_LEAF_SPAWN_RATE,
-            f64::from(self.conifer_leaf_spawn_rate),
+            SettingValue::Range(f64::from(self.conifer_leaf_spawn_rate)),
         );
-        set_f64(
+        set(
             SET_SNOWFLAKE_SPAWN_RATE,
-            f64::from(self.snowflake_spawn_rate),
+            SettingValue::Range(f64::from(self.snowflake_spawn_rate)),
         );
-        set_bool(
+        set(
             SET_DROP_FROM_PLAYER_PLACED,
-            self.drop_from_player_placed_blocks,
+            SettingValue::Toggle(self.drop_from_player_placed_blocks),
         );
-        set_bool(SET_LEAVES_ON_BLOCK_HIT, self.leaves_on_block_hit);
-        set_f64(
+        set(
+            SET_LEAVES_ON_BLOCK_HIT,
+            SettingValue::Toggle(self.leaves_on_block_hit),
+        );
+        set(
             SET_MIN_FREE_SPACE_BELOW,
-            f64::from(self.minimum_free_space_below),
+            SettingValue::Range(f64::from(self.minimum_free_space_below)),
         );
-        set_bool(SET_WIND_ENABLED, self.wind_enabled);
-        set_f64(
+        set(SET_WIND_ENABLED, SettingValue::Toggle(self.wind_enabled));
+        set(
             SET_STARTING_SPAWN_RADIUS,
-            f64::from(self.starting_spawn_radius),
+            SettingValue::Range(f64::from(self.starting_spawn_radius)),
         );
-        set_f64(
+        set(
             SET_DECAY_SPAWN_RATE_FACTOR,
-            f64::from(self.decay_spawn_rate_factor),
+            SettingValue::Range(f64::from(self.decay_spawn_rate_factor)),
         );
-        set_f64(SET_MAX_DECAY_LEAVES, f64::from(self.max_decay_leaves));
+        set(
+            SET_MAX_DECAY_LEAVES,
+            SettingValue::Range(f64::from(self.max_decay_leaves)),
+        );
     }
 
-    pub fn apply_single_setting(&mut self, host: &dyn ClientHost, key: &str) -> bool {
+    /// Applies a changed setting's `value` to its config field and reports whether the field
+    /// changed.
+    pub fn apply_single_setting(&mut self, key: &str, value: SettingValue) -> bool {
+        let toggle = match value {
+            SettingValue::Toggle(v) => Some(v),
+            _ => None,
+        };
+        let range = match value {
+            SettingValue::Range(v) if v.is_finite() => Some(v),
+            _ => None,
+        };
+        let rounded = |v: f64, min: i32, max: i32| (v.round() as i32).clamp(min, max);
         match key {
-            SET_ENABLED => {
-                if let Some(v) = host.setting_bool(key) {
-                    self.enabled = v;
-                    return true;
-                }
-            }
+            SET_ENABLED => toggle.is_some_and(|v| store_changed(&mut self.enabled, v)),
             SET_ALWAYS_USE_VANILLA_PARTICLES => {
-                if let Some(v) = host.setting_bool(key) {
-                    self.always_use_vanilla_particles = v;
-                    return true;
-                }
+                toggle.is_some_and(|v| store_changed(&mut self.always_use_vanilla_particles, v))
             }
             SET_USE_VANILLA_TEXTURES => {
-                if let Some(v) = host.setting_bool(key) {
-                    self.use_vanilla_textures = v;
-                    return true;
-                }
+                toggle.is_some_and(|v| store_changed(&mut self.use_vanilla_textures, v))
             }
             SET_LEAF_SIZE => {
-                if let Some(v) = host.setting_f64(key)
-                    && v.is_finite()
-                {
-                    self.leaf_size = (v.round() as i32).clamp(1, 10);
-                    return true;
-                }
+                range.is_some_and(|v| store_changed(&mut self.leaf_size, rounded(v, 1, 10)))
             }
             SET_LEAF_LIFESPAN => {
-                if let Some(v) = host.setting_f64(key)
-                    && v.is_finite()
-                {
-                    self.leaf_lifespan = (v.round() as i32).clamp(100, 600);
-                    return true;
-                }
+                range.is_some_and(|v| store_changed(&mut self.leaf_lifespan, rounded(v, 100, 600)))
             }
             SET_LEAF_SPAWN_RATE => {
-                if let Some(v) = host.setting_f64(key)
-                    && v.is_finite()
-                {
-                    self.leaf_spawn_rate = (v.round() as i32).clamp(0, 40);
-                    return true;
-                }
+                range.is_some_and(|v| store_changed(&mut self.leaf_spawn_rate, rounded(v, 0, 40)))
             }
-            SET_CONIFER_LEAF_SPAWN_RATE => {
-                if let Some(v) = host.setting_f64(key)
-                    && v.is_finite()
-                {
-                    self.conifer_leaf_spawn_rate = (v.round() as i32).clamp(0, 40);
-                    return true;
-                }
-            }
-            SET_SNOWFLAKE_SPAWN_RATE => {
-                if let Some(v) = host.setting_f64(key)
-                    && v.is_finite()
-                {
-                    self.snowflake_spawn_rate = (v.round() as i32).clamp(0, 40);
-                    return true;
-                }
-            }
+            SET_CONIFER_LEAF_SPAWN_RATE => range.is_some_and(|v| {
+                store_changed(&mut self.conifer_leaf_spawn_rate, rounded(v, 0, 40))
+            }),
+            SET_SNOWFLAKE_SPAWN_RATE => range
+                .is_some_and(|v| store_changed(&mut self.snowflake_spawn_rate, rounded(v, 0, 40))),
             SET_DROP_FROM_PLAYER_PLACED => {
-                if let Some(v) = host.setting_bool(key) {
-                    self.drop_from_player_placed_blocks = v;
-                    return true;
-                }
+                toggle.is_some_and(|v| store_changed(&mut self.drop_from_player_placed_blocks, v))
             }
             SET_LEAVES_ON_BLOCK_HIT => {
-                if let Some(v) = host.setting_bool(key) {
-                    self.leaves_on_block_hit = v;
-                    return true;
-                }
+                toggle.is_some_and(|v| store_changed(&mut self.leaves_on_block_hit, v))
             }
-            SET_MIN_FREE_SPACE_BELOW => {
-                if let Some(v) = host.setting_f64(key)
-                    && v.is_finite()
-                {
-                    self.minimum_free_space_below = (v.round() as i32).clamp(1, 20);
-                    return true;
-                }
-            }
-            SET_WIND_ENABLED => {
-                if let Some(v) = host.setting_bool(key) {
-                    self.wind_enabled = v;
-                    return true;
-                }
-            }
-            SET_STARTING_SPAWN_RADIUS => {
-                if let Some(v) = host.setting_f64(key)
-                    && v.is_finite()
-                {
-                    self.starting_spawn_radius = (v.round() as i32).clamp(0, 23);
-                    return true;
-                }
-            }
-            SET_DECAY_SPAWN_RATE_FACTOR => {
-                if let Some(v) = host.setting_f64(key)
-                    && v.is_finite()
-                {
-                    self.decay_spawn_rate_factor = (v as f32).clamp(0.0, 10.0);
-                    return true;
-                }
-            }
+            SET_MIN_FREE_SPACE_BELOW => range.is_some_and(|v| {
+                store_changed(&mut self.minimum_free_space_below, rounded(v, 1, 20))
+            }),
+            SET_WIND_ENABLED => toggle.is_some_and(|v| store_changed(&mut self.wind_enabled, v)),
+            SET_STARTING_SPAWN_RADIUS => range
+                .is_some_and(|v| store_changed(&mut self.starting_spawn_radius, rounded(v, 0, 23))),
+            SET_DECAY_SPAWN_RATE_FACTOR => range.is_some_and(|v| {
+                store_changed(
+                    &mut self.decay_spawn_rate_factor,
+                    (v as f32).clamp(0.0, 10.0),
+                )
+            }),
             SET_MAX_DECAY_LEAVES => {
-                if let Some(v) = host.setting_f64(key)
-                    && v.is_finite()
-                {
-                    self.max_decay_leaves = (v.round() as i32).clamp(0, 30);
-                    return true;
-                }
+                range.is_some_and(|v| store_changed(&mut self.max_decay_leaves, rounded(v, 0, 30)))
             }
-            _ => {}
+            _ => false,
         }
-        false
     }
 }
 
-pub fn register_mod_configs(configs: &mut Vec<Config>) {
+/// Stores `new` in `slot` and reports whether it differs from the old value.
+fn store_changed<T: PartialEq>(slot: &mut T, new: T) -> bool {
+    let changed = *slot != new;
+    *slot = new;
+    changed
+}
+
+/// The registered Options > Mods setting keys by their key name.
+static SETTING_KEYS: OnceLock<HashMap<String, SettingKey>> = OnceLock::new();
+
+/// Register `fallingleaves-client.toml` with its lifecycle listener.
+pub fn register_config(r: &mut dyn Registrar, listener: Arc<ConfigListener>) {
     let default_toml = FallingLeavesConfig::default().to_toml();
-    configs.push(Config::new(MOD_ID, ConfigKind::Client, &default_toml).file(CONFIG_FILE_NAME));
+    let spec = ConfigSpec::new(ConfigKind::Client, default_toml).file(CONFIG_FILE_NAME);
+    if let Err(err) = r.register_config(spec, Some(listener)) {
+        eprintln!("fallingleaves: config registration failed: {err}");
+    }
 }
 
 /// Register all scalar settings on Sunrise's Options -> Mods -> Falling Leaves page,
@@ -869,9 +853,14 @@ pub fn register_settings(r: &mut dyn Registrar) {
         .tooltip("text.autoconfig.fallingleaves2.option.maxDecayLeaves.@Tooltip[0]"),
     ];
 
+    let mut keys = HashMap::new();
     for spec in specs {
-        let _ = r.register_setting(spec);
+        let name = spec.key.clone();
+        if let Ok(key) = r.register_setting(spec) {
+            keys.insert(name, key);
+        }
     }
+    let _ = SETTING_KEYS.set(keys);
 }
 
 fn strip_toml_comment(line: &str) -> &str {

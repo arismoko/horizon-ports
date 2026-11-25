@@ -1,7 +1,7 @@
 # Falling Trees for Sunrise: native code in src/ with its data/ and assets/.
 id = "fallingtrees"
 name = "Falling Trees"
-version = "0.5.2"
+version = "0.5.3"
 description = "Chop the bottom log of a tree with an axe and the whole tree comes down, logs, leaves and all."
 authors = ["The Panda Oliver", "arismoko"]
 license = "GPL-3.0-only"
@@ -11,4 +11,4 @@ side = "both"
 
 [native]
 game = "26.3"
-sunrise = "3d34bbe63d71bb24c098c1e4021ef866be12fe2d"
+sunrise = "bdad86d2d398ff9293002d2dc08702822aea7265"

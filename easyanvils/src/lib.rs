@@ -8,25 +8,30 @@ mod storage;
 
 use crate::anvil::invalidate_catalog;
 use crate::config::{
-    MOD_ID, ServerConfig, register_mod_configs, register_settings, server_config,
-    set_server_config, set_synced_server_config,
+    ServerConfig, register_settings, server_config, set_server_config, set_synced_server_config,
 };
 use crate::payloads::{
     Channels, RenameItemPayload, id_rename_item, id_server_config, init_channels,
 };
 use crate::server::{
     AnvilBlockPart, AnvilMenuPart, MENU_ID, broadcast_server_config, handle_rename_item,
-    init_anvil_keys, init_block_particle, on_menu_closed, on_server_tick_post, reset_server_state,
+    init_anvil_keys, init_block_particle, on_server_tick_post, reset_server_state,
     send_server_config_to,
 };
-use crate::storage::{ATTACH_ANVIL_CONTENTS, AnvilItemHandler};
+use crate::storage::{AnvilItemHandler, anvil_contents_descriptor, set_anvil_contents_key};
 use mod_api::{
-    ClientDisconnectingEvent, ClientHost, ConfigContext, ConfigKind, ConfigLoadingEvent,
-    ConfigReloadingEvent, Hooks, HostSide, ITEMS, LevelTickPostEvent, MenuClosedEvent,
-    PlayerLoggedInEvent, RegisterConfigsEvent, Registrar, RegistrationContext, ReloadContext,
-    ScreenInitPostEvent, ServerHost, ServerStartedEvent, ServerStoppingEvent, TagsUpdatedEvent,
+    ClientHost, ClientPlayerLoggingOutEvent, ConfigEvent, ConfigKind, ConfigSnapshot, ConfigSpec,
+    Hooks, HostSide, ITEMS, LevelTickPostEvent, PlayerLoggedInEvent, Registrar,
+    RegistrationContext, ReloadContext, ScreenInitPostEvent, ServerHost, ServerStartedEvent,
+    ServerStoppingEvent, TagsUpdatedEvent,
 };
 use std::sync::Arc;
+
+fn apply_server_config(snapshot: &ConfigSnapshot) {
+    let parsed = ServerConfig::parse_toml(&snapshot.text);
+    set_server_config(parsed.clone());
+    set_synced_server_config(parsed);
+}
 
 #[derive(Default)]
 struct EasyAnvils;
@@ -36,7 +41,27 @@ impl Hooks for EasyAnvils {
     fn register(&self, r: &mut dyn Registrar, _cx: &RegistrationContext) {
         register_settings(r);
 
-        let _ = r.register_attachment_type(ATTACH_ANVIL_CONTENTS, false);
+        if let Ok(key) = r.register_attachment_type(anvil_contents_descriptor()) {
+            set_anvil_contents_key(key);
+        }
+
+        let listener = |event: ConfigEvent<'_>, snapshot: &ConfigSnapshot| -> Result<(), String> {
+            match event {
+                ConfigEvent::Loading(_) => apply_server_config(snapshot),
+                ConfigEvent::Reloading(host) => {
+                    apply_server_config(snapshot);
+                    if let HostSide::Server(server) = host {
+                        broadcast_server_config(server);
+                    }
+                }
+                _ => {}
+            }
+            Ok(())
+        };
+        let _ = r.register_config(
+            ConfigSpec::new(ConfigKind::Server, ServerConfig::default_toml()),
+            Some(Arc::new(listener)),
+        );
 
         let anvil = r.block_key("minecraft:anvil");
         let chipped_anvil = r.block_key("minecraft:chipped_anvil");
@@ -69,31 +94,6 @@ impl Hooks for EasyAnvils {
         });
     }
 
-    fn register_configs(&self, _ctx: &dyn ConfigContext, event: &mut RegisterConfigsEvent<'_>) {
-        register_mod_configs(event.configs);
-    }
-
-    fn config_loading(&self, _ctx: &dyn ConfigContext, event: &mut ConfigLoadingEvent<'_>) {
-        if event.config.mod_id != MOD_ID || event.config.kind != ConfigKind::Server {
-            return;
-        }
-        let parsed = ServerConfig::parse_toml(&event.config.text);
-        set_server_config(parsed.clone());
-        set_synced_server_config(parsed);
-    }
-
-    fn config_reloading(&self, host: HostSide<'_>, event: &mut ConfigReloadingEvent<'_>) {
-        if event.config.mod_id != MOD_ID || event.config.kind != ConfigKind::Server {
-            return;
-        }
-        let parsed = ServerConfig::parse_toml(&event.config.text);
-        set_server_config(parsed.clone());
-        set_synced_server_config(parsed);
-        if let HostSide::Server(server) = host {
-            broadcast_server_config(server);
-        }
-    }
-
     fn server_started(&self, _host: &mut dyn ServerHost, _event: &mut ServerStartedEvent) {
         set_synced_server_config(server_config());
         invalidate_catalog();
@@ -114,10 +114,6 @@ impl Hooks for EasyAnvils {
         }
     }
 
-    fn menu_closed(&self, host: &mut dyn ServerHost, event: &mut MenuClosedEvent<'_>) {
-        on_menu_closed(host, event);
-    }
-
     fn level_tick_post(&self, host: HostSide<'_>, event: &mut LevelTickPostEvent) {
         if let HostSide::Server(server) = host {
             on_server_tick_post(server, event.level);
@@ -128,7 +124,11 @@ impl Hooks for EasyAnvils {
         client::on_screen_init_post(host, event);
     }
 
-    fn client_disconnecting(&self, _host: &dyn ClientHost, _event: &mut ClientDisconnectingEvent) {
+    fn client_player_logging_out(
+        &self,
+        _host: &mut dyn ClientHost,
+        _event: &mut ClientPlayerLoggingOutEvent,
+    ) {
         client::reset_client_state();
         set_synced_server_config(ServerConfig::default());
     }

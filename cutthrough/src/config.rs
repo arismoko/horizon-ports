@@ -1,6 +1,8 @@
 //! Cut Through's one client option, as `config/cutthrough-client.toml` and an Options > Mods toggle.
 
-use mod_api::{ClientHost, Config, ConfigKind, Registrar, SettingSpec};
+use mod_api::{
+    ClientHost, ConfigKind, ConfigSpec, Registrar, SettingKey, SettingSpec, SettingValue,
+};
 
 pub const MOD_ID: &str = "cutthrough";
 pub const CONFIG_FILE_NAME: &str = "cutthrough-client.toml";
@@ -47,22 +49,14 @@ impl CutThroughConfig {
         )
     }
 
-    pub fn write_to_host_settings(&self, host: &dyn ClientHost) {
-        host.set_setting(
-            MOD_ID,
-            SET_TARGET_ALIVE_ONLY,
-            if self.target_alive_only {
-                "true"
-            } else {
-                "false"
-            },
-        );
+    pub fn write_to_host_settings(&self, host: &mut dyn ClientHost, key: SettingKey) {
+        let _ = host.set_setting(key, SettingValue::Toggle(self.target_alive_only));
     }
 
-    /// Applies one changed Options setting; true when it was ours and readable.
-    pub fn apply_single_setting(&mut self, host: &dyn ClientHost, key: &str) -> bool {
+    /// Applies one changed Options setting; true when it was ours and a toggle.
+    pub fn apply_single_setting(&mut self, key: &str, value: SettingValue) -> bool {
         if key == SET_TARGET_ALIVE_ONLY
-            && let Some(value) = host.setting_bool(key)
+            && let SettingValue::Toggle(value) = value
         {
             self.target_alive_only = value;
             return true;
@@ -71,22 +65,23 @@ impl CutThroughConfig {
     }
 }
 
-/// Register the client config file `config/cutthrough-client.toml`.
-pub fn register_mod_configs(configs: &mut Vec<Config>) {
-    let default_toml = CutThroughConfig::default().to_toml();
-    configs.push(Config::new(MOD_ID, ConfigKind::Client, &default_toml).file(CONFIG_FILE_NAME));
+/// The client config file `config/cutthrough-client.toml`.
+pub fn config_spec() -> ConfigSpec {
+    ConfigSpec::new(ConfigKind::Client, CutThroughConfig::default().to_toml())
+        .file(CONFIG_FILE_NAME)
 }
 
 /// Register the setting on Sunrise's Options > Mods > Cut Through page.
-pub fn register_settings(r: &mut dyn Registrar) {
-    let _ = r.register_setting(
+pub fn register_settings(r: &mut dyn Registrar) -> Option<SettingKey> {
+    r.register_setting(
         SettingSpec::toggle(
             SET_TARGET_ALIVE_ONLY,
             "config.cutthrough.target_alive_only",
             true,
         )
         .tooltip("config.cutthrough.target_alive_only_tooltip"),
-    );
+    )
+    .ok()
 }
 
 #[cfg(test)]
@@ -117,10 +112,12 @@ mod tests {
     }
 
     #[test]
-    fn default_toml_is_the_registered_file() {
-        let mut configs = Vec::new();
-        register_mod_configs(&mut configs);
-        assert_eq!(configs.len(), 1);
-        assert_eq!(configs[0].file, CONFIG_FILE_NAME);
+    fn single_setting_applies_only_ours() {
+        let mut config = CutThroughConfig::default();
+        assert!(!config.apply_single_setting("other", SettingValue::Toggle(false)));
+        assert!(!config.apply_single_setting(SET_TARGET_ALIVE_ONLY, SettingValue::Choice(0)));
+        assert!(config.target_alive_only);
+        assert!(config.apply_single_setting(SET_TARGET_ALIVE_ONLY, SettingValue::Toggle(false)));
+        assert!(!config.target_alive_only);
     }
 }

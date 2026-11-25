@@ -7,7 +7,7 @@
 
 use std::sync::OnceLock;
 
-use mod_api::{ConfigPath, Host};
+use mod_api::Host;
 
 #[derive(Debug, Default, PartialEq)]
 pub struct Filter {
@@ -70,14 +70,19 @@ pub struct Filters {
 }
 
 fn load(host: &dyn Host, file: &str, defaults: &str, help: &str) -> Filter {
-    let Ok(path) = ConfigPath::new(&format!("fallingtrees/{file}")) else {
-        return Filter::parse(defaults);
-    };
-    let files = host.config_files();
-    match files.read(&path) {
+    let path = host.config_dir().join("fallingtrees").join(file);
+    match std::fs::read(&path) {
         Ok(bytes) => Filter::parse(&String::from_utf8_lossy(&bytes)),
         Err(_) => {
-            let _ = files.write(&path, format!("; {help}\n; An id (with * for any run of characters), a #tag, or !id to refuse one.\n{defaults}").as_bytes());
+            if let Some(parent) = path.parent() {
+                let _ = std::fs::create_dir_all(parent);
+            }
+            let _ = std::fs::write(
+                &path,
+                format!(
+                    "; {help}\n; An id (with * for any run of characters), a #tag, or !id to refuse one.\n{defaults}"
+                ),
+            );
             Filter::parse(defaults)
         }
     }

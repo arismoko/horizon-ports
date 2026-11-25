@@ -6,11 +6,13 @@
 mod battery;
 mod config;
 mod hud;
+mod screen;
 mod state;
 
 use crate::battery::{BatteryMonitor, BatteryNotification, BatterySnapshot};
 use crate::config::{
-    CONFIG_FILE_NAME, DynamicFpsConfig, MOD_ID, PowerState, register_mod_configs, register_settings,
+    CONFIG_FILE_NAME, DynamicFpsConfig, MOD_ID, PowerState, SYNCING, config_spec,
+    register_settings, sync_settings_to_host,
 };
 use crate::hud::{ensure_toast_icons_registered, render_hud, toast_icon_id};
 use crate::state::{
@@ -19,15 +21,14 @@ use crate::state::{
 };
 use mod_api::{
     ClientHost, ClientSetupContext, ClientSetupEvent, ClientStoppingEvent, ClientTickPreEvent,
-    ConfigContext, ConfigKind, ConfigLoadingEvent, ConfigPath, ConfigReloadingEvent, DebugEntry,
-    DebugGroup, Flow, FramerateLimitEvent, Hooks, HostSide, Identifier, InputKeyEvent,
-    KeyConflictContext, KeyRegistration, LoopContext, ModKeyMappingRef, ModToast,
-    MouseButtonPreEvent, MouseScrollingEvent, PlaySoundEvent, RegisterConfigsEvent,
-    RegisterDebugEntriesEvent, Registrar, RegistrationContext, RenderFramePreEvent,
-    RenderGuiPostEvent, ScreenOpening, ScreenOpeningEvent, SettingChangedEvent, Text,
-    ToastAddEvent, ToastIcon,
+    ConfigEvent, ConfigSnapshot, DebugEntry, DebugGroup, Flow, FramerateLimitEvent, Hooks, Host,
+    HostSide, Identifier, InputKeyEvent, KeyConflictContext, KeyRegistration, ModKeyMappingRef,
+    ModToast, MouseButtonPreEvent, MouseScrollingEvent, PlaySoundEvent, RegisterDebugEntriesEvent,
+    Registrar, RegistrationContext, RenderFramePreEvent, RenderGuiPostEvent, ScreenInitPostEvent,
+    ScreenOpening, ScreenOpeningEvent, SettingChangedEvent, Text, ToastAddEvent, ToastIcon,
 };
-use std::sync::{Mutex, MutexGuard};
+use std::sync::atomic::Ordering;
+use std::sync::{Arc, Mutex, MutexGuard};
 
 const KEY_TOGGLE_FORCED: &str = "toggle_forced";
 const KEY_TOGGLE_DISABLED: &str = "toggle_disabled";
@@ -99,24 +100,6 @@ impl Runtime {
         next
     }
 
-    fn sync_initial_settings(&mut self, host: &dyn ClientHost) {
-        if self.settings_synced {
-            return;
-        }
-        self.settings_synced = true;
-        // `config/dynamicfps.toml` is the single source of truth; mirror it into
-        // the Options > Mods UI without reading back stale stored settings.
-        self.config.write_to_host_settings(host);
-    }
-
-    fn persist_config_file(&self, host: &dyn ClientHost) {
-        if let Ok(path) = ConfigPath::new(CONFIG_FILE_NAME) {
-            let _ = host
-                .config_files()
-                .write(&path, self.config.to_toml().as_bytes());
-        }
-    }
-
     fn poll_keybinds(&mut self, host: &mut dyn ClientHost, now_ms: u64) {
         if self.key_toggle_forced.is_none() {
             self.key_toggle_forced = host.mod_key_mapping(MOD_ID, KEY_TOGGLE_FORCED).ok();
@@ -181,21 +164,50 @@ impl Runtime {
 static VOLUME_TABLE: AtomicVolumeTable = AtomicVolumeTable::new();
 
 struct DynamicFps {
-    runtime: Mutex<Runtime>,
+    runtime: Arc<Mutex<Runtime>>,
 }
 
 impl Default for DynamicFps {
     fn default() -> Self {
         Self {
-            runtime: Mutex::new(Runtime::new()),
+            runtime: Arc::new(Mutex::new(Runtime::new())),
         }
     }
 }
 
 impl DynamicFps {
     fn lock(&self) -> MutexGuard<'_, Runtime> {
-        self.runtime.lock().unwrap_or_else(|e| e.into_inner())
+        lock_runtime(&self.runtime)
     }
+}
+
+fn lock_runtime(runtime: &Mutex<Runtime>) -> MutexGuard<'_, Runtime> {
+    runtime.lock().unwrap_or_else(|e| e.into_inner())
+}
+
+/// Save `config/dynamicfps.toml` when its text differs from `text`.
+fn persist_config_file(host: &dyn Host, text: &str) {
+    let path = host.config_dir().join(CONFIG_FILE_NAME);
+    if std::fs::read_to_string(&path).is_ok_and(|current| current == text) {
+        return;
+    }
+    if let Some(parent) = path.parent() {
+        let _ = std::fs::create_dir_all(parent);
+    }
+    let _ = std::fs::write(&path, text);
+}
+
+/// Take the file's text as the live config, as the loader delivers it at load and on reload.
+fn adopt_config_text(runtime: &Mutex<Runtime>, text: &str) -> DynamicFpsConfig {
+    let parsed = DynamicFpsConfig::parse_toml(text);
+    let mut guard = lock_runtime(runtime);
+    let rt = &mut *guard;
+    rt.config = parsed;
+    rt.battery.configure(rt.config.battery);
+    rt.smooth_volume.on_state_change(&rt.config, rt.state);
+    VOLUME_TABLE.store(rt.smooth_volume.snapshot());
+    publish_debug_state(rt.state, &rt.config);
+    rt.config.clone()
 }
 
 static DEBUG_STATE: Mutex<(PowerState, DynamicFpsConfig)> = Mutex::new((
@@ -239,6 +251,31 @@ impl Hooks for DynamicFps {
     fn register(&self, r: &mut dyn Registrar, _cx: &RegistrationContext) {
         register_settings(r);
 
+        let runtime = Arc::clone(&self.runtime);
+        let listener =
+            move |event: ConfigEvent<'_>, snapshot: &ConfigSnapshot| -> Result<(), String> {
+                match event {
+                    ConfigEvent::Loading(_) => {
+                        adopt_config_text(&runtime, &snapshot.text);
+                    }
+                    ConfigEvent::Reloading(side) => {
+                        let config = adopt_config_text(&runtime, &snapshot.text);
+                        lock_runtime(&runtime).settings_synced = true;
+                        if let HostSide::Client(client) = side {
+                            sync_settings_to_host(&config, client);
+                            let now_ms = client.millis();
+                            lock_runtime(&runtime).update_state(now_ms);
+                        }
+                    }
+                    _ => {}
+                }
+                Ok(())
+            };
+        // A refused registration leaves the defaults and the settings store in charge.
+        let _ = r.register_config(config_spec(), Some(Arc::new(listener)));
+        // The Mods screen's Config button opens Dynamic FPS's own paged screen.
+        let _ = r.register_config_screen(Arc::new(|_host: &dyn ClientHost| true));
+
         r.register_key_mapping(
             KeyRegistration::new(KEY_TOGGLE_FORCED, "key.keyboard.unknown")
                 .label("key.dynamicfps.toggle_forced")
@@ -253,56 +290,26 @@ impl Hooks for DynamicFps {
         );
     }
 
-    fn register_configs(&self, _ctx: &dyn ConfigContext, event: &mut RegisterConfigsEvent<'_>) {
-        register_mod_configs(event.configs);
-    }
-
-    fn config_loading(&self, _ctx: &dyn ConfigContext, event: &mut ConfigLoadingEvent<'_>) {
-        if event.config.mod_id != MOD_ID || event.config.kind != ConfigKind::Client {
+    fn setting_changed(&self, host: &dyn Host, event: &mut SettingChangedEvent<'_>) {
+        if event.mod_id != MOD_ID || SYNCING.load(Ordering::SeqCst) {
             return;
         }
-        let parsed = DynamicFpsConfig::parse_toml(&event.config.text);
-        let mut guard = self.lock();
-        let rt = &mut *guard;
-        rt.config = parsed;
-        rt.battery.configure(rt.config.battery);
-        rt.smooth_volume.on_state_change(&rt.config, rt.state);
-        VOLUME_TABLE.store(rt.smooth_volume.snapshot());
-        publish_debug_state(rt.state, &rt.config);
-    }
-
-    fn config_reloading(&self, host: HostSide<'_>, event: &mut ConfigReloadingEvent<'_>) {
-        if event.config.mod_id != MOD_ID || event.config.kind != ConfigKind::Client {
-            return;
-        }
-        let parsed = DynamicFpsConfig::parse_toml(&event.config.text);
-        let mut guard = self.lock();
-        let rt = &mut *guard;
-        rt.config = parsed;
-        rt.settings_synced = true;
-        rt.battery.configure(rt.config.battery);
-        if let HostSide::Client(client) = host {
-            rt.config.write_to_host_settings(client);
-            let now_ms = client.millis();
-            rt.update_state(now_ms);
-        }
-        publish_debug_state(rt.state, &rt.config);
-    }
-
-    fn setting_changed(&self, host: &mut dyn ClientHost, event: &mut SettingChangedEvent<'_>) {
-        if event.mod_id != MOD_ID {
-            return;
-        }
-        let mut guard = self.lock();
-        let rt = &mut *guard;
-        let changed = rt.config.apply_single_setting(host, event.key);
-        rt.sync_initial_settings(host);
-        if changed {
+        let text = {
+            let mut guard = self.lock();
+            let rt = &mut *guard;
+            if !rt.config.apply_single_setting(event.key, &event.value) {
+                return;
+            }
             rt.battery.configure(rt.config.battery);
-            let now_ms = host.millis();
-            rt.update_state(now_ms);
-            rt.persist_config_file(host);
             publish_debug_state(rt.state, &rt.config);
+            rt.config.to_toml()
+        };
+        persist_config_file(host, &text);
+    }
+
+    fn screen_init_post(&self, _host: &dyn ClientHost, event: &mut ScreenInitPostEvent<'_>) {
+        if event.screen.mod_screen == Some(MOD_ID) {
+            screen::mount(event);
         }
     }
 
@@ -341,7 +348,6 @@ impl Hooks for DynamicFps {
         }
         let now_ms = host.millis();
         let mut rt = self.lock();
-        rt.sync_initial_settings(host);
         rt.idle.ensure_initialized(now_ms);
 
         if rt.click_ignore.observe_focus(event.focused, now_ms) {
@@ -362,7 +368,6 @@ impl Hooks for DynamicFps {
         let now_ms = host.millis();
         let focused = host.window_focused();
         let mut rt = self.lock();
-        rt.sync_initial_settings(host);
         if rt.click_ignore.observe_focus(focused, now_ms) {
             rt.idle.on_activity(now_ms);
         }
@@ -379,9 +384,23 @@ impl Hooks for DynamicFps {
         let cursor = host.cursor();
         let camera_pose = host.camera().map(|c| (c.position, c.yaw, c.pitch));
 
+        // `config/dynamicfps.toml` is the single source of truth; mirror it into the settings
+        // store once, without holding the lock (each write notifies `setting_changed`).
+        let initial = {
+            let mut rt = self.lock();
+            if rt.settings_synced {
+                None
+            } else {
+                rt.settings_synced = true;
+                Some(rt.config.clone())
+            }
+        };
+        if let Some(config) = initial {
+            sync_settings_to_host(&config, host);
+        }
+
         let mut guard = self.lock();
         let rt = &mut *guard;
-        rt.sync_initial_settings(host);
 
         if rt.click_ignore.observe_focus(focused, now_ms) {
             rt.idle.on_activity(now_ms);
@@ -402,7 +421,7 @@ impl Hooks for DynamicFps {
         }
     }
 
-    fn play_sound(&self, _ctx: &dyn LoopContext, event: &mut PlaySoundEvent<'_>) {
+    fn play_sound(&self, _host: &mut dyn ClientHost, event: &mut PlaySoundEvent<'_>) {
         let Some(sound) = event.sound.as_mut() else {
             return;
         };
@@ -446,7 +465,6 @@ impl Hooks for DynamicFps {
         let screen_open = host.observed_screen_id().is_some();
 
         let mut rt = self.lock();
-        rt.sync_initial_settings(host);
         rt.click_ignore.observe_focus(focused, now_ms);
         rt.focused = focused;
         rt.idle.on_activity(now_ms);

@@ -17,13 +17,13 @@ use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::{Arc, Mutex};
 
 use mod_api::{
-    self, AttachmentCodec, AttachmentType, BlockEntityDrawContext, BlockUpdateFlags,
-    BreakBlockEvent, ClientHost, ClientTickPostEvent, Compound, EntityPart, EntityRef,
-    EntityRenderState, EntityRenderer, EntitySpawn, EquipmentSlot, Flow, GameMode,
+    self, AttachmentCodec, AttachmentDescriptor, AttachmentKey, BlockEntityDrawContext,
+    BlockUpdateFlags, BreakBlockEvent, ClientHost, ClientTickPostEvent, Compound, EntityPart,
+    EntityRef, EntityRenderState, EntityRenderer, EntitySpawn, EquipmentSlot, Flow, GameMode,
     GeneralEntityCategory, GeneralEntityTickEvent, GeneralSavePolicy, Hand, Hooks, Host, HostSide,
     ItemStack, LevelRef, LivingRef, PlayerBreakSpeedEvent, PlayerRef, RegisterEntityRenderersEvent,
     Registrar, RegistrationContext, ServerHost, ServerStoppedEvent, ServerTickEvent,
-    ServerTickPhase, SettingSpec, SoundSource, SpawnBody, Tag,
+    ServerTickPhase, SettingKey, SettingSpec, SoundSource, SpawnBody, Tag,
 };
 
 use trees::{Algorithm, Block, Kind, Tree};
@@ -77,15 +77,29 @@ fn kind_index(kind: Kind) -> usize {
     }
 }
 
+/// The owner-bound handles `register_setting` returned, by option key.
+fn setting_keys() -> std::sync::MutexGuard<'static, HashMap<String, SettingKey>> {
+    static KEYS: std::sync::OnceLock<Mutex<HashMap<String, SettingKey>>> =
+        std::sync::OnceLock::new();
+    KEYS.get_or_init(Mutex::default)
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+}
+
+fn setting_key(key: &str) -> Option<SettingKey> {
+    setting_keys().get(key).copied()
+}
+
 fn flag(host: &dyn Host, key: &str, default: bool) -> bool {
-    host.setting(MOD_ID, key)
-        .map_or(default, |text| text.trim() == "true")
+    setting_key(key)
+        .and_then(|key| host.setting_bool(key).ok())
+        .unwrap_or(default)
 }
 
 fn number(host: &dyn Host, key: &str, default: f32) -> f32 {
-    host.setting(MOD_ID, key)
-        .and_then(|text| text.trim().parse().ok())
-        .unwrap_or(default)
+    setting_key(key)
+        .and_then(|key| host.setting_f64(key).ok())
+        .map_or(default, |value| value as f32)
 }
 
 /// The options a chop reads, as they stand when it starts.
@@ -198,17 +212,22 @@ impl Falling {
     }
 }
 
-static FALLING: AttachmentType<Falling> = AttachmentType {
-    namespace: MOD_ID,
-    name: "tree",
-    default: Falling::default,
-    codec: Some(AttachmentCodec {
-        encode: |value| Ok(value.to_nbt()),
-        decode: |saved| Falling::from_nbt(saved).ok_or(mod_api::AttachmentError::Decode),
-    }),
-    copy_on_death: false,
-    sync: true,
+const FALLING_CODEC: AttachmentCodec<Falling> = AttachmentCodec {
+    encode: |value| Ok(value.to_nbt()),
+    decode: |saved| Falling::from_nbt(saved).ok_or(mod_api::AttachmentError::Decode),
 };
+
+/// The key `register_attachment_type` issued for the falling tree's data; a new registration
+/// pass issues a new one, so it is read here and never kept past it.
+fn falling_key() -> Option<AttachmentKey<Falling>> {
+    FALLING_KEY
+        .read()
+        .unwrap_or_else(|e| e.into_inner())
+        .clone()
+}
+
+static FALLING_KEY: std::sync::RwLock<Option<AttachmentKey<Falling>>> =
+    std::sync::RwLock::new(None);
 
 /// A state's id and properties from its text form: `a:b[x=1,y=2]`.
 pub fn split_state(state: &str) -> (&str, Vec<(&str, &str)>) {
@@ -340,11 +359,12 @@ impl Felling {
             }
             return;
         };
-        let _ = FALLING.set(
-            host.attachments(),
-            mod_api::Holder::Entity(tree.id()),
-            Falling { pieces, direction },
-        );
+        if let Some(key) = falling_key() {
+            let holder = mod_api::Holder::Entity(tree.id());
+            if key.set(host, holder, Falling { pieces, direction }).is_ok() {
+                let _ = key.sync_data(host, holder);
+            }
+        }
         pending().insert(tree.id(), Pending { drops, ticks: 0 });
     }
 }
@@ -445,7 +465,7 @@ fn load(cell: &AtomicU32) -> f32 {
     f32::from_bits(cell.load(Ordering::Relaxed))
 }
 
-/// The renderer has no host: block keys it has not met are asked for here and resolved by the
+/// The renderer has no host: block states it has not met are asked for here and resolved by the
 /// next client tick, so a tree's blocks show a frame after they arrive.
 fn wanted() -> std::sync::MutexGuard<'static, std::collections::HashSet<String>> {
     static WANTED: std::sync::OnceLock<Mutex<std::collections::HashSet<String>>> =
@@ -456,8 +476,8 @@ fn wanted() -> std::sync::MutexGuard<'static, std::collections::HashSet<String>>
         .unwrap_or_else(|e| e.into_inner())
 }
 
-fn block_keys() -> std::sync::MutexGuard<'static, HashMap<String, mod_api::BlockKey>> {
-    static KEYS: std::sync::OnceLock<Mutex<HashMap<String, mod_api::BlockKey>>> =
+fn block_states() -> std::sync::MutexGuard<'static, HashMap<String, mod_api::BlockState>> {
+    static KEYS: std::sync::OnceLock<Mutex<HashMap<String, mod_api::BlockState>>> =
         std::sync::OnceLock::new();
     KEYS.get_or_init(Mutex::default)
         .lock()
@@ -476,7 +496,10 @@ impl EntityRenderer for TreeRenderer {
         let Some(attachments) = entity.attachments.as_ref() else {
             return Ok(());
         };
-        let Some(tree) = attachments.get(&FALLING).map_err(|e| format!("{e:?}"))? else {
+        let Some(key) = falling_key() else {
+            return Ok(());
+        };
+        let Some(tree) = attachments.get(&key).map_err(|e| format!("{e:?}"))? else {
             return Ok(());
         };
         let [fx, fz] = tree.direction;
@@ -501,9 +524,8 @@ impl EntityRenderer for TreeRenderer {
         draw.push();
         draw.rotate_about(axis, -angle, [fx as f32 * hinge, 0.0, fz as f32 * hinge]);
         for piece in &tree.pieces {
-            let (id, props) = split_state(&piece.state);
-            let Some(block) = block_keys().get(id).copied() else {
-                wanted().insert(id.to_owned());
+            let Some(state) = block_states().get(&piece.state).copied() else {
+                wanted().insert(piece.state.clone());
                 continue;
             };
             draw.push();
@@ -512,7 +534,7 @@ impl EntityRenderer for TreeRenderer {
                 piece.offset[1] as f32,
                 piece.offset[2] as f32 - 0.5,
             ]);
-            draw.block(block, &props);
+            draw.block(state);
             draw.pop();
         }
         draw.pop();
@@ -570,7 +592,16 @@ fn chop(host: &dyn Host, player: EntityRef, pos: [i32; 3]) -> Option<(Kind, Tree
 
 fn read_block(host: &dyn Host, level: LevelRef, pos: [i32; 3]) -> Block {
     let key = level.block(host, pos);
-    let in_tag = |tag: &str| key.and_then(|k| host.block_in_tag(k, tag)) == Some(true);
+    let tags = host.tags();
+    let in_tag = |tag: &str| {
+        key.zip(
+            mod_api::Identifier::parse(tag)
+                .ok()
+                .and_then(|id| tags.key(&id)),
+        )
+        .and_then(|(block, tag)| tags.block_in_tag(block, tag))
+            == Some(true)
+    };
     let name = key.and_then(|k| k.id(host)).unwrap_or_default();
     let filters = filters::Filters::get(host);
     Block {
@@ -581,7 +612,7 @@ fn read_block(host: &dyn Host, level: LevelRef, pos: [i32; 3]) -> Block {
         distance: level
             .block_property(host, pos, "distance")
             .and_then(|d| d.parse().ok()),
-        persistent: level.block_property(host, pos, "persistent").as_deref() == Some("true"),
+        persistent: level.block_property(host, pos, "persistent") == Some("true"),
     }
 }
 
@@ -685,21 +716,31 @@ impl Hooks for Mod {
             range(key::SOUND_END, &label(key::SOUND_END), 0.0, 1.0, 0.05, 0.7),
         ];
         for spec in specs {
-            let _ = r.register_setting(spec);
+            let name = spec.key.clone();
+            if let Ok(setting) = r.register_setting(spec) {
+                setting_keys().insert(name, setting);
+            }
         }
         for index in 0..4 {
-            let _ = r.register_setting(toggle(
-                key::ENABLED[index],
-                &label(key::ENABLED[index]),
-                true,
-            ));
-            let _ = r.register_setting(toggle(
-                key::REQUIRE_TOOL[index],
-                &label(key::REQUIRE_TOOL[index]),
-                false,
-            ));
+            for spec in [
+                toggle(key::ENABLED[index], &label(key::ENABLED[index]), true),
+                toggle(
+                    key::REQUIRE_TOOL[index],
+                    &label(key::REQUIRE_TOOL[index]),
+                    false,
+                ),
+            ] {
+                let name = spec.key.clone();
+                if let Ok(setting) = r.register_setting(spec) {
+                    setting_keys().insert(name, setting);
+                }
+            }
         }
-        let _ = r.register_attachment_type("fallingtrees:tree", true);
+        let descriptor = AttachmentDescriptor::new("fallingtrees:tree", Falling::default)
+            .serialize(FALLING_CODEC)
+            .sync(FALLING_CODEC);
+        *FALLING_KEY.write().unwrap_or_else(|e| e.into_inner()) =
+            r.register_attachment_type(descriptor).ok();
         let _ = r.declare_general_entity(
             "tree",
             GeneralEntityCategory::Misc,
@@ -732,8 +773,8 @@ impl Hooks for Mod {
     fn client_tick_post(&self, host: &mut dyn ClientHost, _: &mut ClientTickPostEvent) {
         let asked: Vec<String> = wanted().drain().collect();
         for id in asked {
-            if let Some(found) = host.block_key(&id) {
-                block_keys().insert(id, found);
+            if let Some(found) = host.block_state_id(&id) {
+                block_states().insert(id, found);
             }
         }
         for (cell, key) in [
@@ -741,7 +782,10 @@ impl Hooks for Mod {
             (&BOUNCE_HEIGHT, key::BOUNCE_HEIGHT),
             (&BOUNCE_LENGTH, key::BOUNCE_LENGTH),
         ] {
-            if let Some(value) = host.setting_f64(key) {
+            let Some(setting) = setting_key(key) else {
+                continue;
+            };
+            if let Ok(value) = host.setting_f64(setting) {
                 cell.store((value as f32).to_bits(), Ordering::Relaxed);
             }
         }

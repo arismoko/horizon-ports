@@ -10,7 +10,7 @@ What it adds:
 - **Full server & common configuration (`comforts-common.toml`, `comforts-server.toml`):** Auto-use toggle, separate time-of-use modes (`NIGHT`, `DAY`, `DAY_OR_NIGHT`, `USE_WITHOUT_SLEEPING`) for sleeping bags and hammocks, consecutive sleep restriction (`restrictSleeping`, `restMultiplier`), daytime sleeping percentage, day/night wake-time offsets, phantom spawn reset toggles, sleeping bag break chance with Luck scaling, wake-up debuff effects (`sleepingBagEffects`), and recipe toggles (`enableSleepingBagRecipes`, `enableHammockRecipes`, plus automatic `#c:ropes` recipe support).
 - **17 languages** from upstream Comforts 26.x, plus creative tab placement in Colored Blocks and Functional Blocks.
 
-Known differences from the original on Dev `3d34bbe`:
+Known differences from the original on Dev 1 (`dev-2026-11-25-bdad86d`):
 
 - **Villager recognition and engine bed checks:** Sleeping bags and hammocks work for players via Comforts' sleep lifecycle, but engine-level bed checks (`Game::is_bed`, `LivingRef::start_sleeping`, `bed_wake_pose`) still match only `*_bed` block ids, so villagers do not claim sleeping bags or hammocks on their own (gap: sunrise-org/sunrise#5557).
 - **Daytime sleeping percentage below vanilla & action-bar status:** Raising `daySleepingPercentage` above `players_sleeping_percentage` holds back daytime skips as configured, while lowering it below `players_sleeping_percentage` waits for a `SleepStatus.sleepersNeeded` hook (gap: sunrise-org/sunrise#5558). The daytime action-bar sleep status announcement (`comforts.skipping_day`) is sent when skipping day rather than live on every sleep count change (gap: sunrise-org/sunrise#5376).

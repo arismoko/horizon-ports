@@ -5,8 +5,13 @@ use crate::config::{FallingLeavesConfig, LeafSettingsEntry, ParticleImplementati
 use crate::particles::LeafParticleData;
 use mod_api::{
     BlockState, ClientHost, ColorResolver, Direction, Heightmap, LevelRef, ParticleKey,
-    ParticleOptions, ParticleType, RandomSource,
+    ParticleOptions, ParticleType, RandomSource, TagKey,
 };
+use std::ops::ControlFlow;
+use std::sync::OnceLock;
+
+/// The `#minecraft:leaves` tag key resolved during `Hooks::register`.
+pub static LEAVES_TAG: OnceLock<TagKey> = OnceLock::new();
 
 /// Vanilla biomes whose `VillagerType.byBiome` is `VillagerType.SNOW`.
 const SNOWY_VILLAGER_BIOMES: &[&str] = &[
@@ -200,9 +205,8 @@ pub fn has_room_for_leaf_particle(
 ) -> bool {
     let below = [pos[0], pos[1] - 1, pos[2]];
     if let Some(below_block) = level.block(host, below)
-        && host
-            .block_in_tag(below_block, "minecraft:leaves")
-            .unwrap_or(false)
+        && let Some(leaves) = LEAVES_TAG.get()
+        && below_block.is_in_tag(host.tags(), *leaves).unwrap_or(false)
     {
         return false;
     }
@@ -220,10 +224,20 @@ pub fn is_snowy_location(host: &dyn ClientHost, level: LevelRef, pos: [i32; 3]) 
         return true;
     }
 
-    if let Ok(heights) = host.client_surface_heights(&[(pos[0], pos[2])], Heightmap::WorldSurface)
-        && let Some(Some(surface_y)) = heights.first()
+    let mut surface = None;
+    let read = level.visit_surface_heights(
+        host,
+        &[(pos[0], pos[2])],
+        Heightmap::WorldSurface,
+        &mut |_, height| {
+            surface = height;
+            ControlFlow::Break(())
+        },
+    );
+    if read.is_ok()
+        && let Some(surface_y) = surface
     {
-        let top_pos = [pos[0], *surface_y - 1, pos[2]];
+        let top_pos = [pos[0], surface_y - 1, pos[2]];
         if let Some(top_block) = level.block(host, top_pos)
             && let Some(top_id) = top_block.id(host)
             && matches!(

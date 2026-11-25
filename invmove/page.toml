@@ -12,13 +12,13 @@ InvMove lets you move with your normal movement keys while a screen is open, so 
 - A key to toggle movement in screens, a switch for each movement key, and extra keys listed in the config file.
 - Hides the dark background tint behind screens, with its own per-screen choices and a Show / Show in Singleplayer / Allow Hide mode for pause screens.
 - Space or Enter bound to jump no longer also clicks the focused button.
+- Its own config screen under Options > Mods with tabs, per-screen switches and editable lists of extra keys and unrecognized screens.
 
 ## Differences from the original
 
 - The focused text box can't be queried, so movement stops once you type a character in a box and resumes when you click (gap: sunrise-org/sunrise#5655).
 - Other gameplay keys (attack, use, ...) only update their key state inside screens, because the game does not poll them there (vanilla and NeoForge have no such moment).
-- The settings page is a flat list: no subcategories, no dynamic lists of unrecognized screens or allowed keys; `config/invmove.toml` carries those (gap: sunrise-org/sunrise#1217, fixed on main, in the next Dev build).
-- The focused button can't be seen, so space/Enter bound to jump is not delivered to buttons whenever jumping is allowed (gap: sunrise-org/sunrise#5656).
+- The focused widget can't be seen, so space/Enter bound to jump is cancelled across the whole screen, not only for focused buttons, whenever jumping is allowed (gap: sunrise-org/sunrise#5656).
 - The background tint can be hidden only on the inventory, container, creative, villager, beacon, book and sign screens, and the pause-screen blur only by radius (gap: sunrise-org/sunrise#5657).
 - The addon module API used by InvMoveCompats is not ported (gap: sunrise-org/sunrise#5137).
 - The original's Debug Display is left out: it does nothing on 26.x in the original either.
@@ -37,4 +37,4 @@ caption = "The same inside a chest."
 
 [[screenshots]]
 path = "page/settings.png"
-caption = "Per-screen movement and sneak settings under Options > Mods."
+caption = "Per-screen movement and sneak settings on the InvMove config screen."

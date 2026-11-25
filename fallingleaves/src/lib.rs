@@ -11,11 +11,11 @@ mod wind;
 
 use crate::config::{
     CONFIG_FILE_NAME, FallingLeavesConfig, MOD_ID, ParticleImplementation,
-    is_vanilla_untinted_leaves, register_mod_configs, register_settings,
+    is_vanilla_untinted_leaves, register_config, register_settings,
 };
 use crate::leaf_util::{
-    ParticleHandles, binomial_half, chebyshev_distance, is_decaying_leaf, modified_spawn_chance,
-    spawn_leaf_particles, spawn_snow_particles,
+    LEAVES_TAG, ParticleHandles, binomial_half, chebyshev_distance, is_decaying_leaf,
+    modified_spawn_chance, spawn_leaf_particles, spawn_snow_particles,
 };
 use crate::particles::{
     LeafParticleData, LeafParticleKind, LeafParticleProvider, ParticleSharedState,
@@ -23,10 +23,10 @@ use crate::particles::{
 use crate::wind::{Wind, WindRng, WindState};
 use mod_api::{
     AddHitEffectsEvent, AnimateTickEvent, BlockPart, BlockState, ClientBlockChangedEvent,
-    ClientHost, ClientLevelLoadEvent, ClientTickPostEvent, ConfigContext, ConfigKind,
-    ConfigLoadingEvent, ConfigPath, ConfigReloadingEvent, DebugEntry, DebugGroup, Flow, Hooks,
-    HostSide, ParticleOptions, RandomSource, RegisterConfigsEvent, RegisterDebugEntriesEvent,
-    RegisterParticleProvidersEvent, Registrar, RegistrationContext, SettingChangedEvent,
+    ClientHost, ClientLevelLoadEvent, ClientTickPostEvent, ConfigEvent, ConfigSnapshot, DebugEntry,
+    DebugGroup, Flow, Hooks, Host, HostSide, ParticleOptions, RandomSource,
+    RegisterDebugEntriesEvent, RegisterParticleProvidersEvent, Registrar, RegistrationContext,
+    SettingChangedEvent,
 };
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex, MutexGuard, OnceLock};
@@ -48,6 +48,42 @@ fn particle_shared() -> Arc<ParticleSharedState> {
     PARTICLE_SHARED
         .get_or_init(|| Arc::new(ParticleSharedState::new()))
         .clone()
+}
+
+/// Pushes the loaded config into the Options > Mods settings once. The runtime lock is not
+/// held across the writes: each changed value notifies `setting_changed`, which locks it.
+fn sync_initial_settings(host: &mut dyn ClientHost) {
+    let config = {
+        let mut rt = lock_runtime();
+        if rt.settings_synced {
+            return;
+        }
+        rt.settings_synced = true;
+        rt.config.clone()
+    };
+    config.write_to_host_settings(host);
+}
+
+/// The lifecycle listener of the registered `fallingleaves-client.toml`.
+fn config_listener(event: ConfigEvent<'_>, snapshot: &ConfigSnapshot) -> Result<(), String> {
+    match event {
+        ConfigEvent::Loading(_) => {
+            lock_runtime().config = Arc::new(FallingLeavesConfig::parse_toml(&snapshot.text));
+        }
+        ConfigEvent::Reloading(host) => {
+            let config = Arc::new(FallingLeavesConfig::parse_toml(&snapshot.text));
+            {
+                let mut rt = lock_runtime();
+                rt.config = config.clone();
+                rt.settings_synced = true;
+            }
+            if let HostSide::Client(client) = host {
+                config.write_to_host_settings(client);
+            }
+        }
+        _ => {}
+    }
+    Ok(())
 }
 
 fn runtime_mutex() -> &'static Mutex<Runtime> {
@@ -140,20 +176,12 @@ impl Runtime {
         }
     }
 
-    fn sync_initial_settings(&mut self, host: &dyn ClientHost) {
-        if self.settings_synced {
-            return;
+    fn persist_config_file(&self, host: &dyn Host) {
+        let path = host.config_dir().join(CONFIG_FILE_NAME);
+        if let Some(parent) = path.parent() {
+            let _ = std::fs::create_dir_all(parent);
         }
-        self.settings_synced = true;
-        self.config.write_to_host_settings(host);
-    }
-
-    fn persist_config_file(&self, host: &dyn ClientHost) {
-        if let Ok(path) = ConfigPath::new(CONFIG_FILE_NAME) {
-            let _ = host
-                .config_files()
-                .write(&path, self.config.to_toml().as_bytes());
-        }
+        let _ = std::fs::write(&path, self.config.to_toml().as_bytes());
     }
 
     fn ensure_fluid_cache(&mut self, host: &dyn ClientHost) {
@@ -422,7 +450,7 @@ impl Hooks for FallingLeaves {
         };
         let _ = HANDLES.set(handles);
 
-        // Cache air/water/lava BlockKeys for ParticleProvider::tick.
+        // Cache air/water/lava BlockKeys for CustomParticle::tick.
         let shared = particle_shared();
         {
             let mut cache = shared.blocks.lock().unwrap_or_else(|e| e.into_inner());
@@ -439,8 +467,10 @@ impl Hooks for FallingLeaves {
 
         // Attach animate_tick and add_hit_effects to every block in #minecraft:leaves.
         r.block_part_tag("minecraft:leaves", LeafBlockPart);
+        let _ = LEAVES_TAG.set(r.tag_key("minecraft:leaves"));
 
         register_settings(r);
+        register_config(r, Arc::new(config_listener));
     }
 
     fn register_particle_providers(
@@ -453,76 +483,33 @@ impl Hooks for FallingLeaves {
         };
         let shared = particle_shared();
 
-        event.providers.register_sprite_set(
-            handles.falling_leaf,
-            Arc::new(LeafParticleProvider {
-                kind: LeafParticleKind::Regular,
-                shared: shared.clone(),
-            }),
-        );
-        event.providers.register_sprite_set(
-            handles.falling_leaf_vanilla,
-            Arc::new(LeafParticleProvider {
-                kind: LeafParticleKind::RegularVanilla,
-                shared: shared.clone(),
-            }),
-        );
-        event.providers.register_sprite_set(
-            handles.falling_leaf_conifer,
-            Arc::new(LeafParticleProvider {
-                kind: LeafParticleKind::Conifer,
-                shared: shared.clone(),
-            }),
-        );
-        event.providers.register_sprite_set(
-            handles.falling_cherry,
-            Arc::new(LeafParticleProvider {
-                kind: LeafParticleKind::Cherry,
-                shared: shared.clone(),
-            }),
-        );
-        event.providers.register_sprite_set(
-            handles.falling_snow,
-            Arc::new(LeafParticleProvider {
-                kind: LeafParticleKind::Snow,
-                shared,
-            }),
-        );
-    }
-
-    fn register_configs(&self, _ctx: &dyn ConfigContext, event: &mut RegisterConfigsEvent<'_>) {
-        register_mod_configs(event.configs);
-    }
-
-    fn config_loading(&self, _ctx: &dyn ConfigContext, event: &mut ConfigLoadingEvent<'_>) {
-        if event.config.mod_id != MOD_ID || event.config.kind != ConfigKind::Client {
-            return;
-        }
-        let parsed = FallingLeavesConfig::parse_toml(&event.config.text);
-        lock_runtime().config = Arc::new(parsed);
-    }
-
-    fn config_reloading(&self, host: HostSide<'_>, event: &mut ConfigReloadingEvent<'_>) {
-        if event.config.mod_id != MOD_ID || event.config.kind != ConfigKind::Client {
-            return;
-        }
-        let parsed = FallingLeavesConfig::parse_toml(&event.config.text);
-        let mut rt = lock_runtime();
-        rt.config = Arc::new(parsed);
-        rt.settings_synced = true;
-        if let HostSide::Client(client) = host {
-            rt.config.write_to_host_settings(client);
+        for (ty, kind) in [
+            (handles.falling_leaf, LeafParticleKind::Regular),
+            (
+                handles.falling_leaf_vanilla,
+                LeafParticleKind::RegularVanilla,
+            ),
+            (handles.falling_leaf_conifer, LeafParticleKind::Conifer),
+            (handles.falling_cherry, LeafParticleKind::Cherry),
+            (handles.falling_snow, LeafParticleKind::Snow),
+        ] {
+            let shared = shared.clone();
+            event
+                .providers
+                .register_sprite_set(ty, move |sprites| LeafParticleProvider {
+                    kind,
+                    shared: shared.clone(),
+                    frames: sprites.frame_count(),
+                });
         }
     }
 
-    fn setting_changed(&self, host: &mut dyn ClientHost, event: &mut SettingChangedEvent<'_>) {
+    fn setting_changed(&self, host: &dyn Host, event: &mut SettingChangedEvent<'_>) {
         if event.mod_id != MOD_ID {
             return;
         }
         let mut rt = lock_runtime();
-        let changed = Arc::make_mut(&mut rt.config).apply_single_setting(host, event.key);
-        rt.sync_initial_settings(host);
-        if changed {
+        if Arc::make_mut(&mut rt.config).apply_single_setting(event.key, event.value) {
             rt.persist_config_file(host);
         }
     }
@@ -569,13 +556,14 @@ impl Hooks for FallingLeaves {
             return;
         };
 
+        sync_initial_settings(host);
+
         let player_and_level = host
             .local_player()
             .and_then(|p| Some((p.entity().position(&*host)?, p.level(&*host)?)));
 
         let (config, paused) = {
             let mut rt = lock_runtime();
-            rt.sync_initial_settings(&*host);
             rt.ensure_fluid_cache(&*host);
             rt.tick_counter = rt.tick_counter.wrapping_add(1);
             let paused = host.is_paused();
@@ -599,7 +587,7 @@ impl Hooks for FallingLeaves {
             (rt.config.clone(), paused)
         };
 
-        // Drain lava splash particles queued by ParticleProvider::tick.
+        // Drain lava splash particles queued by CustomParticle::tick.
         for pos in particle_shared().drain_lava_splashes() {
             let opts = ParticleOptions::simple(handles.vanilla_lava);
             let _ = host.add_particle(&opts, pos, [0.0, 0.0, 0.0]);
@@ -726,10 +714,10 @@ impl Hooks for FallingLeaves {
         ) {
             return;
         }
-        if !host
-            .block_in_tag(event.old.block(), "minecraft:leaves")
-            .unwrap_or(false)
-        {
+        let Some(leaves) = LEAVES_TAG.get() else {
+            return;
+        };
+        if !event.old.is_in_tag(host.tags(), *leaves).unwrap_or(false) {
             return;
         }
         let serialized = host.block_state_string(event.old).unwrap_or_default();

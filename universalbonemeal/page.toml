@@ -20,8 +20,6 @@ Differences from the original:
 
 - Data packs can't change the growth rules. The original keeps them in a data map and two data registries; the port has the default rules in code ([sunrise-org/sunrise#5368](https://github.com/sunrise-org/sunrise/issues/5368)).
 - Copied flowers, lily pads and dead bushes, and grown mushrooms, follow vanilla's rules for where they survive. A plant from another mod with a rule of its own is judged by the vanilla rule of its kind ([sunrise-org/sunrise#3596](https://github.com/sunrise-org/sunrise/issues/3596)).
-- Whether sky light reaches the block above dirt comes from that block's shape and fluid. A block that changes this itself, such as glass, is judged by its shape ([sunrise-org/sunrise#5364](https://github.com/sunrise-org/sunrise/issues/5364)). The same issue covers two more reads: air is read from `#minecraft:air`, and a block from another mod that takes bone meal itself is left to that mod only when it is a valid target there.
-- A damageable item used as fertiliser wears by one point per use without Unbreaking ([sunrise-org/sunrise#5369](https://github.com/sunrise-org/sunrise/issues/5369)).
 
 A port of Universal Bone Meal by Fuzs, under the MPL-2.0 licence.
 """

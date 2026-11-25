@@ -229,16 +229,19 @@ fn set<T>(field: &mut T, value: Option<T>) {
     }
 }
 
-/// `TimeOfDay`, from the sun's angle in degrees. Until a client can read the angle
-/// (sunrise-org/sunrise#5385, the client side of #4749), the wind takes every hour as `Day`.
+/// The sun's angle in degrees for a time of day in ticks: 0 at noon (tick 6000), 90 at
+/// sunset, 180 at midnight, 270 at sunrise. It is the classic celestial-angle curve, which
+/// a client can compute from the synchronized clock while it can't read the environment
+/// attribute itself (sunrise-org/sunrise#5385).
+pub fn sun_angle(day_time: i64) -> f64 {
+    let fraction = day_time.rem_euclid(24000) as f64 / 24000.0 - 0.25;
+    let fraction = fraction - fraction.floor();
+    let eased = 0.5 - (fraction * std::f64::consts::PI).cos() / 2.0;
+    (fraction + (eased - fraction) / 3.0) * 360.0
+}
+
+/// `TimeOfDay`, from the sun's angle in degrees.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-#[cfg_attr(
-    not(test),
-    expect(
-        dead_code,
-        reason = "the sun's angle can't be read: sunrise-org/sunrise#5385"
-    )
-)]
 pub enum TimeOfDay {
     Morning,
     Day,
@@ -247,13 +250,6 @@ pub enum TimeOfDay {
 }
 
 impl TimeOfDay {
-    #[cfg_attr(
-        not(test),
-        expect(
-            dead_code,
-            reason = "the sun's angle can't be read: sunrise-org/sunrise#5385"
-        )
-    )]
     pub fn from_sun_angle(degrees: f64) -> Self {
         if degrees <= 290.0 && degrees > 270.0 {
             Self::Morning
@@ -564,6 +560,28 @@ mod tests {
         assert_eq!(TimeOfDay::from_sun_angle(95.0), TimeOfDay::Evening);
         assert_eq!(TimeOfDay::from_sun_angle(75.0), TimeOfDay::Day);
         assert_eq!(TimeOfDay::from_sun_angle(300.0), TimeOfDay::Day);
+    }
+
+    #[test]
+    fn sun_angle_follows_the_day() {
+        assert!(sun_angle(6000).abs() < 1e-9);
+        assert!((sun_angle(18000) - 180.0).abs() < 1e-9);
+        assert!(sun_angle(30000).abs() < 1e-9);
+        assert_eq!(TimeOfDay::from_sun_angle(sun_angle(0)), TimeOfDay::Morning);
+        assert_eq!(TimeOfDay::from_sun_angle(sun_angle(1000)), TimeOfDay::Day);
+        assert_eq!(TimeOfDay::from_sun_angle(sun_angle(6000)), TimeOfDay::Day);
+        assert_eq!(
+            TimeOfDay::from_sun_angle(sun_angle(12000)),
+            TimeOfDay::Evening
+        );
+        assert_eq!(
+            TimeOfDay::from_sun_angle(sun_angle(18000)),
+            TimeOfDay::Night
+        );
+        assert_eq!(
+            TimeOfDay::from_sun_angle(sun_angle(23000)),
+            TimeOfDay::Night
+        );
     }
 
     #[test]

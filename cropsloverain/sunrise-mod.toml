@@ -1,7 +1,7 @@
 # Crops Love Rain for Sunrise: native code in src/ with its data/ and assets/.
 id = "cropsloverain"
 name = "Crops Love Rain"
-version = "0.5.2"
+version = "0.5.3"
 description = "Crops, saplings, sugar cane, bamboo and berries grow faster while it rains."
 authors = ["ThePoultryMan", "lavoide", "arismoko"]
 license = "MIT"
@@ -11,4 +11,4 @@ side = "server"
 
 [native]
 game = "26.3"
-sunrise = "3d34bbe63d71bb24c098c1e4021ef866be12fe2d"
+sunrise = "bdad86d2d398ff9293002d2dc08702822aea7265"

@@ -10,5 +10,5 @@ distributed under the same licence as the original (MPL-2.0); the licence text i
 
 LICENSE is the original project's MPL-2.0 licence. None of the original project's
 All-Rights-Reserved image assets (LICENSE-ASSETS.md) are included: `icon.png`,
-`assets/pickupnotifier/lang/en_us.json`, and the experience orb HUD graphics are
-original work for this port.
+and `assets/pickupnotifier/lang/en_us.json` are original work for this port. The
+experience orb HUD icons are read from the game's own `experience_orb.png` at run time.

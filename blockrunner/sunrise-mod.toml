@@ -1,7 +1,7 @@
 # Block Runner for Sunrise: native code in src/, with the original's tags and data map in src/data/.
 id = "blockrunner"
 name = "Block Runner"
-version = "0.5.1"
+version = "0.5.2"
 description = "Run faster on path blocks and stone bricks; any block can get its own speed."
 authors = ["Fuzs", "arismoko"]
 license = "MPL-2.0"
@@ -11,4 +11,4 @@ side = "both"
 
 [native]
 game = "26.3"
-sunrise = "3d34bbe63d71bb24c098c1e4021ef866be12fe2d"
+sunrise = "bdad86d2d398ff9293002d2dc08702822aea7265"

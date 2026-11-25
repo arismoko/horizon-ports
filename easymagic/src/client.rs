@@ -3,10 +3,10 @@ use crate::config::{
     keep_enchantment_screen_book, synced_server_config,
 };
 use crate::enchant::{
-    BOOKSHELF_OFFSETS, ENCHANTMENT_POWER_TRANSMITTER_TAG, chiseled_bookshelf_hit_slot,
-    enchantment_translation_key, generate_rune_phrase, is_stack_enchantable,
-    is_unaltered_enchanting_table, is_valid_particle_bookshelf, parse_block_state_property,
-    total_experience,
+    BOOKSHELF_OFFSETS, ENCHANTMENT_POWER_TRANSMITTER_TAG, block_in_tag,
+    chiseled_bookshelf_hit_slot, enchantment_translation_key, generate_rune_phrase,
+    is_stack_enchantable, is_unaltered_enchanting_table, is_valid_particle_bookshelf,
+    parse_block_state_property, total_experience,
 };
 use crate::payloads::{CluesPayload, EnchantClue, ShelfItemPayload, ShelfQueryPayload, channels};
 use crate::server::REROLL_BUTTON_ID;
@@ -15,11 +15,10 @@ use mod_api::text::TextStyle;
 use mod_api::wire::Reader;
 use mod_api::{
     AnimateTickEvent, ClientHost, CrosshairTarget, DrawContext, GameMode, Gui3dSubject, Gui3dView,
-    GuiDraw, IDENTITY_TRANSFORM, Identifier, ItemResource, ItemStack, MenuScreen, MenuScreenFrame,
-    MenuScreenLayout, MenuScreenOpen, ParticleKey, ParticleOptions, ScreenSlot, SoundPlay, Text,
-    TooltipElement,
+    GuiBlitRegion, IDENTITY_TRANSFORM, Identifier, ItemResource, ItemStack, MenuScreen,
+    MenuScreenFrame, MenuScreenLayout, MenuScreenOpen, ParticleKey, ParticleOptions, ScreenSlot,
+    SoundPlay, Text, TooltipElement,
 };
-use std::borrow::Cow;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{LazyLock, Mutex, OnceLock, PoisonError};
 
@@ -243,43 +242,6 @@ fn draw_enchanting_screen(
     let ox = frame.origin[0].round() as i32;
     let oy = frame.origin[1].round() as i32;
 
-    let mut draws = vec![GuiDraw::Blit {
-        texture: Cow::Borrowed("gui/container/enchanting_table"),
-        blend: Blend::Textured,
-        x: ox,
-        y: oy,
-        w: 176,
-        h: 166,
-        uv: [0.0, 0.0],
-        src: [176, 166],
-        tex: [256, 256],
-        color: COLOR_WHITE,
-    }];
-
-    // Extra 3-slot layout when dedicated reroll catalyst is enabled
-    if dedicated {
-        // Cover vanilla 2-slot area cleanly with panel background color before painting 3 slots
-        draws.push(GuiDraw::Fill {
-            x0: ox + 4,
-            y0: oy + 45,
-            x1: ox + 59,
-            y1: oy + 65,
-            color: 0xFFC6_C6C6,
-        });
-        for sx in [4, 22, 40] {
-            draws.push(GuiDraw::Sprite {
-                sprite: Cow::Borrowed("minecraft:container/slot"),
-                x: ox + sx,
-                y: oy + 46,
-                w: 18,
-                h: 18,
-                region: None,
-                color: COLOR_WHITE,
-                blend: Blend::Textured,
-            });
-        }
-    }
-
     let (costs, seed) = current_costs_and_seed(&frame, window);
     let slots = client_menu_slots(host);
     let (creative, exp_level, exp_progress) = client_player_state(host);
@@ -299,48 +261,69 @@ fn draw_enchanting_screen(
         "minecraft:container/enchanting_table/level_3_disabled",
     ];
 
-    // Base disabled slot backgrounds + active offer buttons
-    for (i, &cost) in costs.iter().enumerate() {
-        let row_y = 14 + 19 * (i as i32);
-        let hovered = in_rect(frame.at, 60.0, row_y as f32, 108.0, 19.0);
-        let active = cost > 0 && (creative || (lapis_count >= (i as u32 + 1) && exp_level >= cost));
-        let slot_sprite = if cost == 0 || !active {
-            "minecraft:container/enchanting_table/enchantment_slot_disabled"
-        } else if hovered {
-            "minecraft:container/enchanting_table/enchantment_slot_highlighted"
-        } else {
-            "minecraft:container/enchanting_table/enchantment_slot"
-        };
-        draws.push(GuiDraw::Sprite {
-            sprite: Cow::Borrowed(slot_sprite),
-            x: ox + 60,
-            y: oy + row_y,
-            w: 108,
-            h: 19,
-            region: None,
-            color: COLOR_WHITE,
-            blend: Blend::Textured,
-        });
-        if cost > 0 {
-            let orb_sprite = if active {
-                LEVEL_SPRITES[i]
-            } else {
-                LEVEL_DISABLED_SPRITES[i]
-            };
-            draws.push(GuiDraw::Sprite {
-                sprite: Cow::Borrowed(orb_sprite),
-                x: ox + 61,
-                y: oy + row_y + 1,
-                w: 16,
-                h: 16,
-                region: None,
-                color: COLOR_WHITE,
-                blend: Blend::Textured,
-            });
-        }
-    }
+    let (fx, fy) = (ox as f32, oy as f32);
+    // A refused group keeps the other draws of this frame, so the error is dropped.
+    let _ = ctx.draw_gui(&mut |canvas| {
+        canvas.blit(
+            "gui/container/enchanting_table",
+            [fx, fy, 176.0, 166.0],
+            GuiBlitRegion::new([0.0, 0.0], [176, 166], [256, 256]),
+            COLOR_WHITE,
+            Blend::Textured,
+        )?;
 
-    let _ = ctx.gui_paint(&draws);
+        // Extra 3-slot layout when dedicated reroll catalyst is enabled
+        if dedicated {
+            // Cover vanilla 2-slot area cleanly with panel background color before painting 3 slots
+            canvas.fill([fx + 4.0, fy + 45.0, 55.0, 20.0], 0xFFC6_C6C6)?;
+            for sx in [4.0, 22.0, 40.0] {
+                canvas.blit_sprite(
+                    "minecraft:container/slot",
+                    [fx + sx, fy + 46.0, 18.0, 18.0],
+                    None,
+                    COLOR_WHITE,
+                    Blend::Textured,
+                )?;
+            }
+        }
+
+        // Base disabled slot backgrounds + active offer buttons
+        for (i, &cost) in costs.iter().enumerate() {
+            let row_y = 14 + 19 * (i as i32);
+            let hovered = in_rect(frame.at, 60.0, row_y as f32, 108.0, 19.0);
+            let active =
+                cost > 0 && (creative || (lapis_count >= (i as u32 + 1) && exp_level >= cost));
+            let slot_sprite = if cost == 0 || !active {
+                "minecraft:container/enchanting_table/enchantment_slot_disabled"
+            } else if hovered {
+                "minecraft:container/enchanting_table/enchantment_slot_highlighted"
+            } else {
+                "minecraft:container/enchanting_table/enchantment_slot"
+            };
+            canvas.blit_sprite(
+                slot_sprite,
+                [fx + 60.0, fy + row_y as f32, 108.0, 19.0],
+                None,
+                COLOR_WHITE,
+                Blend::Textured,
+            )?;
+            if cost > 0 {
+                let orb_sprite = if active {
+                    LEVEL_SPRITES[i]
+                } else {
+                    LEVEL_DISABLED_SPRITES[i]
+                };
+                canvas.blit_sprite(
+                    orb_sprite,
+                    [fx + 61.0, fy + row_y as f32 + 1.0, 16.0, 16.0],
+                    None,
+                    COLOR_WHITE,
+                    Blend::Textured,
+                )?;
+            }
+        }
+        Ok(())
+    });
 
     // Draw Standard Galactic Alphabet runes and level costs on each populated row
     for (i, &cost) in costs.iter().enumerate() {
@@ -852,7 +835,7 @@ pub fn animate_enchanting_table(host: &mut dyn ClientHost, event: &mut AnimateTi
         let vanilla_transmitter = event
             .level
             .block_state(&*host, mid)
-            .and_then(|s| host.block_in_tag(s.block(), ENCHANTMENT_POWER_TRANSMITTER_TAG))
+            .map(|s| block_in_tag(&*host, s.block(), ENCHANTMENT_POWER_TRANSMITTER_TAG))
             .unwrap_or(false);
         let is_chiseled = event
             .level

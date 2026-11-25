@@ -1,6 +1,11 @@
-//! Dynamic FPS configuration model, TOML persistence, and Options > Mods settings.
+//! Dynamic FPS configuration model, TOML persistence, and the registered settings.
 
-use mod_api::{ClientHost, Config, ConfigKind, Registrar, SettingSpec, SoundSource};
+use mod_api::{
+    ClientHost, ConfigKind, ConfigSpec, Registrar, SettingKey, SettingSpec, SettingValue,
+    SoundSource,
+};
+use std::sync::Mutex;
+use std::sync::atomic::{AtomicBool, Ordering};
 
 pub const MOD_ID: &str = "dynamicfps";
 pub const CONFIG_FILE_NAME: &str = "dynamicfps.toml";
@@ -692,458 +697,557 @@ impl DynamicFpsConfig {
         cfg
     }
 
-    /// Apply a single Options > Mods `setting_changed` key onto `self`.
-    pub fn apply_single_setting(&mut self, host: &dyn ClientHost, key: &str) -> bool {
-        match key {
-            SET_ENABLED => {
-                if let Some(v) = host.setting_bool(key) {
-                    self.enabled = v;
-                    return true;
-                }
-            }
-            SET_IGNORE_INITIAL_CLICK => {
-                if let Some(v) = host.setting_choice(key) {
-                    self.ignore_initial_click = IgnoreInitialClick::from_choice(v);
-                    return true;
-                }
-            }
-            SET_IDLE_TIME => {
-                if let Some(v) = host.setting_f64(key)
-                    && v.is_finite()
-                {
-                    self.idle.timeout_seconds = (v.round().clamp(0.0, 30.0) as u32) * 60;
-                    return true;
-                }
-            }
+    /// Apply one registered setting's new value onto `self`. Returns whether `key` named a
+    /// setting of ours and `value` had the right kind.
+    pub fn apply_single_setting(&mut self, key: &str, value: &SettingValue) -> bool {
+        let applied = match key {
+            SET_ENABLED => toggle_value(value).map(|v| self.enabled = v),
+            SET_IGNORE_INITIAL_CLICK => choice_value(value)
+                .map(|v| self.ignore_initial_click = IgnoreInitialClick::from_choice(v)),
+            SET_IDLE_TIME => number_value(value).map(|v| {
+                self.idle.timeout_seconds = (v.round().clamp(0.0, 30.0) as u32) * 60;
+            }),
             SET_IDLE_CONDITION => {
-                if let Some(v) = host.setting_choice(key) {
-                    self.idle.condition = IdleCondition::from_choice(v);
-                    return true;
-                }
+                choice_value(value).map(|v| self.idle.condition = IdleCondition::from_choice(v))
             }
-            SET_VOLUME_UP => {
-                if let Some(v) = host.setting_f64(key)
-                    && v.is_finite()
-                {
-                    self.volume_transition.up = (v as f32).clamp(0.05, VOLUME_TRANSITION_IMMEDIATE);
-                    return true;
-                }
-            }
-            SET_VOLUME_DOWN => {
-                if let Some(v) = host.setting_f64(key)
-                    && v.is_finite()
-                {
-                    self.volume_transition.down =
-                        (v as f32).clamp(0.05, VOLUME_TRANSITION_IMMEDIATE);
-                    return true;
-                }
-            }
-            SET_UNFOCUSED_FPS => return apply_fps_setting(&mut self.unfocused, host, key),
+            SET_VOLUME_UP => number_value(value).map(|v| {
+                self.volume_transition.up = (v as f32).clamp(0.05, VOLUME_TRANSITION_IMMEDIATE);
+            }),
+            SET_VOLUME_DOWN => number_value(value).map(|v| {
+                self.volume_transition.down = (v as f32).clamp(0.05, VOLUME_TRANSITION_IMMEDIATE);
+            }),
+            SET_UNFOCUSED_FPS => number_value(value).map(|v| apply_fps(&mut self.unfocused, v)),
             SET_UNFOCUSED_VOLUME_MASTER => {
-                return apply_master_vol_setting(&mut self.unfocused, host, key);
+                number_value(value).map(|v| apply_master_volume(&mut self.unfocused, v))
             }
             SET_UNFOCUSED_SHOW_TOASTS => {
-                return apply_toasts_setting(&mut self.unfocused, host, key);
+                toggle_value(value).map(|v| self.unfocused.show_toasts = v)
             }
-            SET_INVISIBLE_FPS => return apply_fps_setting(&mut self.invisible, host, key),
+            SET_INVISIBLE_FPS => number_value(value).map(|v| apply_fps(&mut self.invisible, v)),
             SET_INVISIBLE_VOLUME_MASTER => {
-                return apply_master_vol_setting(&mut self.invisible, host, key);
+                number_value(value).map(|v| apply_master_volume(&mut self.invisible, v))
             }
             SET_INVISIBLE_SHOW_TOASTS => {
-                return apply_toasts_setting(&mut self.invisible, host, key);
+                toggle_value(value).map(|v| self.invisible.show_toasts = v)
             }
-            SET_HOVERED_FPS => return apply_fps_setting(&mut self.hovered, host, key),
+            SET_HOVERED_FPS => number_value(value).map(|v| apply_fps(&mut self.hovered, v)),
             SET_HOVERED_VOLUME_MASTER => {
-                return apply_master_vol_setting(&mut self.hovered, host, key);
+                number_value(value).map(|v| apply_master_volume(&mut self.hovered, v))
             }
-            SET_HOVERED_SHOW_TOASTS => {
-                return apply_toasts_setting(&mut self.hovered, host, key);
-            }
-            SET_ABANDONED_FPS => return apply_fps_setting(&mut self.abandoned, host, key),
+            SET_HOVERED_SHOW_TOASTS => toggle_value(value).map(|v| self.hovered.show_toasts = v),
+            SET_ABANDONED_FPS => number_value(value).map(|v| apply_fps(&mut self.abandoned, v)),
             SET_ABANDONED_VOLUME_MASTER => {
-                return apply_master_vol_setting(&mut self.abandoned, host, key);
+                number_value(value).map(|v| apply_master_volume(&mut self.abandoned, v))
             }
             SET_ABANDONED_SHOW_TOASTS => {
-                return apply_toasts_setting(&mut self.abandoned, host, key);
+                toggle_value(value).map(|v| self.abandoned.show_toasts = v)
             }
-            SET_UNPLUGGED_FPS => return apply_fps_setting(&mut self.unplugged, host, key),
-            SET_BATTERY_ENABLED => {
-                if let Some(v) = host.setting_bool(key) {
-                    self.battery.enabled = v;
-                    return true;
-                }
-            }
+            SET_UNPLUGGED_FPS => number_value(value).map(|v| apply_fps(&mut self.unplugged, v)),
+            SET_BATTERY_ENABLED => toggle_value(value).map(|v| self.battery.enabled = v),
             SET_BATTERY_SWITCH_STATES => {
-                if let Some(v) = host.setting_bool(key) {
-                    self.battery.switch_states = v;
-                    return true;
-                }
+                toggle_value(value).map(|v| self.battery.switch_states = v)
             }
             SET_BATTERY_NOTIFICATIONS => {
-                if let Some(v) = host.setting_bool(key) {
-                    self.battery.notifications = v;
-                    return true;
-                }
+                toggle_value(value).map(|v| self.battery.notifications = v)
             }
-            SET_BATTERY_CRITICAL_LEVEL => {
-                if let Some(v) = host.setting_f64(key)
-                    && v.is_finite()
-                {
-                    self.battery.critical_level = v.round().clamp(1.0, 50.0) as u8;
-                    return true;
-                }
-            }
-            SET_BATTERY_INDICATOR_CONDITION => {
-                if let Some(v) = host.setting_choice(key) {
-                    self.battery.display_condition = BatteryIndicatorCondition::from_choice(v);
-                    return true;
-                }
-            }
+            SET_BATTERY_CRITICAL_LEVEL => number_value(value)
+                .map(|v| self.battery.critical_level = v.round().clamp(1.0, 50.0) as u8),
+            SET_BATTERY_INDICATOR_CONDITION => choice_value(value).map(|v| {
+                self.battery.display_condition = BatteryIndicatorCondition::from_choice(v)
+            }),
             SET_BATTERY_INDICATOR_DEBUG => {
-                if let Some(v) = host.setting_bool(key) {
-                    self.battery.show_when_debug = v;
-                    return true;
-                }
+                toggle_value(value).map(|v| self.battery.show_when_debug = v)
             }
-            SET_BATTERY_INDICATOR_PLACEMENT => {
-                if let Some(v) = host.setting_choice(key) {
-                    self.battery.display_placement = BatteryIndicatorPlacement::from_choice(v);
-                    return true;
-                }
-            }
+            SET_BATTERY_INDICATOR_PLACEMENT => choice_value(value).map(|v| {
+                self.battery.display_placement = BatteryIndicatorPlacement::from_choice(v)
+            }),
             SET_MOCK_BATTERY_DATA => {
-                if let Some(v) = host.setting_bool(key) {
-                    self.battery.mock_battery_data = v;
-                    return true;
-                }
+                toggle_value(value).map(|v| self.battery.mock_battery_data = v)
             }
-            _ => {}
+            _ => None,
+        };
+        applied.is_some()
+    }
+
+    /// This config's values as registered settings, in the units the settings use.
+    pub fn setting_values(&self) -> Vec<(&'static str, SettingValue)> {
+        let percent = |state: &StateConfig| {
+            SettingValue::Range(f64::from(
+                (state.raw_volume_multiplier(SoundSource::Master) * 100.0).round(),
+            ))
+        };
+        let fps = |state: &StateConfig| SettingValue::Range(f64::from(state.frame_rate_target));
+        vec![
+            (SET_ENABLED, SettingValue::Toggle(self.enabled)),
+            (
+                SET_IGNORE_INITIAL_CLICK,
+                SettingValue::Choice(self.ignore_initial_click.to_choice() as usize),
+            ),
+            (
+                SET_IDLE_TIME,
+                SettingValue::Range(f64::from((self.idle.timeout_seconds / 60).min(30))),
+            ),
+            (
+                SET_IDLE_CONDITION,
+                SettingValue::Choice(self.idle.condition.to_choice() as usize),
+            ),
+            (
+                SET_VOLUME_UP,
+                SettingValue::Range(f64::from(self.volume_transition.up)),
+            ),
+            (
+                SET_VOLUME_DOWN,
+                SettingValue::Range(f64::from(self.volume_transition.down)),
+            ),
+            (SET_UNFOCUSED_FPS, fps(&self.unfocused)),
+            (SET_UNFOCUSED_VOLUME_MASTER, percent(&self.unfocused)),
+            (
+                SET_UNFOCUSED_SHOW_TOASTS,
+                SettingValue::Toggle(self.unfocused.show_toasts),
+            ),
+            (SET_INVISIBLE_FPS, fps(&self.invisible)),
+            (SET_INVISIBLE_VOLUME_MASTER, percent(&self.invisible)),
+            (
+                SET_INVISIBLE_SHOW_TOASTS,
+                SettingValue::Toggle(self.invisible.show_toasts),
+            ),
+            (SET_HOVERED_FPS, fps(&self.hovered)),
+            (SET_HOVERED_VOLUME_MASTER, percent(&self.hovered)),
+            (
+                SET_HOVERED_SHOW_TOASTS,
+                SettingValue::Toggle(self.hovered.show_toasts),
+            ),
+            (SET_ABANDONED_FPS, fps(&self.abandoned)),
+            (SET_ABANDONED_VOLUME_MASTER, percent(&self.abandoned)),
+            (
+                SET_ABANDONED_SHOW_TOASTS,
+                SettingValue::Toggle(self.abandoned.show_toasts),
+            ),
+            (SET_UNPLUGGED_FPS, fps(&self.unplugged)),
+            (
+                SET_BATTERY_ENABLED,
+                SettingValue::Toggle(self.battery.enabled),
+            ),
+            (
+                SET_BATTERY_SWITCH_STATES,
+                SettingValue::Toggle(self.battery.switch_states),
+            ),
+            (
+                SET_BATTERY_NOTIFICATIONS,
+                SettingValue::Toggle(self.battery.notifications),
+            ),
+            (
+                SET_BATTERY_CRITICAL_LEVEL,
+                SettingValue::Range(f64::from(self.battery.critical_level)),
+            ),
+            (
+                SET_BATTERY_INDICATOR_CONDITION,
+                SettingValue::Choice(self.battery.display_condition.to_choice() as usize),
+            ),
+            (
+                SET_BATTERY_INDICATOR_DEBUG,
+                SettingValue::Toggle(self.battery.show_when_debug),
+            ),
+            (
+                SET_BATTERY_INDICATOR_PLACEMENT,
+                SettingValue::Choice(self.battery.display_placement.to_choice() as usize),
+            ),
+            (
+                SET_MOCK_BATTERY_DATA,
+                SettingValue::Toggle(self.battery.mock_battery_data),
+            ),
+        ]
+    }
+
+    /// Push this config's values into the registered settings store so the config screen
+    /// reflects edits made to `config/dynamicfps.toml`. Every write notifies
+    /// `setting_changed` synchronously, so callers hold no lock and `SYNCING` is set.
+    pub fn write_to_host_settings(&self, host: &mut dyn ClientHost) {
+        for (name, value) in self.setting_values() {
+            if let Some(key) = setting_key(name) {
+                let _ = host.set_setting(key, value);
+            }
         }
-        false
-    }
-
-    /// Push this config's values into Sunrise's Options > Mods settings store so the UI
-    /// reflects edits made to `config/dynamicfps.toml`.
-    pub fn write_to_host_settings(&self, host: &dyn ClientHost) {
-        let set_bool =
-            |k: &str, v: bool| host.set_setting(MOD_ID, k, if v { "true" } else { "false" });
-        let set_u32 = |k: &str, v: u32| host.set_setting(MOD_ID, k, &v.to_string());
-        let set_f64 = |k: &str, v: f64| host.set_setting(MOD_ID, k, &format!("{v}"));
-
-        set_bool(SET_ENABLED, self.enabled);
-        set_u32(
-            SET_IGNORE_INITIAL_CLICK,
-            self.ignore_initial_click.to_choice(),
-        );
-        set_f64(
-            SET_IDLE_TIME,
-            (self.idle.timeout_seconds / 60).min(30) as f64,
-        );
-        set_u32(SET_IDLE_CONDITION, self.idle.condition.to_choice());
-        set_f64(SET_VOLUME_UP, f64::from(self.volume_transition.up));
-        set_f64(SET_VOLUME_DOWN, f64::from(self.volume_transition.down));
-
-        set_f64(
-            SET_UNFOCUSED_FPS,
-            f64::from(self.unfocused.frame_rate_target),
-        );
-        set_f64(
-            SET_UNFOCUSED_VOLUME_MASTER,
-            f64::from((self.unfocused.raw_volume_multiplier(SoundSource::Master) * 100.0).round()),
-        );
-        set_bool(SET_UNFOCUSED_SHOW_TOASTS, self.unfocused.show_toasts);
-
-        set_f64(
-            SET_INVISIBLE_FPS,
-            f64::from(self.invisible.frame_rate_target),
-        );
-        set_f64(
-            SET_INVISIBLE_VOLUME_MASTER,
-            f64::from((self.invisible.raw_volume_multiplier(SoundSource::Master) * 100.0).round()),
-        );
-        set_bool(SET_INVISIBLE_SHOW_TOASTS, self.invisible.show_toasts);
-
-        set_f64(SET_HOVERED_FPS, f64::from(self.hovered.frame_rate_target));
-        set_f64(
-            SET_HOVERED_VOLUME_MASTER,
-            f64::from((self.hovered.raw_volume_multiplier(SoundSource::Master) * 100.0).round()),
-        );
-        set_bool(SET_HOVERED_SHOW_TOASTS, self.hovered.show_toasts);
-
-        set_f64(
-            SET_ABANDONED_FPS,
-            f64::from(self.abandoned.frame_rate_target),
-        );
-        set_f64(
-            SET_ABANDONED_VOLUME_MASTER,
-            f64::from((self.abandoned.raw_volume_multiplier(SoundSource::Master) * 100.0).round()),
-        );
-        set_bool(SET_ABANDONED_SHOW_TOASTS, self.abandoned.show_toasts);
-
-        set_f64(
-            SET_UNPLUGGED_FPS,
-            f64::from(self.unplugged.frame_rate_target),
-        );
-
-        set_bool(SET_BATTERY_ENABLED, self.battery.enabled);
-        set_bool(SET_BATTERY_SWITCH_STATES, self.battery.switch_states);
-        set_bool(SET_BATTERY_NOTIFICATIONS, self.battery.notifications);
-        set_f64(
-            SET_BATTERY_CRITICAL_LEVEL,
-            f64::from(self.battery.critical_level),
-        );
-        set_u32(
-            SET_BATTERY_INDICATOR_CONDITION,
-            self.battery.display_condition.to_choice(),
-        );
-        set_bool(SET_BATTERY_INDICATOR_DEBUG, self.battery.show_when_debug);
-        set_u32(
-            SET_BATTERY_INDICATOR_PLACEMENT,
-            self.battery.display_placement.to_choice(),
-        );
-        set_bool(SET_MOCK_BATTERY_DATA, self.battery.mock_battery_data);
     }
 }
 
-/// Register the client config file `config/dynamicfps.toml`.
-pub fn register_mod_configs(configs: &mut Vec<Config>) {
+fn toggle_value(value: &SettingValue) -> Option<bool> {
+    match value {
+        SettingValue::Toggle(v) => Some(*v),
+        _ => None,
+    }
+}
+
+fn choice_value(value: &SettingValue) -> Option<u32> {
+    match value {
+        SettingValue::Choice(v) => Some(u32::try_from(*v).unwrap_or(u32::MAX)),
+        _ => None,
+    }
+}
+
+fn number_value(value: &SettingValue) -> Option<f64> {
+    match value {
+        SettingValue::Range(v) if v.is_finite() => Some(*v),
+        _ => None,
+    }
+}
+
+/// Set while this mod mirrors the config file into the settings store, so the resulting
+/// `setting_changed` notices are not applied back or written to the file again.
+pub static SYNCING: AtomicBool = AtomicBool::new(false);
+
+static SETTING_KEYS: Mutex<Vec<(&'static str, SettingKey)>> = Mutex::new(Vec::new());
+
+/// The key `register_setting` issued for `name`, once `register_settings` ran.
+pub fn setting_key(name: &str) -> Option<SettingKey> {
+    let keys = SETTING_KEYS.lock().unwrap_or_else(|e| e.into_inner());
+    keys.iter()
+        .find(|(known, _)| *known == name)
+        .map(|(_, key)| *key)
+}
+
+/// Mirror `config` into the settings store without notifying ourselves.
+pub fn sync_settings_to_host(config: &DynamicFpsConfig, host: &mut dyn ClientHost) {
+    SYNCING.store(true, Ordering::SeqCst);
+    config.write_to_host_settings(host);
+    SYNCING.store(false, Ordering::SeqCst);
+}
+
+/// The client config file `config/dynamicfps.toml`.
+pub fn config_spec() -> ConfigSpec {
     let default_toml = DynamicFpsConfig::default().to_toml();
-    configs.push(Config::new(MOD_ID, ConfigKind::Client, &default_toml).file(CONFIG_FILE_NAME));
+    ConfigSpec::new(ConfigKind::Client, default_toml).file(CONFIG_FILE_NAME)
 }
 
-/// Register all in-game settings on Sunrise's Options > Mods > Dynamic FPS page.
-pub fn register_settings(r: &mut dyn Registrar) {
-    let specs = [
-        SettingSpec::toggle(SET_ENABLED, "config.dynamicfps.enabled", true)
-            .tooltip("config.dynamicfps.enabled_tooltip"),
-        SettingSpec::choice(
-            SET_IGNORE_INITIAL_CLICK,
-            "config.dynamicfps.ignore_initial_click",
-            [
-                "config.dynamicfps.ignore_initial_click_disabled",
-                "config.dynamicfps.ignore_initial_click_in_world",
-                "config.dynamicfps.ignore_initial_click_constant",
-            ],
-            0,
-        )
-        .tooltip("config.dynamicfps.ignore_initial_click_tooltip"),
-        SettingSpec::range(
-            SET_IDLE_TIME,
-            "config.dynamicfps.idle_time",
-            0.0,
-            30.0,
-            1.0,
-            5.0,
-        )
-        .tooltip("config.dynamicfps.idle_time_tooltip"),
-        SettingSpec::choice(
-            SET_IDLE_CONDITION,
-            "config.dynamicfps.idle_condition",
-            [
-                "config.dynamicfps.idle_condition_none",
-                "config.dynamicfps.idle_condition_vanilla",
-                "config.dynamicfps.idle_condition_on_battery",
-            ],
-            1,
-        )
-        .tooltip("config.dynamicfps.idle_condition_tooltip"),
-        SettingSpec::range(
-            SET_VOLUME_UP,
-            "config.dynamicfps.volume_transition_up",
-            0.1,
-            10.0,
-            0.1,
-            1.0,
-        )
-        .tooltip("config.dynamicfps.volume_transition_up_tooltip"),
-        SettingSpec::range(
-            SET_VOLUME_DOWN,
-            "config.dynamicfps.volume_transition_down",
-            0.1,
-            10.0,
-            0.1,
-            0.5,
-        )
-        .tooltip("config.dynamicfps.volume_transition_down_tooltip"),
-        // Unfocused
-        SettingSpec::range(
-            SET_UNFOCUSED_FPS,
-            "config.dynamicfps.unfocused_fps",
-            0.0,
-            260.0,
-            1.0,
-            1.0,
-        )
-        .tooltip("config.dynamicfps.unfocused_fps_tooltip"),
-        SettingSpec::range(
-            SET_UNFOCUSED_VOLUME_MASTER,
-            "config.dynamicfps.unfocused_volume_master",
-            0.0,
-            100.0,
-            5.0,
-            25.0,
-        )
-        .tooltip("config.dynamicfps.unfocused_volume_master_tooltip"),
-        SettingSpec::toggle(
-            SET_UNFOCUSED_SHOW_TOASTS,
-            "config.dynamicfps.unfocused_show_toasts",
-            false,
-        )
-        .tooltip("config.dynamicfps.unfocused_show_toasts_tooltip"),
-        // Invisible / Minimized
-        SettingSpec::range(
-            SET_INVISIBLE_FPS,
-            "config.dynamicfps.invisible_fps",
-            0.0,
-            260.0,
-            1.0,
-            0.0,
-        )
-        .tooltip("config.dynamicfps.invisible_fps_tooltip"),
-        SettingSpec::range(
-            SET_INVISIBLE_VOLUME_MASTER,
-            "config.dynamicfps.invisible_volume_master",
-            0.0,
-            100.0,
-            5.0,
-            0.0,
-        )
-        .tooltip("config.dynamicfps.invisible_volume_master_tooltip"),
-        SettingSpec::toggle(
-            SET_INVISIBLE_SHOW_TOASTS,
-            "config.dynamicfps.invisible_show_toasts",
-            false,
-        )
-        .tooltip("config.dynamicfps.invisible_show_toasts_tooltip"),
-        // Idle (Abandoned)
-        SettingSpec::range(
-            SET_ABANDONED_FPS,
-            "config.dynamicfps.abandoned_fps",
-            0.0,
-            260.0,
-            1.0,
-            10.0,
-        )
-        .tooltip("config.dynamicfps.abandoned_fps_tooltip"),
-        SettingSpec::range(
-            SET_ABANDONED_VOLUME_MASTER,
-            "config.dynamicfps.abandoned_volume_master",
-            0.0,
-            100.0,
-            5.0,
-            100.0,
-        )
-        .tooltip("config.dynamicfps.abandoned_volume_master_tooltip"),
-        SettingSpec::toggle(
-            SET_ABANDONED_SHOW_TOASTS,
-            "config.dynamicfps.abandoned_show_toasts",
-            false,
-        )
-        .tooltip("config.dynamicfps.abandoned_show_toasts_tooltip"),
-        // Hovered
-        SettingSpec::range(
-            SET_HOVERED_FPS,
-            "config.dynamicfps.hovered_fps",
-            0.0,
-            260.0,
-            1.0,
-            60.0,
-        )
-        .tooltip("config.dynamicfps.hovered_fps_tooltip"),
-        SettingSpec::range(
-            SET_HOVERED_VOLUME_MASTER,
-            "config.dynamicfps.hovered_volume_master",
-            0.0,
-            100.0,
-            5.0,
-            100.0,
-        )
-        .tooltip("config.dynamicfps.hovered_volume_master_tooltip"),
-        SettingSpec::toggle(
-            SET_HOVERED_SHOW_TOASTS,
-            "config.dynamicfps.hovered_show_toasts",
-            true,
-        )
-        .tooltip("config.dynamicfps.hovered_show_toasts_tooltip"),
-        // On Battery (Unplugged)
-        SettingSpec::range(
-            SET_UNPLUGGED_FPS,
-            "config.dynamicfps.unplugged_fps",
-            0.0,
-            260.0,
-            1.0,
-            260.0,
-        )
-        .tooltip("config.dynamicfps.unplugged_fps_tooltip"),
-        // Battery integration
-        SettingSpec::toggle(
-            SET_BATTERY_ENABLED,
-            "config.dynamicfps.battery_tracker",
-            false,
-        )
-        .tooltip("config.dynamicfps.battery_tracker_tooltip"),
-        SettingSpec::toggle(
-            SET_BATTERY_SWITCH_STATES,
-            "config.dynamicfps.battery_tracker_switch_states",
-            false,
-        )
-        .tooltip("config.dynamicfps.battery_tracker_switch_states_tooltip"),
-        SettingSpec::toggle(
-            SET_BATTERY_NOTIFICATIONS,
-            "config.dynamicfps.battery_tracker_notifications",
-            true,
-        )
-        .tooltip("config.dynamicfps.battery_tracker_notifications_tooltip"),
-        SettingSpec::range(
-            SET_BATTERY_CRITICAL_LEVEL,
-            "config.dynamicfps.battery_critical_level",
-            1.0,
-            50.0,
-            1.0,
-            10.0,
-        )
-        .tooltip("config.dynamicfps.battery_critical_level_tooltip"),
-        SettingSpec::choice(
-            SET_BATTERY_INDICATOR_CONDITION,
-            "config.dynamicfps.battery_indicator_condition",
-            [
-                "config.dynamicfps.battery_indicator_condition_disabled",
-                "config.dynamicfps.battery_indicator_condition_draining",
-                "config.dynamicfps.battery_indicator_condition_critical",
-                "config.dynamicfps.battery_indicator_condition_constant",
-            ],
-            2,
-        )
-        .tooltip("config.dynamicfps.battery_indicator_condition_tooltip"),
-        SettingSpec::toggle(
-            SET_BATTERY_INDICATOR_DEBUG,
-            "config.dynamicfps.battery_indicator_debug",
-            false,
-        )
-        .tooltip("config.dynamicfps.battery_indicator_debug_tooltip"),
-        SettingSpec::choice(
-            SET_BATTERY_INDICATOR_PLACEMENT,
-            "config.dynamicfps.battery_indicator_placement",
-            [
-                "config.dynamicfps.battery_indicator_placement_top_left",
-                "config.dynamicfps.battery_indicator_placement_top_right",
-                "config.dynamicfps.battery_indicator_placement_bottom_left",
-                "config.dynamicfps.battery_indicator_placement_bottom_right",
-            ],
-            0,
-        )
-        .tooltip("config.dynamicfps.battery_indicator_placement_tooltip"),
-        SettingSpec::toggle(
-            SET_MOCK_BATTERY_DATA,
-            "config.dynamicfps.mock_battery_data",
-            false,
-        )
-        .tooltip("config.dynamicfps.mock_battery_data_tooltip"),
-    ];
+/// What a row of the config screen edits.
+#[derive(Clone, Copy, Debug)]
+pub enum RowKind {
+    Toggle {
+        default: bool,
+    },
+    Choice {
+        options: &'static [&'static str],
+        default: usize,
+    },
+    Range {
+        min: f64,
+        max: f64,
+        step: f64,
+        default: f64,
+    },
+}
 
-    for spec in specs {
-        let _ = r.register_setting(spec);
+/// One registered setting, as the config screen's row and the settings registry see it.
+#[derive(Clone, Copy, Debug)]
+pub struct RowDef {
+    pub key: &'static str,
+    /// Translation key of the row's label; `<label>_tooltip` is its description.
+    pub label: &'static str,
+    pub kind: RowKind,
+}
+
+/// One page of the config screen.
+#[derive(Clone, Copy, Debug)]
+pub struct TabDef {
+    /// Translation key of the page title.
+    pub title: &'static str,
+    pub rows: &'static [RowDef],
+}
+
+const fn toggle_row(key: &'static str, label: &'static str, default: bool) -> RowDef {
+    RowDef {
+        key,
+        label,
+        kind: RowKind::Toggle { default },
     }
+}
+
+const fn choice_row(
+    key: &'static str,
+    label: &'static str,
+    options: &'static [&'static str],
+    default: usize,
+) -> RowDef {
+    RowDef {
+        key,
+        label,
+        kind: RowKind::Choice { options, default },
+    }
+}
+
+const fn range_row(
+    key: &'static str,
+    label: &'static str,
+    min: f64,
+    max: f64,
+    step: f64,
+    default: f64,
+) -> RowDef {
+    RowDef {
+        key,
+        label,
+        kind: RowKind::Range {
+            min,
+            max,
+            step,
+            default,
+        },
+    }
+}
+
+/// Every setting, grouped into the config screen's pages.
+pub const TABS: &[TabDef] = &[
+    TabDef {
+        title: "config.dynamicfps.tab.general",
+        rows: &[
+            toggle_row(SET_ENABLED, "config.dynamicfps.enabled", true),
+            choice_row(
+                SET_IGNORE_INITIAL_CLICK,
+                "config.dynamicfps.ignore_initial_click",
+                &[
+                    "config.dynamicfps.ignore_initial_click_disabled",
+                    "config.dynamicfps.ignore_initial_click_in_world",
+                    "config.dynamicfps.ignore_initial_click_constant",
+                ],
+                0,
+            ),
+            range_row(
+                SET_IDLE_TIME,
+                "config.dynamicfps.idle_time",
+                0.0,
+                30.0,
+                1.0,
+                5.0,
+            ),
+            choice_row(
+                SET_IDLE_CONDITION,
+                "config.dynamicfps.idle_condition",
+                &[
+                    "config.dynamicfps.idle_condition_none",
+                    "config.dynamicfps.idle_condition_vanilla",
+                    "config.dynamicfps.idle_condition_on_battery",
+                ],
+                1,
+            ),
+            range_row(
+                SET_VOLUME_UP,
+                "config.dynamicfps.volume_transition_up",
+                0.1,
+                10.0,
+                0.1,
+                1.0,
+            ),
+            range_row(
+                SET_VOLUME_DOWN,
+                "config.dynamicfps.volume_transition_down",
+                0.1,
+                10.0,
+                0.1,
+                0.5,
+            ),
+        ],
+    },
+    TabDef {
+        title: "config.dynamicfps.tab.unfocused",
+        rows: &[
+            range_row(
+                SET_UNFOCUSED_FPS,
+                "config.dynamicfps.unfocused_fps",
+                0.0,
+                260.0,
+                1.0,
+                1.0,
+            ),
+            range_row(
+                SET_UNFOCUSED_VOLUME_MASTER,
+                "config.dynamicfps.unfocused_volume_master",
+                0.0,
+                100.0,
+                5.0,
+                25.0,
+            ),
+            toggle_row(
+                SET_UNFOCUSED_SHOW_TOASTS,
+                "config.dynamicfps.unfocused_show_toasts",
+                false,
+            ),
+        ],
+    },
+    TabDef {
+        title: "config.dynamicfps.tab.invisible",
+        rows: &[
+            range_row(
+                SET_INVISIBLE_FPS,
+                "config.dynamicfps.invisible_fps",
+                0.0,
+                260.0,
+                1.0,
+                0.0,
+            ),
+            range_row(
+                SET_INVISIBLE_VOLUME_MASTER,
+                "config.dynamicfps.invisible_volume_master",
+                0.0,
+                100.0,
+                5.0,
+                0.0,
+            ),
+            toggle_row(
+                SET_INVISIBLE_SHOW_TOASTS,
+                "config.dynamicfps.invisible_show_toasts",
+                false,
+            ),
+        ],
+    },
+    TabDef {
+        title: "config.dynamicfps.tab.abandoned",
+        rows: &[
+            range_row(
+                SET_ABANDONED_FPS,
+                "config.dynamicfps.abandoned_fps",
+                0.0,
+                260.0,
+                1.0,
+                10.0,
+            ),
+            range_row(
+                SET_ABANDONED_VOLUME_MASTER,
+                "config.dynamicfps.abandoned_volume_master",
+                0.0,
+                100.0,
+                5.0,
+                100.0,
+            ),
+            toggle_row(
+                SET_ABANDONED_SHOW_TOASTS,
+                "config.dynamicfps.abandoned_show_toasts",
+                false,
+            ),
+        ],
+    },
+    TabDef {
+        title: "config.dynamicfps.tab.hovered",
+        rows: &[
+            range_row(
+                SET_HOVERED_FPS,
+                "config.dynamicfps.hovered_fps",
+                0.0,
+                260.0,
+                1.0,
+                60.0,
+            ),
+            range_row(
+                SET_HOVERED_VOLUME_MASTER,
+                "config.dynamicfps.hovered_volume_master",
+                0.0,
+                100.0,
+                5.0,
+                100.0,
+            ),
+            toggle_row(
+                SET_HOVERED_SHOW_TOASTS,
+                "config.dynamicfps.hovered_show_toasts",
+                true,
+            ),
+        ],
+    },
+    TabDef {
+        title: "config.dynamicfps.tab.battery",
+        rows: &[
+            range_row(
+                SET_UNPLUGGED_FPS,
+                "config.dynamicfps.unplugged_fps",
+                0.0,
+                260.0,
+                1.0,
+                260.0,
+            ),
+            toggle_row(
+                SET_BATTERY_ENABLED,
+                "config.dynamicfps.battery_tracker",
+                false,
+            ),
+            toggle_row(
+                SET_BATTERY_SWITCH_STATES,
+                "config.dynamicfps.battery_tracker_switch_states",
+                false,
+            ),
+            toggle_row(
+                SET_BATTERY_NOTIFICATIONS,
+                "config.dynamicfps.battery_tracker_notifications",
+                true,
+            ),
+            range_row(
+                SET_BATTERY_CRITICAL_LEVEL,
+                "config.dynamicfps.battery_critical_level",
+                1.0,
+                50.0,
+                1.0,
+                10.0,
+            ),
+        ],
+    },
+    TabDef {
+        title: "config.dynamicfps.tab.battery_hud",
+        rows: &[
+            choice_row(
+                SET_BATTERY_INDICATOR_CONDITION,
+                "config.dynamicfps.battery_indicator_condition",
+                &[
+                    "config.dynamicfps.battery_indicator_condition_disabled",
+                    "config.dynamicfps.battery_indicator_condition_draining",
+                    "config.dynamicfps.battery_indicator_condition_critical",
+                    "config.dynamicfps.battery_indicator_condition_constant",
+                ],
+                2,
+            ),
+            toggle_row(
+                SET_BATTERY_INDICATOR_DEBUG,
+                "config.dynamicfps.battery_indicator_debug",
+                false,
+            ),
+            choice_row(
+                SET_BATTERY_INDICATOR_PLACEMENT,
+                "config.dynamicfps.battery_indicator_placement",
+                &[
+                    "config.dynamicfps.battery_indicator_placement_top_left",
+                    "config.dynamicfps.battery_indicator_placement_top_right",
+                    "config.dynamicfps.battery_indicator_placement_bottom_left",
+                    "config.dynamicfps.battery_indicator_placement_bottom_right",
+                ],
+                0,
+            ),
+            toggle_row(
+                SET_MOCK_BATTERY_DATA,
+                "config.dynamicfps.mock_battery_data",
+                false,
+            ),
+        ],
+    },
+];
+
+/// Register every row of [`TABS`] as a setting and remember the keys issued.
+pub fn register_settings(r: &mut dyn Registrar) {
+    let mut issued = Vec::new();
+    for row in TABS.iter().flat_map(|tab| tab.rows) {
+        let tooltip = format!("{}_tooltip", row.label);
+        let spec = match row.kind {
+            RowKind::Toggle { default } => SettingSpec::toggle(row.key, row.label, default),
+            RowKind::Choice { options, default } => {
+                SettingSpec::choice(row.key, row.label, options.iter().copied(), default)
+            }
+            RowKind::Range {
+                min,
+                max,
+                step,
+                default,
+            } => SettingSpec::range(row.key, row.label, min, max, step, default),
+        };
+        if let Ok(key) = r.register_setting(spec.tooltip(tooltip)) {
+            issued.push((row.key, key));
+        }
+    }
+    *SETTING_KEYS.lock().unwrap_or_else(|e| e.into_inner()) = issued;
 }
 
 pub const fn sound_source_name(source: SoundSource) -> &'static str {
@@ -1205,32 +1309,15 @@ fn write_state_toml(out: &mut String, name: &str, state: &StateConfig, full: boo
     out.push('\n');
 }
 
-fn apply_fps_setting(sc: &mut StateConfig, host: &dyn ClientHost, key: &str) -> bool {
-    if let Some(v) = host.setting_f64(key)
-        && v.is_finite()
-    {
-        sc.frame_rate_target = v.round().clamp(0.0, NO_FRAME_RATE_LIMIT as f64) as i32;
-        return true;
-    }
-    false
+fn apply_fps(sc: &mut StateConfig, value: f64) {
+    sc.frame_rate_target = value.round().clamp(0.0, NO_FRAME_RATE_LIMIT as f64) as i32;
 }
 
-fn apply_master_vol_setting(sc: &mut StateConfig, host: &dyn ClientHost, key: &str) -> bool {
-    if let Some(v) = host.setting_f64(key)
-        && v.is_finite()
-    {
-        sc.set_volume_multiplier(SoundSource::Master, (v as f32 / 100.0).clamp(0.0, 1.0));
-        return true;
-    }
-    false
-}
-
-fn apply_toasts_setting(sc: &mut StateConfig, host: &dyn ClientHost, key: &str) -> bool {
-    if let Some(v) = host.setting_bool(key) {
-        sc.show_toasts = v;
-        return true;
-    }
-    false
+fn apply_master_volume(sc: &mut StateConfig, percent: f64) {
+    sc.set_volume_multiplier(
+        SoundSource::Master,
+        (percent as f32 / 100.0).clamp(0.0, 1.0),
+    );
 }
 
 fn apply_state_field(sc: &mut StateConfig, key: &str, val: &str) {
@@ -1446,14 +1533,48 @@ frame_rate_target = -1
     }
 
     #[test]
-    fn register_mod_configs_targets_single_owned_client_file() {
-        let mut configs = Vec::new();
-        register_mod_configs(&mut configs);
-        assert_eq!(configs.len(), 1);
-        let registered = &configs[0];
-        assert_eq!(registered.mod_id, MOD_ID);
-        assert_eq!(registered.kind, ConfigKind::Client);
-        assert_eq!(registered.file, CONFIG_FILE_NAME);
-        assert!(mod_api::ConfigPath::new(&registered.file).is_ok_and(|path| path.owned_by(MOD_ID)));
+    fn config_file_name_is_a_plain_relative_file() {
+        let path = std::path::Path::new(CONFIG_FILE_NAME);
+        assert!(path.is_relative());
+        assert_eq!(path.components().count(), 1);
+        let _ = config_spec();
+    }
+
+    #[test]
+    fn setting_values_round_trip_through_apply_single_setting() {
+        let mut original = DynamicFpsConfig::default();
+        original.unfocused.frame_rate_target = 17;
+        original.battery.critical_level = 20;
+        original.idle.timeout_seconds = 600;
+        let mut applied = DynamicFpsConfig::default();
+        for (key, value) in original.setting_values() {
+            assert!(applied.apply_single_setting(key, &value), "{key}");
+        }
+        assert_eq!(applied.unfocused.frame_rate_target, 17);
+        assert_eq!(applied.battery.critical_level, 20);
+        assert_eq!(applied.idle.timeout_seconds, 600);
+    }
+
+    #[test]
+    fn every_row_has_a_setting_value_and_every_value_a_row() {
+        let rows: Vec<&str> = TABS
+            .iter()
+            .flat_map(|tab| tab.rows)
+            .map(|row| row.key)
+            .collect();
+        let values = DynamicFpsConfig::default().setting_values();
+        assert_eq!(rows.len(), values.len());
+        for (key, _) in values {
+            assert!(rows.contains(&key), "{key}");
+        }
+    }
+
+    #[test]
+    fn apply_single_setting_refuses_wrong_kinds_and_non_finite_numbers() {
+        let mut cfg = DynamicFpsConfig::default();
+        assert!(!cfg.apply_single_setting(SET_ENABLED, &SettingValue::Range(1.0)));
+        assert!(!cfg.apply_single_setting(SET_UNFOCUSED_FPS, &SettingValue::Range(f64::NAN)));
+        assert!(!cfg.apply_single_setting("missing", &SettingValue::Toggle(true)));
+        assert_eq!(cfg, DynamicFpsConfig::default());
     }
 }

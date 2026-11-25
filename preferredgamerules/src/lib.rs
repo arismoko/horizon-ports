@@ -10,7 +10,7 @@
 //! |---|---|---|
 //! | `server_started` | [`Mod::server_started`] | on a new world, reads the preferences and sets each rule |
 
-use mod_api::{ConfigPath, GameRuleValue, Hooks, ServerHost, ServerStartedEvent};
+use mod_api::{GameRuleValue, Hooks, ServerHost, ServerStartedEvent};
 
 /// The preferences file in the game's `config/` folder.
 const FILE: &str = "preferredgamerules.properties";
@@ -34,16 +34,15 @@ impl Hooks for Mod {
         let Some(text) = read_or_create(&*host) else {
             return;
         };
-        let current = host.game_rules();
         for (rule, raw) in preferences(&text) {
             let Some(id) = rule_id(rule) else {
                 eprintln!("[preferredgamerules] Invalid gamerule ID: {rule}");
                 continue;
             };
-            let Some((_, default)) = current.iter().find(|(known, _)| *known == id) else {
+            let Ok(default) = host.game_rule(&id) else {
                 continue;
             };
-            let parsed = parse(default, raw);
+            let parsed = parse(&default, raw);
             if !parsed.is_some_and(|value| overworld.set_game_rule(host, &id, value)) {
                 eprintln!("[preferredgamerules] Invalid value for gamerule {id}: \"{raw}\"");
             }
@@ -53,12 +52,15 @@ impl Hooks for Mod {
 
 /// The preferences file's text, written empty when it is missing (`ConfigIO.GetOrCreate`).
 fn read_or_create(host: &dyn mod_api::Host) -> Option<String> {
-    let files = host.config_files();
-    let path = ConfigPath::new(FILE).ok()?;
-    match files.read(&path) {
+    let path = host.config_dir().join(FILE);
+    match std::fs::read(&path) {
         Ok(bytes) => Some(String::from_utf8_lossy(&bytes).into_owned()),
         Err(_) => {
-            let _ = files.write(&path, b"");
+            if let Err(err) =
+                std::fs::create_dir_all(host.config_dir()).and_then(|()| std::fs::write(&path, b""))
+            {
+                eprintln!("[preferredgamerules] Could not create {FILE}: {err}");
+            }
             None
         }
     }

@@ -1,0 +1,14 @@
+# Overflowing Bars for Sunrise: client-only native code in src/ using the typed mod API.
+id = "overflowingbars"
+name = "Overflowing Bars"
+version = "0.5.1"
+description = "Stacks health, armor and armor toughness into coloured rows with row counts instead of piling up vertically."
+authors = ["Fuzs", "arismoko"]
+license = "MPL-2.0"
+credits = "Original mod by Fuzs (MPL-2.0); ported to Sunrise by arismoko."
+homepage = "https://github.com/arismoko/sunrise-ports"
+side = "client"
+
+[native]
+game = "26.3"
+sunrise = "bdad86d2d398ff9293002d2dc08702822aea7265"

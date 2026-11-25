@@ -1,6 +1,6 @@
 [package]
 name = "mod-safespawn"
-version = "0.5.1"
+version = "0.5.2"
 edition = "2024"
 license = "CC0-1.0"
 description = "SafeSpawn for Sunrise: new players spawn on safe ground"

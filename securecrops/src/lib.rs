@@ -13,7 +13,7 @@ use std::sync::OnceLock;
 
 use mod_api::{
     BoolGameRuleKey, FarmlandTrampleEvent, Flow, Hooks, Host, LevelRef, Registrar,
-    RegistrationContext, ServerHost,
+    RegistrationContext, ServerHost, TagKey,
 };
 
 const CATEGORY: &str = "secure_crops";
@@ -23,6 +23,7 @@ struct Rules {
     and_crops: BoolGameRuleKey,
     break_crops: BoolGameRuleKey,
     if_empty: BoolGameRuleKey,
+    maintains_farmland: TagKey,
 }
 
 static RULES: OnceLock<Rules> = OnceLock::new();
@@ -67,6 +68,7 @@ impl Hooks for Mod {
                 and_crops: r.game_rule_bool("secure_farmland_and_crops", &category, false)?,
                 break_crops: r.game_rule_bool("secure_farmland_break_crops", &category, false)?,
                 if_empty: r.game_rule_bool("secure_farmland_if_empty", &category, false)?,
+                maintains_farmland: r.tag_key(MAINTAINS_FARMLAND),
             })
         })();
         if let Ok(rules) = declared {
@@ -87,7 +89,9 @@ impl Hooks for Mod {
         };
         let above = [event.pos.x, event.pos.y + 1, event.pos.z];
         let has_crop = level.block_state(&*host, above).is_some_and(|state| {
-            host.block_in_tag(state.block(), MAINTAINS_FARMLAND) == Some(true)
+            host.tags()
+                .block_in_tag(state.block(), rules.maintains_farmland)
+                == Some(true)
         });
         match outcome(
             has_crop,

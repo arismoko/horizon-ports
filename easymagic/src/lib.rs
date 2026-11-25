@@ -6,8 +6,8 @@ mod server;
 mod storage;
 
 use crate::config::{
-    MOD_ID, ServerConfig, register_mod_configs, register_settings, server_config,
-    set_server_config, set_synced_server_config,
+    ServerConfig, register_server_config, register_settings, server_config,
+    set_synced_server_config,
 };
 use crate::enchant::invalidate_catalog;
 use crate::payloads::{
@@ -15,16 +15,15 @@ use crate::payloads::{
     id_shelf_item, id_shelf_query, init_channels,
 };
 use crate::server::{
-    EnchantingMenuPart, EnchantingTablePart, MENU_ID, broadcast_server_config, handle_shelf_query,
-    on_menu_closed, on_server_tick_post, reset_server_state, send_server_config_to,
+    EnchantingMenuPart, EnchantingTablePart, MENU_ID, finish_menu_open, handle_shelf_query,
+    on_server_tick_post, reset_server_state, send_server_config_to,
 };
-use crate::storage::{ATTACH_PLAYER_SEED, ATTACH_TABLE_CONTENTS, EnchantingTableItemHandler};
+use crate::storage::{EnchantingTableItemHandler, register_attachments};
 use mod_api::{
-    ClientDisconnectingEvent, ClientHost, ClientTickPostEvent, ConfigContext, ConfigKind,
-    ConfigLoadingEvent, ConfigReloadingEvent, GuiRenderPostEvent, Hooks, HostSide, ITEMS,
-    LevelTickPostEvent, MenuClosedEvent, PlayerLoggedInEvent, RegisterConfigsEvent, Registrar,
-    RegistrationContext, ReloadContext, ServerHost, ServerStartedEvent, ServerStoppingEvent,
-    TagsUpdatedEvent,
+    ClientHost, ClientPlayerLoggingOutEvent, ClientTickPostEvent, Hooks, HostSide, HudMode, ITEMS,
+    LevelTickPostEvent, PlayerContainerOpenEvent, PlayerLoggedInEvent, Registrar,
+    RegistrationContext, ReloadContext, RenderGuiPostEvent, ServerHost, ServerStartedEvent,
+    ServerStoppingEvent, TagsUpdatedEvent,
 };
 use std::sync::Arc;
 
@@ -35,9 +34,8 @@ struct EasyMagic;
 impl Hooks for EasyMagic {
     fn register(&self, r: &mut dyn Registrar, _cx: &RegistrationContext) {
         register_settings(r);
-
-        let _ = r.register_attachment_type(ATTACH_TABLE_CONTENTS, false);
-        let _ = r.register_attachment_type(ATTACH_PLAYER_SEED, false);
+        register_server_config(r);
+        register_attachments(r);
 
         let enchanting_table = r.block_key("minecraft:enchanting_table");
         r.block_part(enchanting_table, EnchantingTablePart);
@@ -76,31 +74,6 @@ impl Hooks for EasyMagic {
         });
     }
 
-    fn register_configs(&self, _ctx: &dyn ConfigContext, event: &mut RegisterConfigsEvent<'_>) {
-        register_mod_configs(event.configs);
-    }
-
-    fn config_loading(&self, _ctx: &dyn ConfigContext, event: &mut ConfigLoadingEvent<'_>) {
-        if event.config.mod_id != MOD_ID || event.config.kind != ConfigKind::Server {
-            return;
-        }
-        let parsed = ServerConfig::parse_toml(&event.config.text);
-        set_server_config(parsed.clone());
-        set_synced_server_config(parsed);
-    }
-
-    fn config_reloading(&self, host: HostSide<'_>, event: &mut ConfigReloadingEvent<'_>) {
-        if event.config.mod_id != MOD_ID || event.config.kind != ConfigKind::Server {
-            return;
-        }
-        let parsed = ServerConfig::parse_toml(&event.config.text);
-        set_server_config(parsed.clone());
-        set_synced_server_config(parsed);
-        if let HostSide::Server(server) = host {
-            broadcast_server_config(server);
-        }
-    }
-
     fn server_started(&self, _host: &mut dyn ServerHost, _event: &mut ServerStartedEvent) {
         set_synced_server_config(server_config());
         invalidate_catalog();
@@ -121,8 +94,12 @@ impl Hooks for EasyMagic {
         }
     }
 
-    fn menu_closed(&self, host: &mut dyn ServerHost, event: &mut MenuClosedEvent<'_>) {
-        on_menu_closed(host, event);
+    fn player_container_open(
+        &self,
+        host: &mut dyn ServerHost,
+        event: &mut PlayerContainerOpenEvent<'_>,
+    ) {
+        finish_menu_open(host, event);
     }
 
     fn level_tick_post(&self, host: HostSide<'_>, event: &mut LevelTickPostEvent) {
@@ -135,11 +112,15 @@ impl Hooks for EasyMagic {
         client::on_client_tick_post(host);
     }
 
-    fn gui_render_post(&self, host: &dyn ClientHost, event: &mut GuiRenderPostEvent<'_>) {
-        client::on_gui_render_post(host, event.batch, event.gui_hidden);
+    fn render_gui_post(&self, host: &dyn ClientHost, event: &mut RenderGuiPostEvent<'_>) {
+        client::on_gui_render_post(host, event.draw, host.hud_mode() != HudMode::AllVisible);
     }
 
-    fn client_disconnecting(&self, _host: &dyn ClientHost, _event: &mut ClientDisconnectingEvent) {
+    fn client_player_logging_out(
+        &self,
+        _host: &mut dyn ClientHost,
+        _event: &mut ClientPlayerLoggingOutEvent,
+    ) {
         client::reset_client_state();
         set_synced_server_config(ServerConfig::default());
     }

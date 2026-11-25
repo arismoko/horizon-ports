@@ -15,7 +15,7 @@ Server-side only: works in single player and on servers without requiring client
 
 - **Multiple touching clumps in the same tick**: clearing `takeXpDelay` removes the 2-tick delay so players collect orbs on every tick (20/s instead of 10/s), and any single clump is collected completely in one tick. When multiple separate clumps touch a player simultaneously, Sunrise collects one orb per tick rather than all touching orbs in the same tick; taking over pickup in `pickup_xp` to collect additional touching orbs cannot run vanilla Mending repair (`ExperienceOrb.repairPlayerItems`) for the XP a mod awards (gap: sunrise-org/sunrise#5593).
 - **Per-source-orb Mending distribution**: Mending repairs damaged items using the clump's combined XP total (respecting `xp_repair_ratio` and overflowing remaining XP to other damaged Mending items), rather than re-rolling a random damaged Mending item for each original source orb in `clumpedMap`, because no mod can run vanilla Mending repair for the XP it awards; similarly, a single orb caps at vanilla's 32,767-XP NBT short limit before starting a second clump (gap: sunrise-org/sunrise#5593).
-- **Third-party `ValueEvent` and `RepairEvent` API**: Clumps' mod-to-mod `ValueEvent` and `RepairEvent` events are not exposed because Sunrise `3d34bbe` does not yet have a mod-to-mod event bus (gap: sunrise-org/sunrise#5137).
+- **Third-party `ValueEvent` and `RepairEvent` API**: Clumps' mod-to-mod `ValueEvent` and `RepairEvent` events are not exposed because Sunrise Dev `bdad86d` does not yet have a mod-to-mod event bus (gap: sunrise-org/sunrise#5137).
 
 ## Building
 
