@@ -1,6 +1,6 @@
 [package]
 name = "mod-toms_storage"
-version = "0.4.0"
+version = "0.4.1"
 edition = "2024"
 license = "MIT"
 description = "Tom's Simple Storage for Sunrise: storage and crafting terminals over every connected inventory, cables, trims and wireless terminals"
