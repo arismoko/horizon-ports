@@ -16,6 +16,7 @@ use crate::math::{
     valid_assist_sides, view_vector,
 };
 use crate::render::{RenderSnapshot, render_crosshair_indicator, render_world_outlines};
+use mod_api::text::TextStyle;
 use mod_api::{
     BlockClass, BlockHighlightEvent, BlockHit, BlockKey, BlockPos, ClientHost, ClientPickEvent,
     ClientTickPostEvent, ConfigContext, ConfigKind, ConfigLoadingEvent, ConfigPath,
@@ -23,7 +24,7 @@ use mod_api::{
     InteractionAttempt, InteractionKey, InteractionKeyMappingTriggeredEvent, ItemKey,
     KeyConflictContext, KeyRegistration, LevelRef, ModKeyMappingRef, PlayerRef,
     RegisterConfigsEvent, Registrar, RegistrationContext, RenderGuiPostEvent, RenderLevelStage,
-    RenderLevelStageEvent, SettingChangedEvent, Text, TextStyle,
+    RenderLevelStageEvent, SettingChangedEvent, Text,
 };
 use std::sync::{Mutex, MutexGuard};
 
