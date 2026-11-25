@@ -12,10 +12,9 @@ use mod_api::client::hud_layout::Blend;
 use mod_api::client::widgets::ScreenWidget;
 use mod_api::text::TextStyle;
 use mod_api::{
-    ClientHost, DrawContext, GameMode, GuiDraw, Identifier, ItemStack, MenuScreen, MenuScreenFrame,
-    MenuScreenLayout, MenuScreenOpen, ScreenInitPostEvent, ScreenSlot, Text,
+    ClientHost, DrawContext, GameMode, GuiBlitRegion, Identifier, ItemStack, MenuScreen,
+    MenuScreenFrame, MenuScreenLayout, MenuScreenOpen, ScreenInitPostEvent, ScreenSlot, Text,
 };
-use std::borrow::Cow;
 use std::sync::atomic::{AtomicBool, AtomicI32, Ordering};
 
 const COLOR_WHITE: u32 = 0xFFFF_FFFF;
@@ -130,56 +129,45 @@ fn is_too_expensive(cost: i32, creative: bool, cfg: &ServerConfig) -> bool {
 }
 
 fn draw_anvil_screen(host: &dyn ClientHost, frame: MenuScreenFrame<'_>, ctx: &mut dyn DrawContext) {
-    let ox = frame.origin[0].round() as i32;
-    let oy = frame.origin[1].round() as i32;
+    let ox = frame.origin[0].round();
+    let oy = frame.origin[1].round();
     let slots = client_menu_slots(host);
     let has_left = slots[0].is_some();
     let has_right = slots[1].is_some();
     let has_output = slots[2].is_some();
 
-    let mut draws = vec![
-        GuiDraw::Blit {
-            texture: Cow::Borrowed("gui/container/anvil"),
-            blend: Blend::Textured,
-            x: ox,
-            y: oy,
-            w: 176,
-            h: 166,
-            uv: [0.0, 0.0],
-            src: [176, 166],
-            tex: [256, 256],
-            color: COLOR_WHITE,
-        },
-        GuiDraw::Sprite {
-            sprite: Cow::Borrowed(if has_left {
-                "minecraft:container/anvil/text_field"
-            } else {
-                "minecraft:container/anvil/text_field_disabled"
-            }),
-            x: ox + 59,
-            y: oy + 20,
-            w: 110,
-            h: 16,
-            region: None,
-            color: COLOR_WHITE,
-            blend: Blend::Textured,
-        },
-    ];
-
-    if (has_left || has_right) && !has_output {
-        draws.push(GuiDraw::Sprite {
-            sprite: Cow::Borrowed("minecraft:container/anvil/error"),
-            x: ox + 99,
-            y: oy + 45,
-            w: 28,
-            h: 21,
-            region: None,
-            color: COLOR_WHITE,
-            blend: Blend::Textured,
-        });
-    }
-
-    let _ = ctx.gui_paint(&draws);
+    let show_error = (has_left || has_right) && !has_output;
+    let text_field = if has_left {
+        "minecraft:container/anvil/text_field"
+    } else {
+        "minecraft:container/anvil/text_field_disabled"
+    };
+    let _ = ctx.draw_gui(&mut |canvas| {
+        canvas.blit(
+            "gui/container/anvil",
+            [ox, oy, 176.0, 166.0],
+            GuiBlitRegion::new([0.0, 0.0], [176, 166], [256, 256]),
+            COLOR_WHITE,
+            Blend::Textured,
+        )?;
+        canvas.blit_sprite(
+            text_field,
+            [ox + 59.0, oy + 20.0, 110.0, 16.0],
+            None,
+            COLOR_WHITE,
+            Blend::Textured,
+        )?;
+        if show_error {
+            canvas.blit_sprite(
+                "minecraft:container/anvil/error",
+                [ox + 99.0, oy + 45.0, 28.0, 21.0],
+                None,
+                COLOR_WHITE,
+                Blend::Textured,
+            )?;
+        }
+        Ok(())
+    });
 
     // Title ("Repair & Name") at (60, 8) and "Inventory" at (8, 72)
     let title_str = host
@@ -188,18 +176,8 @@ fn draw_anvil_screen(host: &dyn ClientHost, frame: MenuScreenFrame<'_>, ctx: &mu
     let inv_str = host
         .translate("container.inventory")
         .unwrap_or_else(|| "Inventory".to_owned());
-    ctx.text(
-        &title_str,
-        [(ox + 60) as f32, (oy + 8) as f32],
-        COLOR_LABEL,
-        false,
-    );
-    ctx.text(
-        &inv_str,
-        [(ox + 8) as f32, (oy + 72) as f32],
-        COLOR_LABEL,
-        false,
-    );
+    ctx.text(&title_str, [ox + 60.0, oy + 8.0], COLOR_LABEL, false);
+    ctx.text(&inv_str, [ox + 8.0, oy + 72.0], COLOR_LABEL, false);
 
     // Enchantment cost / Too Expensive! label
     let cost = frame.data.first().copied().unwrap_or(0);
@@ -233,17 +211,12 @@ fn draw_anvil_screen(host: &dyn ClientHost, frame: MenuScreenFrame<'_>, ctx: &mu
 
         if let Some(text) = label {
             let text_w = host.text_width(&Text::literal(&text)) as f32;
-            let k = (ox + 176 - 8) as f32 - text_w - 2.0;
+            let k = ox + 176.0 - 8.0 - text_w - 2.0;
             ctx.fill(
-                [
-                    k - 2.0,
-                    (oy + 67) as f32,
-                    (ox + 176 - 8) as f32 - (k - 2.0),
-                    12.0,
-                ],
+                [k - 2.0, oy + 67.0, ox + 176.0 - 8.0 - (k - 2.0), 12.0],
                 COLOR_COST_BG,
             );
-            ctx.text(&text, [k, (oy + 69) as f32], color, true);
+            ctx.text(&text, [k, oy + 69.0], color, true);
         }
     }
 }
@@ -452,50 +425,46 @@ impl ScreenWidget for AnvilNameField {
         let cursor_px = host.text_width(&prefix_text) as f32;
         let scroll_x = (cursor_px - (w - 4.0)).max(0.0);
 
-        let clipped = draw.push_clip([x, y - 1.0, w, h + 2.0]).is_ok();
+        let _ = draw.with_scissor([x, y - 1.0, w, h + 2.0], &mut |draw| {
+            // Selection highlight
+            let (sel_a, sel_b) = self.selection_range();
+            if sel_a != sel_b {
+                let a_px = host.text_width(&editable_preview_component(
+                    &self.value[..self.byte_index(sel_a)],
+                    allow_formatting,
+                )) as f32;
+                let b_px = host.text_width(&editable_preview_component(
+                    &self.value[..self.byte_index(sel_b)],
+                    allow_formatting,
+                )) as f32;
+                draw.fill(
+                    [x + a_px - scroll_x, y - 1.0, (b_px - a_px).max(1.0), 10.0],
+                    COLOR_SELECT_BG,
+                );
+            }
 
-        // Selection highlight
-        let (sel_a, sel_b) = self.selection_range();
-        if sel_a != sel_b {
-            let a_px = host.text_width(&editable_preview_component(
-                &self.value[..self.byte_index(sel_a)],
-                allow_formatting,
-            )) as f32;
-            let b_px = host.text_width(&editable_preview_component(
-                &self.value[..self.byte_index(sel_b)],
-                allow_formatting,
-            )) as f32;
-            draw.fill(
-                [x + a_px - scroll_x, y - 1.0, (b_px - a_px).max(1.0), 10.0],
-                COLOR_SELECT_BG,
-            );
-        }
+            // Styled text preview (keeps `§x` codes visible for editing)
+            let preview = editable_preview_component(&self.value, allow_formatting);
+            if let Some(font) = &default_font {
+                let _ = draw.text_with_font(font, &preview, [x - scroll_x, y], COLOR_WHITE, true);
+            } else {
+                draw.text(&self.value, [x - scroll_x, y], COLOR_WHITE, true);
+            }
 
-        // Styled text preview (keeps `§x` codes visible for editing)
-        let preview = editable_preview_component(&self.value, allow_formatting);
-        if let Some(font) = &default_font {
-            let _ = draw.text_with_font(font, &preview, [x - scroll_x, y], COLOR_WHITE, true);
-        } else {
-            draw.text(&self.value, [x - scroll_x, y], COLOR_WHITE, true);
-        }
-
-        // Blinking caret when focused and editable
-        if self.focused && self.editable {
-            let blink_on =
-                ((host.millis().saturating_sub(self.focus_millis)) / 300).is_multiple_of(2);
-            if blink_on {
-                let cx = x + cursor_px - scroll_x;
-                if self.cursor < self.char_len() {
-                    draw.fill([cx, y - 1.0, 1.0, 10.0], COLOR_CURSOR);
-                } else {
-                    draw.text("_", [cx, y], COLOR_WHITE, true);
+            // Blinking caret when focused and editable
+            if self.focused && self.editable {
+                let blink_on =
+                    ((host.millis().saturating_sub(self.focus_millis)) / 300).is_multiple_of(2);
+                if blink_on {
+                    let cx = x + cursor_px - scroll_x;
+                    if self.cursor < self.char_len() {
+                        draw.fill([cx, y - 1.0, 1.0, 10.0], COLOR_CURSOR);
+                    } else {
+                        draw.text("_", [cx, y], COLOR_WHITE, true);
+                    }
                 }
             }
-        }
-
-        if clipped {
-            let _ = draw.pop_clip();
-        }
+        });
     }
 
     fn mouse_clicked(

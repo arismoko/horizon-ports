@@ -1,15 +1,15 @@
 //! Persistent anvil slot storage in a transactional chunk attachment (`Holder::Chunk`),
 //! comparator signal math, and `ITEMS` hopper capability matching `AnvilBlockEntity`.
 
-use crate::config::MOD_ID;
 use mod_api::{
-    AttachmentCodec, AttachmentError, AttachmentStore, AttachmentType, BlockSide, Compound,
-    Direction, Holder, Host, ItemResource, ItemStack, JavaString, LevelRef, Overanswered,
-    ResourceHandler, ServerHost, Tag, TransactionContext, TransactionError,
+    AttachmentCodec, AttachmentDescriptor, AttachmentError, AttachmentKey, BlockSide, Compound,
+    Direction, Holder, Host, ItemResource, ItemStack, JavaString, LevelRandomHost, LevelRef,
+    Overanswered, ResourceHandler, ServerHost, Tag, TransactionContext, TransactionError,
 };
 use std::collections::BTreeMap;
+use std::sync::{PoisonError, RwLock};
 
-pub const ATTACH_ANVIL_CONTENTS: &str = "easyanvils:anvil_contents";
+const ATTACH_ANVIL_CONTENTS: &str = "easyanvils:anvil_contents";
 
 /// Serialized 2-slot input contents of one anvil (`ItemStack::to_nbt` compounds),
 /// along with each slot's effective max stack size for redstone comparator calculation.
@@ -144,17 +144,30 @@ fn decode_chunk_anvils(saved: &Compound) -> Result<ChunkAnvils, AttachmentError>
     Ok(ChunkAnvils { entries })
 }
 
-pub const ANVIL_CONTENTS: AttachmentType<ChunkAnvils> = AttachmentType {
-    namespace: MOD_ID,
-    name: "anvil_contents",
-    default: ChunkAnvils::default,
-    codec: Some(AttachmentCodec {
-        encode: encode_chunk_anvils,
-        decode: decode_chunk_anvils,
-    }),
-    copy_on_death: false,
-    sync: false,
-};
+/// The key issued at registration, kept for the storage helpers below.
+static ANVIL_CONTENTS: RwLock<Option<AttachmentKey<ChunkAnvils>>> = RwLock::new(None);
+
+pub fn anvil_contents_descriptor() -> AttachmentDescriptor<ChunkAnvils> {
+    AttachmentDescriptor::new(ATTACH_ANVIL_CONTENTS, ChunkAnvils::default).serialize(
+        AttachmentCodec {
+            encode: encode_chunk_anvils,
+            decode: decode_chunk_anvils,
+        },
+    )
+}
+
+pub fn set_anvil_contents_key(key: AttachmentKey<ChunkAnvils>) {
+    *ANVIL_CONTENTS
+        .write()
+        .unwrap_or_else(PoisonError::into_inner) = Some(key);
+}
+
+fn anvil_contents_key() -> Option<AttachmentKey<ChunkAnvils>> {
+    ANVIL_CONTENTS
+        .read()
+        .unwrap_or_else(PoisonError::into_inner)
+        .clone()
+}
 
 pub fn chunk_holder(pos: [i32; 3]) -> Holder {
     Holder::Chunk([pos[0] >> 4, pos[2] >> 4])
@@ -164,24 +177,27 @@ pub fn read_anvil_slots(host: &mut dyn ServerHost, dimension: &str, pos: [i32; 3
     if host.dimension() != dimension {
         return AnvilSlots::default();
     }
-    ANVIL_CONTENTS
-        .get_existing(host, chunk_holder(pos))
-        .ok()
-        .flatten()
-        .and_then(|chunk| chunk.entries.get(&pos).cloned())
-        .unwrap_or_default()
+    let Some(key) = anvil_contents_key() else {
+        return AnvilSlots::default();
+    };
+    key.get_existing(host, chunk_holder(pos), |chunk| {
+        chunk.and_then(|chunk| chunk.entries.get(&pos).cloned())
+    })
+    .ok()
+    .flatten()
+    .unwrap_or_default()
 }
 
-pub fn read_anvil_slots_store<S: AttachmentStore + ?Sized>(
-    store: &mut S,
-    pos: [i32; 3],
-) -> AnvilSlots {
-    ANVIL_CONTENTS
-        .get_existing(store, chunk_holder(pos))
-        .ok()
-        .flatten()
-        .and_then(|chunk| chunk.entries.get(&pos).cloned())
-        .unwrap_or_default()
+pub fn read_anvil_slots_in(level: &mut dyn LevelRandomHost, pos: [i32; 3]) -> AnvilSlots {
+    let Some(key) = anvil_contents_key() else {
+        return AnvilSlots::default();
+    };
+    key.get_existing_in(level, chunk_holder(pos), |chunk| {
+        chunk.and_then(|chunk| chunk.entries.get(&pos).cloned())
+    })
+    .ok()
+    .flatten()
+    .unwrap_or_default()
 }
 
 pub fn write_anvil_slots(
@@ -193,9 +209,12 @@ pub fn write_anvil_slots(
     if host.dimension() != dimension {
         return;
     }
+    let Some(key) = anvil_contents_key() else {
+        return;
+    };
     let holder = chunk_holder(pos);
-    let mut chunk = ANVIL_CONTENTS
-        .get_existing(host, holder)
+    let mut chunk = key
+        .get_existing(host, holder, |chunk| chunk.cloned())
         .ok()
         .flatten()
         .unwrap_or_default();
@@ -205,9 +224,9 @@ pub fn write_anvil_slots(
         chunk.entries.insert(pos, slots.clone());
     }
     if chunk.entries.is_empty() {
-        let _ = ANVIL_CONTENTS.remove(host, holder);
+        let _ = key.remove(host, holder);
     } else {
-        let _ = ANVIL_CONTENTS.set(host, holder, chunk);
+        let _ = key.set(host, holder, chunk);
     }
 }
 

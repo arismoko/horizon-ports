@@ -10,13 +10,13 @@ use crate::formatting::{filter_text, visible_length};
 use crate::payloads::{RenameItemPayload, channels};
 use crate::storage::{
     AnvilSlots, comparator_signal, drop_and_clear_anvil_slots, read_anvil_slots,
-    read_anvil_slots_store, write_anvil_slots,
+    read_anvil_slots_in, write_anvil_slots,
 };
 use mod_api::{
     AnalogOutputEvent, BlockKey, BlockPart, BlockState, BlockUpdateFlags, DispenseMethodEvent,
-    Dispensed, GameMode, HasAnalogOutputEvent, Host, HostTransaction, IPayloadContext,
+    Dispensed, GameMode, HasAnalogOutputEvent, Host, HostSide, HostTransaction, IPayloadContext,
     InteractionResult, ItemPlace, ItemResource, ItemStack, LevelHost, LevelRandomHost, LevelRef,
-    LevelSide, LoopContext, MenuClosedEvent, MenuContainer, MenuKey, MenuPart, MenuRef,
+    LevelSide, LoopContext, MenuContainer, MenuKey, MenuPart, MenuRef, MenuRemovedEvent,
     MenuReplace, MenuSlotChangedEvent, MenuSlotRulesEvent, MenuSlotTakeEvent, MenuStillValidEvent,
     ModMenuOpen, NeighbourUpdate, OnBlockExplodedEvent, OnBlockStateChangeEvent,
     OnDestroyedByPlayerEvent, ParticleKey, ParticleOptions, PlayerRef, ServerHost, StatType, Text,
@@ -226,6 +226,12 @@ fn set_menu_output_slot(host: &mut dyn ServerHost, menu: MenuRef, output: Option
     });
 }
 
+/// The player's open menu when it is the window this viewer was opened with.
+fn live_menu(host: &dyn ServerHost, uuid: u128, window: i32) -> Option<MenuRef> {
+    let menu = host.player(uuid)?.container_menu(host)?;
+    (menu.container_id(host) == Some(window)).then_some(menu)
+}
+
 fn read_menu_input_slots(host: &dyn Host, menu: MenuRef) -> [Option<ItemStack>; 2] {
     [menu.slot(host, 0).flatten(), menu.slot(host, 1).flatten()]
 }
@@ -252,7 +258,7 @@ fn recompute_viewer(
     let Some(player) = host.player(player_uuid) else {
         return;
     };
-    let Some(menu) = host.menu(player_uuid, window) else {
+    let Some(menu) = live_menu(&*host, player_uuid, window) else {
         return;
     };
     let item_name = viewer_of(player_uuid).and_then(|v| v.item_name);
@@ -406,7 +412,7 @@ pub fn handle_rename_item(
     let Ok(host) = ctx.server_host() else {
         return Ok(());
     };
-    let Some(menu) = host.menu(player_uuid, payload.window) else {
+    let Some(menu) = live_menu(&*host, player_uuid, payload.window) else {
         return Ok(());
     };
     let inputs = read_menu_input_slots(&*host, menu);
@@ -421,9 +427,12 @@ pub struct AnvilBlockPart;
 impl BlockPart for AnvilBlockPart {
     fn use_item_on(
         &self,
-        host: &mut dyn ServerHost,
+        host: HostSide<'_>,
         event: &mut UseItemOnEvent<'_>,
     ) -> Option<InteractionResult> {
+        let HostSide::Server(host) = host else {
+            return None;
+        };
         let cfg = server_config();
         if !cfg.anvil_repairing {
             return None;
@@ -457,9 +466,12 @@ impl BlockPart for AnvilBlockPart {
 
     fn use_without_item(
         &self,
-        host: &mut dyn ServerHost,
+        host: HostSide<'_>,
         event: &mut UseWithoutItemEvent<'_>,
     ) -> Option<InteractionResult> {
+        let HostSide::Server(host) = host else {
+            return None;
+        };
         let cfg = server_config();
         if !cfg.convert_vanilla_anvil_when_interacting {
             return None;
@@ -492,16 +504,21 @@ impl BlockPart for AnvilBlockPart {
         open.pos = Some(pos);
         open.replace = MenuReplace::CloseFirst;
 
-        let Ok(Some(window)) = player.open_mod_menu(host, open) else {
+        let Ok(Some(_)) = player.open_mod_menu(host, open) else {
             return None;
         };
 
         let _ = player.award_stat(host, StatType::Custom, "minecraft:interact_with_anvil", 1);
 
-        if let Some(menu) = host.menu(player_uuid, window) {
-            let all = [inputs[0].clone(), inputs[1].clone(), initial.output.clone()];
-            set_menu_all_slots(host, menu, &all);
-        }
+        // The returned handle may name only a staged open; read the installed window instead.
+        let installed = player
+            .container_menu(&*host)
+            .and_then(|menu| Some((menu, menu.container_id(&*host)?)));
+        let Some((menu, window)) = installed else {
+            return Some(InteractionResult::Success);
+        };
+        let all = [inputs[0].clone(), inputs[1].clone(), initial.output.clone()];
+        set_menu_all_slots(host, menu, &all);
 
         VIEWERS
             .lock()
@@ -557,7 +574,7 @@ impl BlockPart for AnvilBlockPart {
 
     fn analog_output(&self, level: &mut dyn LevelRandomHost, event: &mut AnalogOutputEvent) {
         let pos = [event.pos.x, event.pos.y, event.pos.z];
-        let slots = read_anvil_slots_store(level, pos);
+        let slots = read_anvil_slots_in(level, pos);
         event.output = comparator_signal(&slots);
     }
 
@@ -700,7 +717,7 @@ impl MenuPart for AnvilMenuPart {
         let Some(level) = host.level(&viewer.dimension) else {
             return;
         };
-        let Some(menu) = host.menu(player_uuid, viewer.window) else {
+        let Some(menu) = live_menu(&*host, player_uuid, viewer.window) else {
             return;
         };
 
@@ -772,6 +789,15 @@ impl MenuPart for AnvilMenuPart {
         }
     }
 
+    fn menu_removed(&self, _host: &mut dyn ServerHost, event: &mut MenuRemovedEvent<'_>) {
+        let mut map = VIEWERS.lock().unwrap_or_else(PoisonError::into_inner);
+        if let Some(entry) = map.get(&event.uuid)
+            && entry.window == event.window
+        {
+            map.remove(&event.uuid);
+        }
+    }
+
     fn menu_still_valid(&self, _context: &dyn LoopContext, event: &mut MenuStillValidEvent<'_>) {
         let Some(viewer) = viewer_of(event.player) else {
             event.valid = false;
@@ -788,15 +814,6 @@ impl MenuPart for AnvilMenuPart {
         if dx * dx + dy * dy + dz * dz > 72.25 {
             event.valid = false;
         }
-    }
-}
-
-pub fn on_menu_closed(_host: &mut dyn ServerHost, event: &mut MenuClosedEvent<'_>) {
-    let mut map = VIEWERS.lock().unwrap_or_else(PoisonError::into_inner);
-    if let Some(entry) = map.get(&event.uuid)
-        && entry.window == event.window
-    {
-        map.remove(&event.uuid);
     }
 }
 
@@ -858,7 +875,7 @@ pub fn on_server_tick_post(host: &mut dyn ServerHost, level: LevelRef) {
         let anvil_viewers = viewers_at(&active_dim, pos);
         if !anvil_viewers.is_empty() {
             let needs_sync = anvil_viewers.iter().any(|&(uuid, window)| {
-                host.menu(uuid, window).is_some_and(|menu| {
+                live_menu(&*host, uuid, window).is_some_and(|menu| {
                     let cur = read_menu_input_slots(&*host, menu);
                     AnvilSlots::from_stacks(&*host, &cur) != stored
                 })
@@ -896,8 +913,7 @@ pub fn on_server_tick_post(host: &mut dyn ServerHost, level: LevelRef) {
         if let Some(player) = host.player(uuid) {
             let creative = player.game_mode(&*host) == Some(GameMode::Creative);
             let exp_level = player.experience(&*host).map_or(0, |e| e.level);
-            let has_output = host
-                .menu(uuid, entry.window)
+            let has_output = live_menu(&*host, uuid, entry.window)
                 .and_then(|m| m.slot(&*host, 2).flatten())
                 .is_some();
             let pickup = has_output && entry.cost >= 0 && (creative || exp_level >= entry.cost);
