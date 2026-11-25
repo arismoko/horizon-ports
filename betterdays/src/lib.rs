@@ -10,23 +10,22 @@
 //! | `player_bed_enter`, `player_bed_leave` | this module | the "is now sleeping" and "has left their bed" notices |
 //! | `screen_render_post` | this module | the clock drawn on the in-bed screen |
 //! | `register` | this module | notes whether SleepWarp or Sleep Tight is loaded, which turns sleep off |
-//! | `register_configs`, `config_loading`, `config_reloading` | this module | `config/betterdays-common.toml` and `config/betterdays-client.toml` |
+//! | `register` (configs) | this module | `config/betterdays-common.toml` and `config/betterdays-client.toml` |
 
 pub mod rules;
 
 use std::ops::ControlFlow;
-use std::sync::Mutex;
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Arc, Mutex};
 
 use mod_api::{
-    Config as ModConfig, ConfigContext, ConfigKind, ConfigLoadingEvent, ConfigReloadingEvent, Flow,
-    GameRuleValue, Hooks, HostSide, Identifier, LevelLoadEvent, LevelRef, LevelTickPostEvent,
-    LevelUnloadEvent, PlayerBedEnterEvent, PlayerBedLeaveEvent, PlayerRef, RegisterConfigsEvent,
-    Registrar, RegistrationContext, ScreenRenderPostEvent, ServerHost, SleepSkipNightEvent, Text,
+    ConfigEvent, ConfigKind, ConfigSnapshot, ConfigSpec, Flow, GameRuleValue, Hooks, HostSide,
+    Identifier, LevelLoadEvent, LevelRef, LevelTickPostEvent, LevelUnloadEvent,
+    PlayerBedEnterEvent, PlayerBedLeaveEvent, PlayerRef, Registrar, RegistrationContext,
+    ScreenRenderPostEvent, ServerHost, SleepSkipNightEvent, Text,
 };
 use rules::{Client, Common, Interpolator, Message, Target};
 
-const MOD: &str = "betterdays";
 const OVERWORLD: &str = "minecraft:overworld";
 const ADVANCE_TIME: &str = "minecraft:advance_time";
 const SLEEPING_PERCENTAGE: &str = "minecraft:players_sleeping_percentage";
@@ -390,48 +389,30 @@ impl Hooks for Mod {
         );
     }
 
-    fn register(&self, _: &mut dyn Registrar, context: &RegistrationContext) {
+    fn register(&self, r: &mut dyn Registrar, context: &RegistrationContext) {
         let other = context
             .mods()
             .ids()
             .any(|id| id == "sleepwarp" || id == "sleep_tight");
         SLEEP_MOD_LOADED.store(other, Ordering::Relaxed);
-    }
-
-    fn register_configs(&self, _: &dyn ConfigContext, event: &mut RegisterConfigsEvent<'_>) {
-        event.configs.push(ModConfig::new(
-            MOD,
-            ConfigKind::Common,
-            rules::DEFAULT_COMMON,
-        ));
-        event.configs.push(ModConfig::new(
-            MOD,
-            ConfigKind::Client,
-            rules::DEFAULT_CLIENT,
-        ));
-    }
-
-    fn config_loading(&self, _: &dyn ConfigContext, event: &mut ConfigLoadingEvent<'_>) {
-        apply(
-            event.config.mod_id.as_str(),
-            event.config.kind,
-            &event.config.text,
-        );
-    }
-
-    fn config_reloading(&self, _: HostSide, event: &mut ConfigReloadingEvent<'_>) {
-        apply(
-            event.config.mod_id.as_str(),
-            event.config.kind,
-            &event.config.text,
-        );
+        for (kind, default) in [
+            (ConfigKind::Common, rules::DEFAULT_COMMON),
+            (ConfigKind::Client, rules::DEFAULT_CLIENT),
+        ] {
+            let listener =
+                move |event: ConfigEvent<'_>, snapshot: &ConfigSnapshot| -> Result<(), String> {
+                    if matches!(event, ConfigEvent::Loading(_) | ConfigEvent::Reloading(_)) {
+                        apply(kind, &snapshot.text);
+                    }
+                    Ok(())
+                };
+            // A duplicate file name is refused and the first registration stays active.
+            let _ = r.register_config(ConfigSpec::new(kind, default), Some(Arc::new(listener)));
+        }
     }
 }
 
-fn apply(mod_id: &str, kind: ConfigKind, text: &str) {
-    if mod_id != MOD {
-        return;
-    }
+fn apply(kind: ConfigKind, text: &str) {
     match kind {
         ConfigKind::Common => load_common(text),
         ConfigKind::Client => {
