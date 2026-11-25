@@ -598,11 +598,18 @@ mod tests {
             Some(near)
         );
 
-        // Center is 4.55 away, but closest corner of block [0, 65, 5] is ~4.51? No, 4.01 away.
-        let far_center = [0.5, 65.5, 5.5];
-        let clamped = clamp_point_within_reach(origin, far_center, [0, 65, 5], 4.5, false);
-        assert!(clamped.is_some());
-        assert!(distance(origin, clamped.unwrap()) <= 4.5);
+        // Block [3, 65, 4] center is ~5.00 away (past 4.5 reach), while its closest interior
+        // point [3.01, 65.62, 4.01] is ~4.32 away and fits within reach.
+        let far_center = [3.5, 65.5, 4.5];
+        let clamped = clamp_point_within_reach(origin, far_center, [3, 65, 4], 4.5, false)
+            .expect("border block interior point should clamp within reach");
+        assert!(distance(origin, clamped) <= 4.5);
+
+        // Block [0, 65, 5] has its closest interior point at z = 5.01 (4.51 away), past reach.
+        assert_eq!(
+            clamp_point_within_reach(origin, [0.5, 65.5, 5.5], [0, 65, 5], 4.5, false),
+            None
+        );
     }
 
     #[test]
