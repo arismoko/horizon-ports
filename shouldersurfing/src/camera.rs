@@ -198,6 +198,31 @@ impl Offsets {
     }
 }
 
+/// The entity's eye `partial` of the way from its previous tick to this one
+/// (`Camera.alignWithEntity`: interpolated position plus the eye height).
+pub fn interpolated_eye(previous: V3, position: V3, eye_height: f64, partial: f64) -> V3 {
+    let t = if partial.is_finite() {
+        partial.clamp(0.0, 1.0)
+    } else {
+        1.0
+    };
+    [
+        lerp(t, previous[0], position[0]),
+        lerp(t, previous[1], position[1]) + eye_height,
+        lerp(t, previous[2], position[2]),
+    ]
+}
+
+/// The back-off the game places the detached camera at for an offset `z` behind the player:
+/// finite and within the 0..=1024 blocks the game accepts, else none.
+pub fn back_off(z: f64) -> f32 {
+    if z.is_finite() {
+        z.clamp(0.0, 1024.0) as f32
+    } else {
+        0.0
+    }
+}
+
 /// The 8 corners the camera box is traced with (`ShoulderSurfingCamera.maxZoom`).
 pub const CORNERS: [[f64; 3]; 8] = {
     const D: f64 = 0.1;
@@ -418,6 +443,16 @@ mod tests {
         assert_eq!(o.render(0.5)[0], 0.5);
         o.tick([4.0, 0.0, 0.0], 5.0);
         assert_eq!(o.cur[0], 4.0);
+    }
+
+    #[test]
+    fn eye_interpolates_and_back_off_is_bounded() {
+        let eye = interpolated_eye([0.0, 64.0, 0.0], [2.0, 64.0, 4.0], 1.5, 0.5);
+        assert_eq!(eye, [1.0, 65.5, 2.0]);
+        assert_eq!(back_off(4.0), 4.0);
+        assert_eq!(back_off(-1.0), 0.0);
+        assert_eq!(back_off(f64::NAN), 0.0);
+        assert_eq!(back_off(1e9), 1024.0);
     }
 
     #[test]

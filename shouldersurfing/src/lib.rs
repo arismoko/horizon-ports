@@ -104,6 +104,8 @@ struct Runtime {
     entity_scale: f64,
     distance_attribute: f64,
     cam_pos: Option<V3>,
+    /// The camera entity's interpolated eye this frame, from `camera_distance`.
+    eye: Option<V3>,
     cam_rot: Rotation,
     /// Where the camera's own ray ends (the target the player's item rays aim at).
     cam_point: Option<V3>,
@@ -142,6 +144,7 @@ impl Runtime {
             entity_scale: 1.0,
             distance_attribute: camera::VANILLA_CAMERA_DISTANCE,
             cam_pos: None,
+            eye: None,
             cam_rot: Rotation::default(),
             cam_point: None,
             cam_distance: 0.0,
@@ -699,7 +702,21 @@ impl Hooks for ShoulderSurfing {
             rt.distance_attribute = living.camera_distance;
         }
         if rt.is_surfing(host) && !event.mirrored {
-            event.distance = 0.0;
+            // The game backs the detached camera off by this much along the look, clipped by
+            // visual shapes. Asking for the configured distance behind keeps the camera behind
+            // the player even if `camera_position` does not run; that hook then places it
+            // from the eye, on the shoulder.
+            let e = event.entity;
+            rt.eye = Some(camera::interpolated_eye(
+                e.previous,
+                e.position,
+                f64::from(e.eye_height),
+                f64::from(event.partial),
+            ));
+            let back = rt.offsets.render(f64::from(event.partial))[2];
+            event.distance = camera::back_off(back);
+        } else {
+            rt.eye = None;
         }
     }
 
@@ -767,8 +784,8 @@ impl Hooks for ShoulderSurfing {
             rt.cam_pos = None;
             return;
         }
-        let [eye_x, eye_y, eye_z] = event.position.coordinates();
-        let eye = [eye_x, eye_y, eye_z];
+        // The eye the offset is measured from: the entity's own, not the backed-off placement.
+        let eye = rt.eye.unwrap_or_else(|| event.position.coordinates());
         let Rotation { yaw, pitch } = rt.cam_rot;
         let offset = rt.offsets.render(f64::from(event.partial));
         let zoomed = |off: V3| math::camera_displacement(yaw, pitch, off);
