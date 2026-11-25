@@ -13,12 +13,24 @@ Requires the mod on both client and server for multiplayer pings.
 
 Differences from the original:
 
-- Standing block raycasts use collision shapes rather than `ClipContext.Block.VISUAL`, and sneaking raycasts use block outlines without hitting fluids (`ClipContext.Fluid.ANY`) (gap: TBD-clip-visual-and-fluid).
-- The server admin command is `/pingwheel-server` instead of `/pingwheel:server` because `:` is not accepted in command root literals yet (gap: TBD-command-colon-literal).
-- Client-side entity raycasting cannot locally check `Entity.isSpectator` because `EntityRef::spectator` is server-only (gap: TBD-client-entity-spectator).
-- Custom ping icon resource packs must provide `assets/pingwheel/textures/gui/sprites/ping.png` rather than a standalone `textures/ping.png` outside the GUI atlas (gap: TBD-gui-blit-standalone-texture).
+- Standing block raycasts use collision shapes rather than `ClipContext.Block.VISUAL`, and sneaking raycasts use block outlines without hitting fluids (`ClipContext.Fluid.ANY`) (gap: sunrise-org/sunrise#4677, sunrise-org/sunrise#4630).
+- The server admin command is `/pingwheel-server` instead of `/pingwheel:server` because `:` is not accepted in command root literals yet (gap: sunrise-org/sunrise#4585).
+- Client-side entity raycasting cannot locally check `Entity.isSpectator` because `EntityRef::spectator` is server-only (gap: sunrise-org/sunrise#5613).
+- Custom ping icon resource packs must provide `assets/pingwheel/textures/gui/sprites/ping.png` rather than a standalone `textures/ping.png` outside the GUI atlas (gap: sunrise-org/sunrise#4633).
 - Optional third-party integrations for FTB Teams, Simple Voice Chat, and Distant Horizons are omitted; vanilla scoreboard teams work in full.
 
 A port of Ping Wheel by Luken (LukenSkyne) and contributor RXJpaw, under the MIT licence.
 """
 categories = ["social", "utility"]
+
+[[screenshots]]
+path = "page/pings.png"
+caption = "Block, mob, and dropped item pings with distance labels and item icons in multiplayer."
+
+[[screenshots]]
+path = "page/edge-indicators.png"
+caption = "Off-screen direction indicators clamped to the screen edge."
+
+[[screenshots]]
+path = "page/settings.png"
+caption = "In-game Ping Wheel Settings screen opened with /pingwheel config."

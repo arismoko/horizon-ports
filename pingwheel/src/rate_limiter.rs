@@ -7,10 +7,6 @@ pub struct RateLimiter {
 }
 
 impl RateLimiter {
-    pub fn new() -> Self {
-        Self { start_time: None }
-    }
-
     /// Returns `true` if the player has exceeded the configured rate limit.
     pub fn check_exceeded(&mut self, now: Instant, ms_to_regenerate: u64, limit: u64) -> bool {
         if limit == 0 || ms_to_regenerate == 0 {
@@ -42,7 +38,7 @@ mod tests {
 
     #[test]
     fn allows_burst_up_to_limit_then_throttles_until_regen() {
-        let mut rl = RateLimiter::new();
+        let mut rl = RateLimiter::default();
         let t0 = Instant::now();
 
         for _ in 0..5 {
@@ -61,7 +57,7 @@ mod tests {
 
     #[test]
     fn zero_limit_never_throttles() {
-        let mut rl = RateLimiter::new();
+        let mut rl = RateLimiter::default();
         let t0 = Instant::now();
         for _ in 0..20 {
             assert!(!rl.check_exceeded(t0, 1000, 0));

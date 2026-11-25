@@ -239,12 +239,11 @@ pub fn on_client_tick_pre(host: &mut dyn ClientHost) {
             if packet.channel != active_channel {
                 continue;
             }
-            if cfg.ping_distance < MAX_PING_DISTANCE {
-                if let Some(ppos) = player_pos {
-                    if distance_3d(ppos, packet.pos) > f64::from(cfg.ping_distance) {
-                        continue;
-                    }
-                }
+            if cfg.ping_distance < MAX_PING_DISTANCE
+                && let Some(ppos) = player_pos
+                && distance_3d(ppos, packet.pos) > f64::from(cfg.ping_distance)
+            {
+                continue;
             }
             let same_dim = packet.dimension == current_dim;
             let ping_pos = packet.pos;
@@ -261,16 +260,17 @@ pub fn on_client_tick_pre(host: &mut dyn ClientHost) {
                 state.pings.push(view);
             }
 
-            if same_dim && cfg.ping_volume > 0 {
-                if let Some(ppos) = player_pos {
-                    let sound_pos = directional_sound_pos(ppos, ping_pos);
-                    let vol = (cfg.ping_volume as f32 / 100.0).clamp(0.0, 1.0);
-                    let play = SoundPlay::at(PING_SOUND, SoundSource::Master, sound_pos)
-                        .with_volume(vol)
-                        .with_pitch(1.0);
-                    if let Some(handle) = host.play_local_sound(&play, 0) {
-                        state.active_sounds.push(ActiveSound { handle, ping_pos });
-                    }
+            if same_dim
+                && cfg.ping_volume > 0
+                && let Some(ppos) = player_pos
+            {
+                let sound_pos = directional_sound_pos(ppos, ping_pos);
+                let vol = (cfg.ping_volume as f32 / 100.0).clamp(0.0, 1.0);
+                let play = SoundPlay::at(PING_SOUND, SoundSource::Master, sound_pos)
+                    .with_volume(vol)
+                    .with_pitch(1.0);
+                if let Some(handle) = host.play_local_sound(&play, 0) {
+                    state.active_sounds.push(ActiveSound { handle, ping_pos });
                 }
             }
         }
@@ -408,16 +408,15 @@ fn update_tracked_entities_and_expire(host: &dyn ClientHost, cfg: &ClientConfig)
     for ping in &mut state.pings {
         let spawn = *ping.spawn_time.get_or_insert(game_time);
         ping.age = game_time.saturating_sub(spawn);
-        if let Some(ent_id) = ping.entity_id {
-            if let Some(ent) = host.entity(ent_id) {
-                if let Some(pos) = ent.position(host) {
-                    let top_y = ent
-                        .bounding_box(host)
-                        .map(|[min, max]| pos[1] + (max[1] - min[1]))
-                        .unwrap_or(pos[1]);
-                    ping.pos = [pos[0], top_y, pos[2]];
-                }
-            }
+        if let Some(ent_id) = ping.entity_id
+            && let Some(ent) = host.entity(ent_id)
+            && let Some(pos) = ent.position(host)
+        {
+            let top_y = ent
+                .bounding_box(host)
+                .map(|[min, max]| pos[1] + (max[1] - min[1]))
+                .unwrap_or(pos[1]);
+            ping.pos = [pos[0], top_y, pos[2]];
         }
     }
     state.pings.retain(|p| !p.is_expired(cfg));

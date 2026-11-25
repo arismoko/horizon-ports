@@ -17,10 +17,10 @@ A Sunrise 26.3 port of [Ping Wheel](https://github.com/LukenSkyne/Minecraft-Ping
 
 ## Differences from the original
 
-- Block raycasting uses `ClipBlock::Collider` when standing and `ClipBlock::Outline` when sneaking without fluid clipping, because `ClipContext.Block.VISUAL` and `ClipContext.Fluid.ANY` are not exposed on `LevelRef::clip` yet (gap: TBD-clip-visual-and-fluid).
-- The server administration command is `/pingwheel-server` instead of `/pingwheel:server`, because Sunrise's command literal parser does not allow `:` in command root names yet (gap: TBD-command-colon-literal).
-- Client-side entity raycasting does not locally filter out spectator entities because `EntityRef::spectator` is server-only (gap: TBD-client-entity-spectator).
-- Resource-pack overrides of the ping marker icon must be placed in the GUI sprite atlas (`assets/pingwheel/textures/gui/sprites/ping.png`), because `DrawContext::gui_paint` only blits textures registered in the GUI atlas (gap: TBD-gui-blit-standalone-texture).
+- Block raycasting uses `ClipBlock::Collider` when standing and `ClipBlock::Outline` when sneaking without fluid clipping, because `ClipContext.Block.VISUAL` and `ClipContext.Fluid.ANY` are not exposed on `LevelRef::clip` yet (gap: sunrise-org/sunrise#4677, sunrise-org/sunrise#4630).
+- The server administration command is `/pingwheel-server` instead of `/pingwheel:server`, because Sunrise's command literal parser does not allow `:` in command root names yet (gap: sunrise-org/sunrise#4585).
+- Client-side entity raycasting does not locally filter out spectator entities because `EntityRef::spectator` is server-only (gap: sunrise-org/sunrise#5613).
+- Resource-pack overrides of the ping marker icon must be placed in the GUI sprite atlas (`assets/pingwheel/textures/gui/sprites/ping.png`), because `DrawContext::gui_paint` only blits textures registered in the GUI atlas (gap: sunrise-org/sunrise#4633).
 - Optional third-party integrations for FTB Teams, Simple Voice Chat, and Distant Horizons are omitted; vanilla scoreboard teams work in full.
 
 ## Commands
