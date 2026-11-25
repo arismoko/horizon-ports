@@ -511,23 +511,10 @@ fn initial_tab_for(mode: SyncMode) -> Tab {
     }
 }
 
-fn filter_client_custom_name(raw: Option<String>, translated_type: Option<&str>) -> Option<String> {
-    let name = raw?;
-    if name.is_empty() || name == "entity.minecraft.armor_stand" {
-        return None;
-    }
-    if translated_type == Some(name.as_str()) {
-        return None;
-    }
-    Some(name)
-}
-
-/// Reads an armor stand's synced custom name on the client.
-/// `EntityRef::custom_name` (`sunrise-org/sunrise#5380`) is not in the pinned `3d34bbe` SDK, so
-/// filter out the default translated type name that `EntityRef::name` returns for unnamed stands.
+/// Reads an armor stand's synced custom name on the client; `None` when it has none.
 fn read_client_custom_name(host: &dyn ClientHost, entity: EntityRef) -> Option<String> {
-    let default_type = host.translate("entity.minecraft.armor_stand");
-    filter_client_custom_name(entity.name(host), default_type.as_deref())
+    let name = entity.custom_name(host).ok().flatten()?;
+    Some(host.text_string(&name)).filter(|name| !name.is_empty())
 }
 
 /// Opens the client-only Armor Statues screen on a server that does not have `armorstatues`.
@@ -546,7 +533,10 @@ pub fn open_client_only_screen(host: &mut dyn ClientHost, entity_id: u32) -> boo
     let live_name = read_client_custom_name(host, entity);
     let creative = player.is_creative(host).unwrap_or(false);
 
-    let mode = if host.setting_bool("use_vanilla_tweaks_triggers") == Some(true) {
+    let mode = if commands::VANILLA_TWEAKS_SETTING
+        .get()
+        .is_some_and(|key| matches!(host.setting_bool(*key), Ok(true)))
+    {
         SyncMode::VanillaTweaks
     } else {
         SyncMode::Commands
@@ -1813,31 +1803,4 @@ pub fn on_item_tooltip(host: &dyn ClientHost, event: &mut ItemTooltipEvent<'_>) 
     )
     .with_style(gray);
     let _ = event.lines.push(line, u32::MAX);
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn filter_client_custom_name_ignores_default_type_name() {
-        assert_eq!(
-            filter_client_custom_name(Some("Armor Stand".into()), Some("Armor Stand")),
-            None
-        );
-        assert_eq!(
-            filter_client_custom_name(Some("Rüstungsständer".into()), Some("Rüstungsständer")),
-            None
-        );
-        assert_eq!(
-            filter_client_custom_name(Some("entity.minecraft.armor_stand".into()), None),
-            None
-        );
-        assert_eq!(filter_client_custom_name(Some(String::new()), None), None);
-        assert_eq!(filter_client_custom_name(None, Some("Armor Stand")), None);
-        assert_eq!(
-            filter_client_custom_name(Some("Guard".into()), Some("Armor Stand")),
-            Some("Guard".into())
-        );
-    }
 }

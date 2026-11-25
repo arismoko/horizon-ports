@@ -13,13 +13,13 @@ use std::sync::Arc;
 
 use mod_api::{
     ClientHost, ClientTickPostEvent, EntityInteractEvent, Flow, Hooks, HostSide, InteractionResult,
-    ItemTooltipEvent, MenuClosedEvent, PayloadId, Registrar, RegistrationContext,
-    ScreenClosingEvent, ScreenInitPostEvent, ScreenKeyPressedPreEvent,
-    ScreenMouseButtonReleasedPreEvent, ScreenMouseScrolledPreEvent, ScreenRenderBackgroundEvent,
-    ScreenRenderPostEvent, ServerHost, ServerTickEvent, SettingSpec,
+    ItemTooltipEvent, PayloadId, Registrar, RegistrationContext, ScreenClosingEvent,
+    ScreenInitPostEvent, ScreenKeyPressedPreEvent, ScreenMouseButtonReleasedPreEvent,
+    ScreenMouseScrolledPreEvent, ScreenRenderBackgroundEvent, ScreenRenderPostEvent, ServerHost,
+    ServerTickEvent, SettingSpec,
 };
 
-use crate::commands::DEFAULT_VT_DELAY_TICKS;
+use crate::commands::{self, DEFAULT_VT_DELAY_TICKS};
 use crate::model::{EDIT_CHANNEL, EditMessage, MENU_ID, SYNC_CHANNEL, SyncMessage};
 use crate::server::ArmorStandMenuPart;
 
@@ -45,15 +45,17 @@ impl Hooks for Mod {
         client::set_edit_token(edit_token);
         server::set_sync_token(sync_token);
 
-        let _ = r.register_setting(
+        if let Ok(key) = r.register_setting(
             SettingSpec::toggle(
                 "use_vanilla_tweaks_triggers",
                 "setting.armorstatues.use_vanilla_tweaks_triggers",
                 false,
             )
             .tooltip("setting.armorstatues.use_vanilla_tweaks_triggers.tooltip"),
-        );
-        let _ = r.register_setting(
+        ) {
+            let _ = commands::VANILLA_TWEAKS_SETTING.set(key);
+        }
+        if let Ok(key) = r.register_setting(
             SettingSpec::range(
                 "client_command_delay",
                 "setting.armorstatues.client_command_delay",
@@ -63,7 +65,9 @@ impl Hooks for Mod {
                 f64::from(DEFAULT_VT_DELAY_TICKS),
             )
             .tooltip("setting.armorstatues.client_command_delay.tooltip"),
-        );
+        ) {
+            let _ = commands::CLIENT_DELAY_SETTING.set(key);
+        }
     }
 
     fn entity_interact(
@@ -72,10 +76,6 @@ impl Hooks for Mod {
         event: &mut EntityInteractEvent<'_>,
     ) -> Option<InteractionResult> {
         server::on_entity_interact(host, event)
-    }
-
-    fn menu_closed(&self, _host: &mut dyn ServerHost, event: &mut MenuClosedEvent<'_>) {
-        server::on_menu_closed(event);
     }
 
     fn server_tick(&self, host: &mut dyn ServerHost, event: &mut ServerTickEvent) {

@@ -1,11 +1,15 @@
 //! Client-only command queue (`CommandDataSyncHandler`) and Vanilla Tweaks `/trigger`
 //! fallback (`VanillaTweaksDataSyncHandler`) for servers without `armorstatues`.
 use std::collections::VecDeque;
-use std::sync::{LazyLock, Mutex, PoisonError};
+use std::sync::{LazyLock, Mutex, OnceLock, PoisonError};
 
 use mod_api::client::widgets::{filter_text, is_allowed_chat_character, utf16_len};
 use mod_api::text::TextStyle;
-use mod_api::{ClientHost, Text};
+use mod_api::{ClientHost, SettingKey, Text};
+
+/// Setting keys minted at registration (`use_vanilla_tweaks_triggers`, `client_command_delay`).
+pub static VANILLA_TWEAKS_SETTING: OnceLock<SettingKey> = OnceLock::new();
+pub static CLIENT_DELAY_SETTING: OnceLock<SettingKey> = OnceLock::new();
 
 use crate::model::{
     ALL_SLOTS_DISABLED, Alignment, DEFAULT_POSE, DEFAULT_SCALE, EditMessage, MAX_NAME_LEN, POSES,
@@ -564,7 +568,9 @@ pub fn enqueue_batches(
         return false;
     }
     let delay = if vanilla_tweaks {
-        host.setting_f64("client_command_delay")
+        CLIENT_DELAY_SETTING
+            .get()
+            .and_then(|key| host.setting_f64(*key).ok())
             .map(|v| (v.round() as i32).max(DEFAULT_VT_DELAY_TICKS))
             .unwrap_or(DEFAULT_VT_DELAY_TICKS)
     } else {
