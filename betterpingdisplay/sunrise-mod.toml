@@ -1,0 +1,14 @@
+# Better Ping Display for Sunrise: client-only native code in src/ using the typed mod API.
+id = "betterpingdisplay"
+name = "Better Ping Display"
+version = "0.5.0"
+description = "Shows the actual ping number instead of just bars in the player list!"
+authors = ["Quintinity", "arismoko"]
+license = "MIT"
+credits = "Original mod by Vlad Marica (Quintinity) (MIT); ported to Sunrise by arismoko."
+homepage = "https://github.com/arismoko/sunrise-ports"
+side = "client"
+
+[native]
+game = "26.3"
+sunrise = "3d34bbe63d71bb24c098c1e4021ef866be12fe2d"
