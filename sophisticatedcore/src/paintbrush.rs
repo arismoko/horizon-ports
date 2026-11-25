@@ -153,7 +153,7 @@ fn effects(host: &mut dyn ServerHost, level: LevelRef, pos: [i32; 3], volume: f3
     {
         level.play_sound(
             host,
-            &sound.place,
+            sound.place.as_str(),
             at,
             SoundSource::Blocks,
             volume,

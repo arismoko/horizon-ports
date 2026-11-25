@@ -930,7 +930,7 @@ impl ItemPart for StorageItemPart {
         event.fits = IN_CONTAINER_ITEMS.load(Ordering::Relaxed);
     }
 
-    fn tooltip(&self, host: &dyn ClientHost, event: &mut TooltipEvent<'_>) {
+    fn tooltip(&self, host: &dyn ClientHost, event: &mut TooltipEvent<'_, '_>) {
         let Some(kind) = storage_items::by_item(&contents::item_id(host, event.stack)) else {
             return;
         };
@@ -1075,7 +1075,7 @@ impl ItemPart for PlacedItemPart {
         }
     }
 
-    fn tooltip(&self, host: &dyn ClientHost, event: &mut TooltipEvent<'_>) {
+    fn tooltip(&self, host: &dyn ClientHost, event: &mut TooltipEvent<'_, '_>) {
         let Some(kind) = storage_items::by_item(&contents::item_id(host, event.stack)) else {
             return;
         };
@@ -1913,10 +1913,15 @@ impl Hooks for Mod {
             return Flow::Continue;
         }
         let living = LivingRef::new(entity);
-        for effect in living.effects(&*host).unwrap_or_default() {
+        let mut beneficial = Vec::new();
+        let _ = living.visit_effects(&*host, &mut |effect| {
             if effect.id.category(&*host) == Some(mod_api::EffectCategory::Beneficial) {
-                living.remove_effect(host, effect.id);
+                beneficial.push(effect.id);
             }
+            std::ops::ControlFlow::Continue(())
+        });
+        for id in beneficial {
+            living.remove_effect(host, id);
         }
         Flow::Continue
     }
@@ -2223,7 +2228,7 @@ impl Hooks for Mod {
     }
 
     /// EverlastingBackpackItemEntity: the dropped backpack never despawns; each expiry gives it more life.
-    fn item_expire(&self, host: &mut dyn ServerHost, event: &mut mod_api::ItemExpireEvent<'_>) {
+    fn item_expire(&self, host: &mut dyn ServerHost, event: &mut mod_api::ItemExpireEvent) {
         if event
             .item
             .with_stack(&*host, |v| v.project())
