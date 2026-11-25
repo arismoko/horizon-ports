@@ -15,7 +15,7 @@ A Sunrise 26.3 port of [Falling Leaves](https://github.com/Fourmisain/fallinglea
 ## Differences from the original
 
 - Vanilla's built-in `FallingParticlesLeavesBlock` particles (`tinted_leaves`, `cherry_leaves`, `pale_oak_leaves`, poplar leaves) cannot be cancelled or suppressed from `BlockPart::animate_tick`, so they continue to emit alongside Falling Leaves' custom wind-driven particles (gap: sunrise-org/sunrise#5382).
-- The package declares `side = "both"` instead of `side = "client"` (and has no `registerParticles = false` client-only mode) because Sunrise's `Registrar::register_particle_type` requires `side = "both"` for code-defined particle providers (gap: sunrise-org/sunrise#5611).
+- Needs installing on the server as well as the client (`side = "both"` instead of `side = "client"`, with no `registerParticles = false` client-only mode) because a client-only mod cannot register particle types via `Registrar::register_particle_type` (gap: sunrise-org/sunrise#5611).
 - Leaf particle colors use exact biome-blended `block_tint_color` / `biome_tint` plus vanilla leaf base colors rather than averaging stitched `TextureAtlasSprite` pixels (`NativeImage`), so resource packs or modded untinted leaves with custom colors use a fallback base color (gap: sunrise-org/sunrise#4601).
 - Resource packs cannot supply arbitrary unregistered per-block sprite sets under `assets/fallingleaves/particles/block/<ns>/<path>.json` (gap: sunrise-org/sunrise#5612).
 - Per-block `leaf_settings` maps and `windless_dimensions` / `leaf_spawners` lists are edited in `config/fallingleaves-client.toml` rather than in-game because Sunrise's Options → Mods screen is flat (gap: sunrise-org/sunrise#1174).

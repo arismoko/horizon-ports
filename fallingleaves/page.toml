@@ -9,10 +9,12 @@ Falling Leaves adds gentle, wind-driven falling leaf and snowflake particles to 
 - **Full configuration & 12 locales**: edit scalar settings in **Options → Mods → Falling Leaves** and per-block overrides or custom `leaf_spawners` (such as `minecraft:bamboo[leaves=large]`) in `config/fallingleaves-client.toml`.
 - **F3 wind debug entry**: adds `fallingleaves:wind` in debug options to show live wind state and velocity.
 
+Needs installing on both the client and the server (`side = "both"`) because a client-only mod cannot register particle types (gap: sunrise-org/sunrise#5611).
+
 Differences from the original:
 
 - Vanilla's built-in leaf particles (`tinted_leaves`, `cherry_leaves`, `pale_oak_leaves`, poplar leaves) cannot be suppressed from `animate_tick` and continue to emit alongside Falling Leaves' custom particles (gap: sunrise-org/sunrise#5382).
-- Uses `side = "both"` rather than `side = "client"` (and has no `registerParticles = false` mode) because Sunrise requires `side = "both"` for code-defined particle providers (gap: sunrise-org/sunrise#5611).
+- Needs installing on the server as well as the client (`side = "both"` rather than `side = "client"`, with no `registerParticles = false` mode) because a client-only mod cannot register particle types (gap: sunrise-org/sunrise#5611).
 - Leaf particle tint uses exact biome-blended `block_tint_color` and vanilla base colors rather than averaging stitched `TextureAtlasSprite` pixels for custom resource-pack or modded untinted leaves (gap: sunrise-org/sunrise#4601).
 - Resource packs cannot add unregistered per-block sprite sets under `assets/fallingleaves/particles/block/<ns>/<path>.json` (gap: sunrise-org/sunrise#5612).
 - Per-block `leaf_settings` maps and `windless_dimensions` / `leaf_spawners` lists are edited in `config/fallingleaves-client.toml` rather than in-game (gap: sunrise-org/sunrise#1174).
@@ -21,3 +23,15 @@ Differences from the original:
 A port of Falling Leaves by Fourmisain, BrekiTomasson, and RandomMcSomethin, under the MIT licence.
 """
 categories = ["decoration"]
+
+[[screenshots]]
+path = "page/leaves.png"
+caption = "Wind-driven leaf particles drifting down and settling beneath oak, birch, and spruce canopies."
+
+[[screenshots]]
+path = "page/snowy-biome.png"
+caption = "Snowflake particles falling from a spruce canopy in a snowy taiga biome."
+
+[[screenshots]]
+path = "page/settings.png"
+caption = "Falling Leaves settings in Options → Mods, with leaf size, lifespan, and spawn rate controls."

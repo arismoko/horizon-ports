@@ -35,11 +35,16 @@ use std::sync::{Arc, Mutex, MutexGuard, OnceLock};
 
 const MAX_PENDING_DECAYS: usize = 128;
 
+struct PendingDecay {
+    pos: [i32; 3],
+    state: BlockState,
+}
+
 /// Global handles and shared state initialized during `Hooks::register`.
 static HANDLES: OnceLock<ParticleHandles> = OnceLock::new();
 static PARTICLE_SHARED: OnceLock<Arc<ParticleSharedState>> = OnceLock::new();
 static RUNTIME: OnceLock<Mutex<Runtime>> = OnceLock::new();
-static PENDING_DECAYS: OnceLock<Mutex<Vec<([i32; 3], BlockState)>>> = OnceLock::new();
+static PENDING_DECAYS: OnceLock<Mutex<Vec<PendingDecay>>> = OnceLock::new();
 static CLIENT_ACTIVE: AtomicBool = AtomicBool::new(false);
 
 fn particle_shared() -> Arc<ParticleSharedState> {
@@ -56,7 +61,7 @@ fn lock_runtime() -> MutexGuard<'static, Runtime> {
     runtime_mutex().lock().unwrap_or_else(|e| e.into_inner())
 }
 
-fn pending_decays() -> &'static Mutex<Vec<([i32; 3], BlockState)>> {
+fn pending_decays() -> &'static Mutex<Vec<PendingDecay>> {
     PENDING_DECAYS.get_or_init(|| Mutex::new(Vec::new()))
 }
 
@@ -64,11 +69,11 @@ fn push_pending_decay(pos: [i32; 3], state: BlockState) {
     if let Ok(mut queue) = pending_decays().lock()
         && queue.len() < MAX_PENDING_DECAYS
     {
-        queue.push((pos, state));
+        queue.push(PendingDecay { pos, state });
     }
 }
 
-fn drain_pending_decays() -> Vec<([i32; 3], BlockState)> {
+fn drain_pending_decays() -> Vec<PendingDecay> {
     match pending_decays().lock() {
         Ok(mut queue) => std::mem::take(&mut *queue),
         Err(e) => std::mem::take(&mut *e.into_inner()),
@@ -619,7 +624,7 @@ impl Hooks for FallingLeaves {
         let decays = drain_pending_decays();
         if !decays.is_empty() && config.max_decay_leaves > 0 {
             let mut rng = LocalRandom(WindRng::new(host.millis() ^ 0xDEC4_7EAF));
-            for (pos, state) in decays {
+            for PendingDecay { pos, state } in decays {
                 let Some(block_id) = state.block().id(&*host).map(str::to_owned) else {
                     continue;
                 };
