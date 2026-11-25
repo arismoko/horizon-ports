@@ -1,0 +1,13 @@
+[package]
+name = "mod-tokimistoolshed"
+version = "0.1.0"
+edition = "2024"
+license = "CC0-1.0"
+description = "Tokimi's Toolshed for Sunrise: hammers, excavators, scythes, lumber axes, clippers, copper buckets and more"
+# Ported from: Tokimi's Toolshed 1.8 (CozyCord/TokimisToolshed, CC0-1.0).
+# Cargo's name and version are not the mod's identity: sunrise-mod.toml is.
+publish = false
+
+[dependencies]
+# The pinned SDK's API crate, fetched into .sunrise/sdk/ by any `cargo sunrise-mod` command.
+sunrise-mod-api = { path = ".sunrise/sdk/api/crates/sunrise-mod-api" }

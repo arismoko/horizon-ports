@@ -1,0 +1,10 @@
+{
+  "cookingtime": 200,
+  "experience": 0.1,
+  "ingredient": "tokimistoolshed:diamond_hammer",
+  "result": {
+    "count": 1,
+    "id": "minecraft:diamond"
+  },
+  "type": "minecraft:smelting"
+}

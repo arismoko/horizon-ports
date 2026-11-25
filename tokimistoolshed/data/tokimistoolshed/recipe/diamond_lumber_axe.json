@@ -1,0 +1,16 @@
+{
+  "key": {
+    "M": "minecraft:diamond",
+    "S": "minecraft:stick"
+  },
+  "pattern": [
+    "MMM",
+    "MMS",
+    " S "
+  ],
+  "result": {
+    "count": 1,
+    "id": "tokimistoolshed:diamond_lumber_axe"
+  },
+  "type": "minecraft:crafting_shaped"
+}

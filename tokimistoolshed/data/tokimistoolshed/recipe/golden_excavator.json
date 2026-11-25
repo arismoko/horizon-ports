@@ -1,0 +1,16 @@
+{
+  "key": {
+    "G": "minecraft:gold_ingot",
+    "S": "minecraft:stick"
+  },
+  "pattern": [
+    " GG",
+    " SG",
+    "S  "
+  ],
+  "result": {
+    "count": 1,
+    "id": "tokimistoolshed:golden_excavator"
+  },
+  "type": "minecraft:crafting_shaped"
+}

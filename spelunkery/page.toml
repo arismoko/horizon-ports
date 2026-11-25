@@ -1,0 +1,30 @@
+summary = "Ores in granite, andesite, diorite and tuff, rough gems, cave mushrooms, rock salt, nephrite, glowsticks and rope ladders."
+description = """
+Spelunkery for Sunrise (Minecraft Java 26.3), ported from [Spelunkery](https://github.com/AstralOrdana/Spelunkery) by Ordana and Keybounce.
+
+What works:
+
+- **Ore variants:** coal, iron, copper, gold, redstone, lapis, emerald, diamond and jade ores in granite, andesite, diorite and tuff, with their loot tables, recipes and world generation.
+- **Rough gems and nuggets:** rough diamond, emerald, cinnabar and lazurite, gem shards, and raw nuggets. Pebbles throw like snowballs.
+- **Grindstone polishing:** polishable items give their products and experience on a grindstone; the diamond grindstone wears with use and a diamond shard mends it.
+- **Cave mushrooms:** button mushrooms grow into crimini and portabellas, inkcaps, phosphor fungus, mushgloom, conk fungus and milly bubcaps place, survive and take bone meal as in the original; tangle roots grow down; sporophytes grow tall.
+- **Rock salt and salt:** salt connects like redstone dust, salt lamps switch on and off, and the rock salt and nephrite block families (stairs, slabs, walls, bricks) are all there.
+- **Rope ladders:** hang from a wall or the ladder above, extend by clicking one on the column, retract by sneaking on the top.
+- **Items:** glowsticks you throw and that stick where they land, the depth gauge, the item magnet and the parachute.
+
+Needed on both the server and the client.
+
+Differences from the original:
+
+- The channels, sluices, compression blast miner, mineomite, nephrite diode, fountain and siphon, sulfur geyser, portal fluid cauldron, falling sulfur and saltpeter, dust bunnies, and the compass, tuning forks, hammer and chisel, handheld compactor and nephrite charm only exist as blocks and items; their behaviour is not ported yet.
+- Pistons push salt instead of breaking it, because a Sunrise block declaration has no push reaction field.
+- The jade ores always drop as the original's jade ore does with Sully's Mod installed: the mod-loaded condition on their loot tables is gone.
+- Thrown glowsticks fly as snowballs carrying the glowstick, and the block is placed on the tick after they land.
+
+Ported to Sunrise under the original's licence, LGPL-3.0-only.
+"""
+categories = ["worldgen", "decoration"]
+
+[[screenshots]]
+path = "page/world.png"
+caption = "Spelunkery ores and rough gems mined in game"
