@@ -448,7 +448,7 @@ impl Hooks for Mod {
         let _ = event.lines.push(line, u32::MAX);
     }
 
-    fn compute_fov_modifier(&self, host: &dyn ClientHost, event: &mut ComputeFovModifierEvent<'_>) {
+    fn compute_fov_modifier(&self, host: &dyn ClientHost, event: &mut ComputeFovModifierEvent) {
         if !flag(host, STEADY_FOV) {
             return;
         }
