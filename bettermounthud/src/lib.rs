@@ -276,17 +276,24 @@ impl Hooks for BetterMountHud {
             }),
         );
 
-        // The mount's hearts go one row up when the hunger row is drawn beneath them.
-        event.layers.replace_layer(
+        // The mount's hearts go one row up when the hunger row is drawn beneath them. When the
+        // mount's health cannot be read, vanilla's own hearts draw.
+        event.layers.wrap_layer(
             VEHICLE_LAYER,
-            Box::new(|host, draw| {
-                if !hud_visible(host) {
-                    return;
-                }
-                let Some(ride) = ride(host) else {
-                    return;
+            Box::new(|ctx| {
+                let plan = {
+                    let host = ctx.host();
+                    hud_visible(host).then(|| ride(host)).flatten().map(|ride| {
+                        let above_food = survival_like(host, ride.player);
+                        (ride, above_food)
+                    })
                 };
-                paint_vehicle(draw, &ride, survival_like(host, ride.player));
+                match plan {
+                    Some((ride, above_food)) => {
+                        ctx.with_draw(&mut |draw| paint_vehicle(draw, &ride, above_food))
+                    }
+                    None => ctx.draw_previous(),
+                }
             }),
         );
 

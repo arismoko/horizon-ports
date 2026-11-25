@@ -11,10 +11,10 @@ Client-side only: works in single player and on any multiplayer server. The orig
 
 Differences from the original:
 
-- The jump bar shows while the **Jump** key is held, not while the jump charge is above zero, because the charge value is not readable (gap: TBD-jump-charge-scale).
-- While the jump bar shows, the experience level number is drawn with it, because vanilla's jump bar and level number are one layer (gap: TBD-contextual-bar-state).
-- When riding a jumpable mount and not charging, the experience bar always shows; the original falls back to vanilla's choice, which can be the locator bar when waypoints exist (gap: TBD-contextual-bar-state).
-- To move the mount's hearts and the air bubbles, the port redraws those rows (and the hunger row) from the GUI atlas sprites instead of shifting vanilla's own rows; whether a mount shows hearts is judged by its max health, and the pop sound plays on the Players source at the player (gap: TBD-status-row-offset).
+- The jump bar shows while the **Jump** key is held, not while the jump charge is above zero, because the charge value is not readable (gap: sunrise-org/sunrise#5637).
+- While the jump bar shows, the experience level number is drawn with it, because vanilla's jump bar and level number are one layer (gap: sunrise-org/sunrise#5638).
+- When riding a jumpable mount and not charging, the experience bar always shows; the original falls back to vanilla's choice, which can be the locator bar when waypoints exist (gap: sunrise-org/sunrise#5638).
+- To move the mount's hearts and the air bubbles, the port redraws those rows (and the hunger row) from the GUI atlas sprites instead of shifting vanilla's own rows; whether a mount shows hearts is judged by its max health, and the pop sound plays on the Players source at the player (gap: sunrise-org/sunrise#5640).
 
 A port of Better Mount HUD by Lortseam, under the GPL-3.0-only licence.
 """

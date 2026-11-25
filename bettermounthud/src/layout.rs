@@ -307,13 +307,13 @@ mod tests {
         let gone = air_icons(320, 240, 10, 0, 300, true, 1).unwrap();
         assert!(gone.iter().all(|i| i.kind == Bubble::Empty));
         assert_eq!(gone.len(), 10);
-        let burst = air_icons(320, 240, 10, 140, 300, true, 0).unwrap();
+        let burst = air_icons(320, 240, 10, 151, 300, true, 0).unwrap();
         assert_eq!(
             burst.iter().filter(|i| i.kind == Bubble::Bursting).count(),
             1
         );
         // Out of water with less than full air, no bubble bursts.
-        let dry = air_icons(320, 240, 10, 140, 300, false, 0).unwrap();
+        let dry = air_icons(320, 240, 10, 151, 300, false, 0).unwrap();
         assert!(dry.iter().all(|i| i.kind != Bubble::Bursting));
         // Odd inputs never panic.
         let _ = air_icons(320, 240, 10, i32::MIN, 0, true, 0);
