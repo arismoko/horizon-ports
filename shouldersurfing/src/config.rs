@@ -347,13 +347,6 @@ choice_enum!(DistanceAttributeMode {
 });
 choice_enum!(Origin { Player, Camera });
 
-impl CrosshairType {
-    /// `CrosshairType.isAimingDecoupled`.
-    pub fn is_aiming_decoupled(self) -> bool {
-        matches!(self, Self::Static | Self::StaticWith1pp)
-    }
-}
-
 impl TurningMode {
     /// `TurningMode.shouldTurn` for a crosshair that is on something.
     pub fn should_turn(self, has_target: bool) -> bool {
@@ -706,16 +699,20 @@ mod tests {
 
     #[test]
     fn lists_round_trip() {
-        let mut lists = Lists::default();
-        lists.offset_x_presets = vec![-0.75, 0.75];
-        lists.non_collidable_blocks = vec!["minecraft:.*leaves".to_owned(), "a\"b".to_owned()];
+        let lists = Lists {
+            offset_x_presets: vec![-0.75, 0.75],
+            non_collidable_blocks: vec!["minecraft:.*leaves".to_owned(), "a\"b".to_owned()],
+            ..Lists::default()
+        };
         let parsed = Lists::parse(&lists.to_toml());
         assert_eq!(parsed, lists);
     }
 
     #[test]
     fn malformed_files_fall_back() {
-        let parsed = Lists::parse("garbage\nhold_items = 5\nuse_items = [\"a\",\n \"b\"\n]\n");
+        let parsed = Lists::parse(
+            "garbage\nadaptive_crosshair_hold_items = 5\nadaptive_crosshair_use_items = [\"a\",\n \"b\"\n]\n",
+        );
         assert_eq!(parsed.hold_items, Lists::default().hold_items);
         assert_eq!(parsed.use_items, vec!["a".to_owned(), "b".to_owned()]);
         assert_eq!(Lists::parse(""), Lists::default());

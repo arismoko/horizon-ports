@@ -157,11 +157,11 @@ pub fn target_offset(cfg: &OffsetCfg, ctx: &OffsetCtx) -> V3 {
     } else {
         1.0
     };
-    for i in 0..3 {
-        v[i] *= scale;
+    for (i, axis) in v.iter_mut().enumerate() {
+        *axis *= scale;
         if !cfg.unlimited[i] {
             let (lo, hi) = (cfg.min[i].min(cfg.max[i]), cfg.min[i].max(cfg.max[i]));
-            v[i] = v[i].clamp(lo * scale, hi * scale);
+            *axis = axis.clamp(lo * scale, hi * scale);
         }
     }
     v
@@ -183,8 +183,8 @@ impl Offsets {
     pub fn tick(&mut self, target: V3, speed: f64) {
         self.prev = self.cur;
         let s = speed.clamp(0.0, 1.0);
-        for i in 0..3 {
-            self.cur[i] = lerp(s, self.cur[i], target[i]);
+        for (cur, goal) in self.cur.iter_mut().zip(target) {
+            *cur = lerp(s, *cur, goal);
         }
     }
 

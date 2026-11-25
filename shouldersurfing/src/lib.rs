@@ -400,7 +400,12 @@ fn with_facts<R>(
     let animation = crosshair::animation_name(stack.use_animation(host));
     let components: Vec<String> = stack
         .components()
-        .map(|c| c.as_nbt().keys().filter_map(|k| k.to_string().ok()).collect())
+        .map(|c| {
+            c.as_nbt()
+                .keys()
+                .filter_map(|k| k.to_string().ok())
+                .collect()
+        })
         .unwrap_or_default();
     let has_default = |c: &str| host.item_default_component(item, c).is_some();
     f(&StackFacts {
