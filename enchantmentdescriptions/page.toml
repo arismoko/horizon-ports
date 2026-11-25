@@ -18,3 +18,15 @@ Differences from the original:
 A port of Enchantment Descriptions by Darkhax, under the LGPL-2.1 licence.
 """
 categories = ["utility"]
+
+[[screenshots]]
+path = "page/book.png"
+caption = "An enchanted book with a grey description under each enchantment."
+
+[[screenshots]]
+path = "page/sword.png"
+caption = "An enchanted diamond sword with descriptions under Sharpness and Unbreaking."
+
+[[screenshots]]
+path = "page/hold-shift.png"
+caption = "With Hold Shift To Show on, a hint replaces the descriptions until Shift is held."
