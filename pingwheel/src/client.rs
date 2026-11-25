@@ -18,6 +18,7 @@ use mod_api::{
     Registrar, SoundPlay, SoundRef, SoundSource, SoundState, Text, VanillaKeyMappingRef,
 };
 use std::borrow::Cow;
+use std::collections::VecDeque;
 use std::f32::consts::{FRAC_PI_4, PI};
 use std::sync::{Mutex, MutexGuard, OnceLock};
 
@@ -29,6 +30,32 @@ const ARROW_SPRITE: &str = "pingwheel:arrow";
 const PING_SPRITE: &str = "pingwheel:ping";
 const PING_SOUND: &str = "pingwheel:ping";
 
+/// Cap on queued incoming `PingLocationS2C` packets before dropping the oldest.
+/// Original Ping-Wheel (`6447533`) has no explicit cap on `Game.execute` runnables;
+/// 128 bounds memory under a malicious server flood while comfortably exceeding
+/// `ServerConfig.rateLimit` (default 5).
+const MAX_PENDING_INCOMING: usize = 128;
+
+/// Maximum incoming `PingLocationS2C` packets drained per client tick.
+/// Original Ping-Wheel (`6447533`) drains `Game.execute` unboundedly; 16 is above
+/// `ServerConfig.rateLimit` (default 5) while keeping per-tick work bounded.
+const MAX_INCOMING_PER_TICK: usize = 16;
+
+/// Cap on active HUD pings in `ClientState.pings` before dropping the oldest.
+/// Original Ping-Wheel (`6447533`) leaves `PingManager.PING_REPO` uncapped;
+/// 128 bounds HUD memory and per-frame rendering work under a malicious server.
+const MAX_ACTIVE_PINGS: usize = 128;
+
+/// Cap on tracked directional ping sounds before stopping and dropping the oldest.
+/// Original Ping-Wheel (`6447533`) has no explicit cap on `DirectionalSoundInstance`;
+/// vanilla 26.3's `SoundEngine` / `Library` caps static OpenAL channels at 247, and
+/// 32 keeps one mod well within that budget.
+const MAX_ACTIVE_SOUNDS: usize = 32;
+
+/// Maximum directional ping sounds started in a single client tick, matching
+/// Ping-Wheel (`6447533`) default `ServerConfig.rateLimit` (5).
+const MAX_SOUNDS_PER_TICK: usize = 5;
+
 struct PingView {
     pos: [f64; 3],
     entity_id: Option<u32>,
@@ -38,6 +65,7 @@ struct PingView {
     item_stack: Option<ItemStack>,
     sequence: i32,
     dimension: String,
+    inserted_order: u64,
     spawn_time: Option<i64>,
     age: i64,
     screen_pos: Option<ScreenPos>,
@@ -46,7 +74,7 @@ struct PingView {
 }
 
 impl PingView {
-    fn from_packet(packet: PingLocationS2C) -> Self {
+    fn from_packet(packet: PingLocationS2C, inserted_order: u64) -> Self {
         Self {
             pos: packet.pos,
             entity_id: packet.entity_id,
@@ -56,6 +84,7 @@ impl PingView {
             item_stack: packet.item_stack,
             sequence: packet.sequence,
             dimension: packet.dimension,
+            inserted_order,
             spawn_time: None,
             age: 0,
             screen_pos: None,
@@ -97,8 +126,9 @@ struct ActiveSound {
 #[derive(Default)]
 struct ClientState {
     pings: Vec<PingView>,
-    pending_incoming: Vec<PingLocationS2C>,
-    active_sounds: Vec<ActiveSound>,
+    next_ping_order: u64,
+    pending_incoming: VecDeque<PingLocationS2C>,
+    active_sounds: VecDeque<ActiveSound>,
     ping_queued: bool,
     ping_sequence: i32,
     last_ping_time: i64,
@@ -110,6 +140,58 @@ struct ClientState {
     key_settings: Option<ModKeyMappingRef>,
     key_pick_item: Option<VanillaKeyMappingRef>,
     key_playerlist: Option<VanillaKeyMappingRef>,
+}
+
+fn push_bounded<T>(queue: &mut VecDeque<T>, max_len: usize, item: T) -> Option<T> {
+    let evicted = if queue.len() >= max_len {
+        queue.pop_front()
+    } else {
+        None
+    };
+    if max_len > 0 {
+        queue.push_back(item);
+    }
+    evicted
+}
+
+impl ClientState {
+    fn push_pending_incoming(&mut self, packet: PingLocationS2C) {
+        push_bounded(&mut self.pending_incoming, MAX_PENDING_INCOMING, packet);
+    }
+
+    fn drain_incoming_batch(&mut self) -> Vec<PingLocationS2C> {
+        let count = self.pending_incoming.len().min(MAX_INCOMING_PER_TICK);
+        self.pending_incoming.drain(..count).collect()
+    }
+
+    fn upsert_ping(&mut self, packet: PingLocationS2C) {
+        let order = self.next_ping_order;
+        self.next_ping_order = self.next_ping_order.wrapping_add(1);
+        let view = PingView::from_packet(packet, order);
+
+        if let Some(existing) = self
+            .pings
+            .iter_mut()
+            .find(|p| p.author_uuid == view.author_uuid && p.sequence == view.sequence)
+        {
+            *existing = view;
+            return;
+        }
+
+        while self.pings.len() >= MAX_ACTIVE_PINGS {
+            if let Some((oldest_idx, _)) = self
+                .pings
+                .iter()
+                .enumerate()
+                .min_by_key(|(_, p)| p.inserted_order)
+            {
+                self.pings.swap_remove(oldest_idx);
+            } else {
+                break;
+            }
+        }
+        self.pings.push(view);
+    }
 }
 
 static CLIENT_STATE: OnceLock<Mutex<ClientState>> = OnceLock::new();
@@ -146,7 +228,7 @@ pub fn on_incoming_ping_packet(packet: PingLocationS2C) {
         return;
     }
     let mut state = lock_state();
-    state.pending_incoming.push(packet);
+    state.push_pending_incoming(packet);
 }
 
 pub fn on_client_logging_in(host: &mut dyn ClientHost) {
@@ -223,10 +305,10 @@ pub fn on_client_tick_pre(host: &mut dyn ClientHost) {
         send_channel_update(host);
     }
 
-    // Drain incoming S2C pings.
+    // Drain a bounded batch of incoming S2C pings per tick.
     let incoming: Vec<PingLocationS2C> = {
         let mut state = lock_state();
-        std::mem::take(&mut state.pending_incoming)
+        state.drain_incoming_batch()
     };
     if !incoming.is_empty() {
         let active_channel = cfg.active_channel(current_server_address(&*host).as_deref());
@@ -234,6 +316,7 @@ pub fn on_client_tick_pre(host: &mut dyn ClientHost) {
             .local_player()
             .and_then(|p| p.entity().position(&*host));
         let current_dim = host.dimension();
+        let mut sounds_played = 0usize;
 
         for packet in incoming {
             if packet.channel != active_channel {
@@ -247,21 +330,13 @@ pub fn on_client_tick_pre(host: &mut dyn ClientHost) {
             }
             let same_dim = packet.dimension == current_dim;
             let ping_pos = packet.pos;
-            let view = PingView::from_packet(packet);
 
             let mut state = lock_state();
-            if let Some(existing) = state
-                .pings
-                .iter_mut()
-                .find(|p| p.author_uuid == view.author_uuid && p.sequence == view.sequence)
-            {
-                *existing = view;
-            } else {
-                state.pings.push(view);
-            }
+            state.upsert_ping(packet);
 
             if same_dim
                 && cfg.ping_volume > 0
+                && sounds_played < MAX_SOUNDS_PER_TICK
                 && let Some(ppos) = player_pos
             {
                 let sound_pos = directional_sound_pos(ppos, ping_pos);
@@ -270,7 +345,14 @@ pub fn on_client_tick_pre(host: &mut dyn ClientHost) {
                     .with_volume(vol)
                     .with_pitch(1.0);
                 if let Some(handle) = host.play_local_sound(&play, 0) {
-                    state.active_sounds.push(ActiveSound { handle, ping_pos });
+                    sounds_played += 1;
+                    if let Some(evicted) = push_bounded(
+                        &mut state.active_sounds,
+                        MAX_ACTIVE_SOUNDS,
+                        ActiveSound { handle, ping_pos },
+                    ) {
+                        let _ = evicted.handle.stop(&*host);
+                    }
                 }
             }
         }
@@ -462,8 +544,7 @@ fn perform_ping_action(host: &mut dyn ClientHost, cfg: &ClientConfig) {
         ClipBlock::Collider
     };
 
-    let dimension = camera.dimension.clone();
-    let level = host.level(&dimension);
+    let level = host.level(&camera.dimension);
 
     let block_hit_pos: Option<[f64; 3]> = level
         .and_then(|lvl| lvl.clip(&*host, start, end, clip_block, ClipFluid::None))
@@ -500,7 +581,6 @@ fn perform_ping_action(host: &mut dyn ClientHost, cfg: &ClientConfig) {
             pos: target_pos,
             entity_id: target_entity_id,
             sequence,
-            dimension,
         },
     );
 }
@@ -928,6 +1008,20 @@ pub fn parse_command_string_arg(raw: &str) -> String {
 mod tests {
     use super::*;
 
+    fn sample_packet(sequence: i32) -> PingLocationS2C {
+        PingLocationS2C {
+            channel: String::new(),
+            pos: [f64::from(sequence), 64.0, 0.0],
+            entity_id: None,
+            sequence,
+            dimension: "minecraft:overworld".to_owned(),
+            author: 1,
+            author_name: "Player".to_owned(),
+            team_color: None,
+            item_stack: None,
+        }
+    }
+
     #[test]
     fn parses_quoted_and_unquoted_channel_args() {
         assert_eq!(parse_command_string_arg("\"\""), "");
@@ -935,5 +1029,99 @@ mod tests {
         assert_eq!(parse_command_string_arg("'team_1'"), "team_1");
         assert_eq!(parse_command_string_arg("alpha"), "alpha");
         assert_eq!(parse_command_string_arg("\"a\\\"b\""), "a\"b");
+    }
+
+    #[test]
+    fn pending_incoming_caps_and_evicts_oldest() {
+        let mut state = ClientState::default();
+        let total = MAX_PENDING_INCOMING + 10;
+        for seq in 0..total as i32 {
+            state.push_pending_incoming(sample_packet(seq));
+        }
+        assert_eq!(state.pending_incoming.len(), MAX_PENDING_INCOMING);
+        assert_eq!(state.pending_incoming.front().map(|p| p.sequence), Some(10));
+        assert_eq!(
+            state.pending_incoming.back().map(|p| p.sequence),
+            Some(total as i32 - 1)
+        );
+    }
+
+    #[test]
+    fn drain_incoming_batch_is_bounded_per_tick() {
+        let mut state = ClientState::default();
+        let total = MAX_INCOMING_PER_TICK + 5;
+        for seq in 0..total as i32 {
+            state.push_pending_incoming(sample_packet(seq));
+        }
+
+        let first = state.drain_incoming_batch();
+        assert_eq!(first.len(), MAX_INCOMING_PER_TICK);
+        assert_eq!(first.first().map(|p| p.sequence), Some(0));
+        assert_eq!(
+            first.last().map(|p| p.sequence),
+            Some(MAX_INCOMING_PER_TICK as i32 - 1)
+        );
+        assert_eq!(state.pending_incoming.len(), 5);
+
+        let second = state.drain_incoming_batch();
+        assert_eq!(second.len(), 5);
+        assert_eq!(
+            second.first().map(|p| p.sequence),
+            Some(MAX_INCOMING_PER_TICK as i32)
+        );
+        assert!(state.pending_incoming.is_empty());
+    }
+
+    #[test]
+    fn active_pings_caps_and_evicts_oldest_even_after_sort() {
+        let mut state = ClientState::default();
+        for seq in 0..MAX_ACTIVE_PINGS as i32 {
+            state.upsert_ping(sample_packet(seq));
+        }
+        assert_eq!(state.pings.len(), MAX_ACTIVE_PINGS);
+
+        // Simulate render sorting pings by distance (reversing insertion order).
+        for (idx, ping) in state.pings.iter_mut().enumerate() {
+            ping.distance = idx as f64;
+        }
+        state.pings.sort_by(|a, b| {
+            b.distance
+                .partial_cmp(&a.distance)
+                .unwrap_or(std::cmp::Ordering::Equal)
+        });
+
+        // Updating an existing (author, sequence) ping replaces in place without evicting.
+        let mut replacement = sample_packet(5);
+        replacement.pos = [99.0, 64.0, 99.0];
+        state.upsert_ping(replacement);
+        assert_eq!(state.pings.len(), MAX_ACTIVE_PINGS);
+        assert!(state.pings.iter().any(|p| p.sequence == 0));
+
+        // Adding a brand-new ping evicts the oldest (sequence 0), not the farthest.
+        state.upsert_ping(sample_packet(MAX_ACTIVE_PINGS as i32));
+        assert_eq!(state.pings.len(), MAX_ACTIVE_PINGS);
+        assert!(!state.pings.iter().any(|p| p.sequence == 0));
+        assert!(
+            state
+                .pings
+                .iter()
+                .any(|p| p.sequence == MAX_ACTIVE_PINGS as i32)
+        );
+    }
+
+    #[test]
+    fn active_sounds_queue_caps_and_evicts_oldest() {
+        let mut queue = VecDeque::new();
+        for i in 0..MAX_ACTIVE_SOUNDS {
+            assert_eq!(push_bounded(&mut queue, MAX_ACTIVE_SOUNDS, i), None);
+        }
+        assert_eq!(queue.len(), MAX_ACTIVE_SOUNDS);
+        assert_eq!(
+            push_bounded(&mut queue, MAX_ACTIVE_SOUNDS, MAX_ACTIVE_SOUNDS),
+            Some(0)
+        );
+        assert_eq!(queue.len(), MAX_ACTIVE_SOUNDS);
+        assert_eq!(queue.front().copied(), Some(1));
+        assert_eq!(queue.back().copied(), Some(MAX_ACTIVE_SOUNDS));
     }
 }

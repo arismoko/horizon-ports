@@ -1,17 +1,24 @@
 use crate::config::{
-    ChannelMode, MAX_CHANNEL_LENGTH, persist_server_config, server_config, update_server_config,
+    ChannelMode, MAX_CHANNEL_LENGTH, MAX_RAYCAST_DISTANCE, persist_server_config, server_config,
+    update_server_config,
 };
-use crate::math::team_color_to_argb;
+use crate::math::{distance_sqr_3d, team_color_to_argb};
 use crate::payloads::{PingLocationC2S, PingLocationS2C, UpdateChannelC2S, channels};
 use crate::rate_limiter::RateLimiter;
 use mod_api::text::TextStyle;
 use mod_api::{
-    Command, CommandArgumentValue, CommandRegistration, IPayloadContext, ItemStack, PlayerRef,
-    ScoreHolder, ServerHost, Text,
+    Command, CommandArgumentValue, CommandRegistration, EntityRef, IPayloadContext, ItemStack,
+    LevelRef, PlayerRef, ScoreHolder, ServerHost, Text,
 };
 use std::collections::HashMap;
 use std::sync::{Mutex, MutexGuard, OnceLock};
 use std::time::Instant;
+
+/// Maximum squared 3D distance at which a ping may target an entity, matching
+/// Ping-Wheel (`6447533`) `ClientConfig.raycastDistance` (1024) and
+/// `Raycast.traceEntity`'s `distanceToSqr` check.
+const MAX_ENTITY_PING_DISTANCE_SQR: f64 =
+    (MAX_RAYCAST_DISTANCE as f64) * (MAX_RAYCAST_DISTANCE as f64);
 
 #[derive(Default)]
 struct ServerState {
@@ -46,6 +53,11 @@ fn validate_channel(channel: &str) -> bool {
 
 fn is_valid_pos(pos: [f64; 3]) -> bool {
     pos.iter().all(|v| v.is_finite())
+}
+
+fn is_within_entity_ping_range(sender_pos: [f64; 3], target_pos: [f64; 3]) -> bool {
+    let dist_sqr = distance_sqr_3d(sender_pos, target_pos);
+    dist_sqr.is_finite() && dist_sqr <= MAX_ENTITY_PING_DISTANCE_SQR
 }
 
 pub fn handle_update_channel(
@@ -135,14 +147,31 @@ pub fn handle_ping_location(
 
     update_player_channel(sender_uuid, channel);
 
-    // Strip entity tracking when player tracking is disabled and the target is a player.
-    let target_entity_id = match packet.entity_id {
-        Some(ent_id) if !cfg.player_tracking_enabled && entity_is_player(host, ent_id) => None,
-        other => other,
+    let Some(sender_dimension) = player.dimension(&*host) else {
+        return Ok(());
     };
+    let dimension = sender_dimension.to_string();
+
+    // Accept the target entity only when loaded in the sender's dimension, not a spectator,
+    // allowed by player_tracking_enabled, and within Ping-Wheel's raycast range of the sender.
+    let target_entity = match (
+        packet.entity_id,
+        player.level(&*host),
+        player.entity().position(&*host),
+    ) {
+        (Some(ent_id), Some(sender_level), Some(sender_pos)) => validate_target_entity(
+            host,
+            sender_level,
+            sender_pos,
+            ent_id,
+            cfg.player_tracking_enabled,
+        ),
+        _ => None,
+    };
+    let target_entity_id = target_entity.map(EntityRef::id);
 
     // Resolve dropped item stack on the server so clients can render item icons.
-    let item_stack = target_entity_id.and_then(|ent_id| resolve_item_stack(&*host, ent_id));
+    let item_stack = target_entity.and_then(|ent| resolve_item_stack(&*host, ent));
 
     let author_name = player.name(&*host).unwrap_or("Player").to_owned();
     let team_color = player_team_color(&*host, player);
@@ -152,7 +181,7 @@ pub fn handle_ping_location(
         pos: packet.pos,
         entity_id: target_entity_id,
         sequence: packet.sequence,
-        dimension: packet.dimension.clone(),
+        dimension,
         author: sender_uuid,
         author_name,
         team_color,
@@ -216,18 +245,38 @@ fn player_team_color(host: &dyn ServerHost, player: PlayerRef) -> Option<u32> {
     Some(team_color_to_argb(color))
 }
 
-fn entity_is_player(host: &mut dyn ServerHost, entity_id: u32) -> bool {
-    let Some(entity) = host.entity(entity_id) else {
-        return false;
-    };
+fn validate_target_entity(
+    host: &mut dyn ServerHost,
+    sender_level: LevelRef,
+    sender_pos: [f64; 3],
+    entity_id: u32,
+    player_tracking_enabled: bool,
+) -> Option<EntityRef> {
+    let entity = host.entity(entity_id)?;
+    if entity.level(&*host) != Some(sender_level) {
+        return None;
+    }
+    if entity.spectator(&*host) == Some(true) {
+        return None;
+    }
+    if !player_tracking_enabled && entity_is_player(host, entity) {
+        return None;
+    }
+    let target_pos = entity.position(&*host)?;
+    if !is_within_entity_ping_range(sender_pos, target_pos) {
+        return None;
+    }
+    Some(entity)
+}
+
+fn entity_is_player(host: &mut dyn ServerHost, entity: EntityRef) -> bool {
     let Some(uuid) = entity.uuid(host) else {
         return false;
     };
     host.player(uuid).is_some()
 }
 
-fn resolve_item_stack(host: &dyn ServerHost, entity_id: u32) -> Option<ItemStack> {
-    let entity = host.entity(entity_id)?;
+fn resolve_item_stack(host: &dyn ServerHost, entity: EntityRef) -> Option<ItemStack> {
     let item_entity = host.item_entity(entity)?;
     item_entity
         .with_stack(host, |view| view.project())
@@ -455,4 +504,28 @@ pub fn register_server_commands(commands: &mut Vec<CommandRegistration>) {
             },
         ),
     );
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn entity_ping_range_matches_raycast_distance() {
+        let origin = [0.0, 64.0, 0.0];
+        assert!(is_within_entity_ping_range(origin, origin));
+        assert!(is_within_entity_ping_range(
+            origin,
+            [f64::from(MAX_RAYCAST_DISTANCE), 64.0, 0.0]
+        ));
+        assert!(!is_within_entity_ping_range(
+            origin,
+            [f64::from(MAX_RAYCAST_DISTANCE) + 0.01, 64.0, 0.0]
+        ));
+        assert!(!is_within_entity_ping_range(origin, [f64::NAN, 64.0, 0.0]));
+        assert!(!is_within_entity_ping_range(
+            origin,
+            [f64::INFINITY, 64.0, 0.0]
+        ));
+    }
 }

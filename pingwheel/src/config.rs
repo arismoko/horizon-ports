@@ -9,6 +9,9 @@ pub const SERVER_CONFIG_FILE: &str = "pingwheel-server.toml";
 pub const TPS: i64 = 20;
 pub const MAX_PING_DURATION: i32 = 60;
 pub const MAX_PING_DISTANCE: i32 = 2048;
+/// Maximum raycast distance in blocks, matching `ClientConfig.raycastDistance` (1024) in
+/// Ping-Wheel (`6447533`).
+pub const MAX_RAYCAST_DISTANCE: i32 = 1024;
 pub const MAX_CORRECTION_PERIOD: f32 = 5.0;
 pub const MAX_CHANNEL_LENGTH: usize = 128;
 
@@ -202,7 +205,7 @@ impl Default for ClientConfig {
             channel: String::new(),
             server_channels: BTreeMap::new(),
             remove_radius: 10,
-            raycast_distance: 1024,
+            raycast_distance: MAX_RAYCAST_DISTANCE,
             safe_zone_left: 5,
             safe_zone_right: 5,
             safe_zone_top: 5,
@@ -223,7 +226,7 @@ impl ClientConfig {
         };
         self.ping_size = self.ping_size.clamp(40, 300);
         self.remove_radius = self.remove_radius.max(0);
-        self.raycast_distance = self.raycast_distance.clamp(1, 1024);
+        self.raycast_distance = self.raycast_distance.clamp(1, MAX_RAYCAST_DISTANCE);
         self.safe_zone_left = self.safe_zone_left.max(0);
         self.safe_zone_right = self.safe_zone_right.max(0);
         self.safe_zone_top = self.safe_zone_top.max(0);

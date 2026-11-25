@@ -12,7 +12,6 @@ pub struct PingLocationC2S {
     pub pos: [f64; 3],
     pub entity_id: Option<u32>,
     pub sequence: i32,
-    pub dimension: String,
 }
 
 /// Server -> Client: relayed ping with resolved author metadata and optional dropped item stack.
