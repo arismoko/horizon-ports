@@ -4,9 +4,10 @@
 //! missing. A list line is an id, an id with `*` for any run of characters, or a `#tag`; a line
 //! starting with `;` is a comment.
 
-use std::sync::OnceLock;
+use std::collections::HashMap;
+use std::sync::{OnceLock, RwLock};
 
-use mod_api::{ConfigPath, Host};
+use mod_api::{Host, Registrar, SettingKey, SettingSpec};
 
 pub const MOD_ID: &str = "carryon";
 
@@ -100,14 +101,47 @@ pub const SPECS: &[(&str, Kind)] = &[
     (key::USE_SCRIPTS, Kind::Toggle(false)),
 ];
 
+/// The keys `register_settings` was issued, by setting name.
+static KEYS: RwLock<Option<HashMap<&'static str, SettingKey>>> = RwLock::new(None);
+
+/// Registers every setting of [`SPECS`] and keeps the issued keys for the reads below.
+pub fn register_settings(r: &mut dyn Registrar) {
+    let mut keys = HashMap::new();
+    for (name, kind) in SPECS {
+        let label = format!("carryon.config.{name}");
+        let spec = match kind {
+            Kind::Toggle(default) => SettingSpec::toggle(*name, &label, *default),
+            Kind::Range(min, max, step, default) => {
+                SettingSpec::range(*name, &label, *min, *max, *step, *default)
+            }
+        };
+        match r.register_setting(spec) {
+            Ok(key) => {
+                keys.insert(*name, key);
+            }
+            Err(e) => eprintln!("[carryon] setting {name} not registered: {e}"),
+        }
+    }
+    *KEYS.write().unwrap_or_else(|e| e.into_inner()) = Some(keys);
+}
+
+fn key_of(name: &str) -> Option<SettingKey> {
+    KEYS.read()
+        .unwrap_or_else(|e| e.into_inner())
+        .as_ref()?
+        .get(name)
+        .copied()
+}
+
 pub fn flag(host: &dyn Host, key: &str, default: bool) -> bool {
-    host.setting(MOD_ID, key)
-        .map_or(default, |v| v.trim() == "true")
+    key_of(key)
+        .and_then(|k| host.setting_bool(k).ok())
+        .unwrap_or(default)
 }
 
 fn number(host: &dyn Host, key: &str, default: f64) -> f64 {
-    host.setting(MOD_ID, key)
-        .and_then(|v| v.trim().parse().ok())
+    key_of(key)
+        .and_then(|k| host.setting_f64(k).ok())
         .unwrap_or(default)
 }
 
@@ -189,11 +223,8 @@ pub fn parse_exception(line: &str) -> Option<(String, Vec<String>)> {
 
 /// Reads `config/carryon/<file>`; a missing file is written with `defaults` first.
 fn load(host: &dyn Host, file: &str, defaults: &[&str], help: &str) -> Vec<String> {
-    let Ok(path) = ConfigPath::new(&format!("{MOD_ID}/{file}")) else {
-        return defaults.iter().map(|s| (*s).to_owned()).collect();
-    };
-    let files = host.config_files();
-    match files.read(&path) {
+    let path = host.config_dir().join(MOD_ID).join(file);
+    match std::fs::read(&path) {
         Ok(bytes) => parse_list(&String::from_utf8_lossy(&bytes)),
         Err(_) => {
             let mut text = format!(
@@ -203,7 +234,10 @@ fn load(host: &dyn Host, file: &str, defaults: &[&str], help: &str) -> Vec<Strin
                 text.push_str(d);
                 text.push('\n');
             }
-            let _ = files.write(&path, text.as_bytes());
+            if let Some(parent) = path.parent() {
+                let _ = std::fs::create_dir_all(parent);
+            }
+            let _ = std::fs::write(&path, text.as_bytes());
             defaults.iter().map(|s| (*s).to_owned()).collect()
         }
     }

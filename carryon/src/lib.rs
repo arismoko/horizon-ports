@@ -36,21 +36,21 @@ mod scripts;
 use std::collections::{HashMap, HashSet};
 use std::ops::ControlFlow;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
-use std::sync::{Arc, Mutex, OnceLock};
+use std::sync::{Arc, Mutex, OnceLock, RwLock};
 
 use mod_api::{
-    ActiveEffect, AddServerReloadListenersEvent, AttachmentCodec, AttachmentType,
-    AttackEntityEvent, BlockPos, BlockUpdateFlags, BreakBlockEvent, CameraType, ClientHost,
-    ClientTickPostEvent, Command, CommandArgumentValue, CommandSource, Compound, Direction,
-    EntityInteractEvent, EntityRef, FileToIdConverter, Flow, GameMode, GuiEntity, GuiEntityLook,
-    GuiEntityView, GuiRenderPostEvent, Hand, HitHost, Holder, Hooks, Host, HostBlockStates,
-    HostSide, IPayloadContext, IPayloadHandler, Identifier, InteractionResult, ItemDisplayContext,
+    ActiveEffect, AddServerReloadListenersEvent, AttachmentCodec, AttachmentDescriptor,
+    AttachmentKey, AttackEntityEvent, BlockPos, BlockUpdateFlags, BreakBlockEvent, CameraType,
+    ClientHost, ClientTickPostEvent, Command, CommandArgumentValue, CommandSource, Compound,
+    Direction, EntityInteractEvent, EntityRef, FileToIdConverter, Flow, GameMode, GuiEntity,
+    GuiEntityLook, GuiEntityView, Hand, HitHost, Holder, Hooks, Host, HostBlockStates, HostSide,
+    HudMode, IPayloadContext, IPayloadHandler, Identifier, InteractionResult, ItemDisplayContext,
     ItemKey, ItemStack, KeyRegistration, LeftClickBlockEvent, LivingDeathEvent,
     LivingIncomingDamageEvent, LivingRef, MainHand, MobCategory, MouseScrollingEvent, PayloadBytes,
     PayloadHandleError, PayloadId, PlacementContext, PlacementSource, PlayerRef,
     PlayerSwitchHotbarSlotPreEvent, RegisterCommandsEvent, Registrar, RegistrationContext,
-    ReloadContext, RemovalReason, RenderHandEvent, RenderPlayerPostEvent, RightClickBlockEvent,
-    ServerHost, ServerTickEvent, ServerTickPhase, SettingSpec, SoundSource, Tag, Text,
+    ReloadContext, RemovalReason, RenderGuiPostEvent, RenderHandEvent, RenderPlayerPostEvent,
+    RightClickBlockEvent, ServerHost, ServerTickEvent, ServerTickPhase, SoundSource, Tag, Text,
 };
 
 use config::{Lists, Settings, permitted};
@@ -266,17 +266,12 @@ pub(crate) const FORBIDDEN_STACKING: &[&str] = &["minecraft:horse", "minecraft:e
 /// What a player carries, as the jar's `CarryOnData` (saved with the player): empty when nothing.
 /// `type` "block" with `block` (the state string) and `tile` (the block entity's data), or "entity" with `kind`,
 /// `entity` (its data) and `size` (width, height); `selected` is the hotbar slot held.
-static CARRY: AttachmentType<Compound> = AttachmentType {
-    namespace: "carryon",
-    name: "carry",
-    default: Compound::new,
-    codec: Some(AttachmentCodec {
-        encode: |c| Ok(c.clone()),
-        decode: |c| Ok(c.clone()),
-    }),
-    copy_on_death: true,
-    sync: false,
-};
+static CARRY: RwLock<Option<AttachmentKey<Compound>>> = RwLock::new(None);
+
+/// The key `register` was issued for the carry attachment; `None` if registration was refused.
+fn carry_key() -> Option<AttachmentKey<Compound>> {
+    CARRY.read().unwrap_or_else(|e| e.into_inner()).clone()
+}
 
 fn lock<T>(m: &Mutex<T>) -> std::sync::MutexGuard<'_, T> {
     m.lock().unwrap_or_else(|e| e.into_inner())
@@ -671,8 +666,10 @@ struct Mod {
 }
 
 fn carry_of(host: &mut dyn ServerHost, uuid: u128) -> Compound {
-    CARRY
-        .get_existing(host, Holder::Player(uuid))
+    let Some(key) = carry_key() else {
+        return Compound::new();
+    };
+    key.get_existing(host, Holder::Player(uuid), |value| value.cloned())
         .ok()
         .flatten()
         .unwrap_or_default()
@@ -684,7 +681,10 @@ fn carrying(host: &mut dyn ServerHost, uuid: u128) -> bool {
 
 /// Stores what the player carries; `false` when it could not be stored.
 fn set_carry(host: &mut dyn ServerHost, uuid: u128, c: Compound) -> bool {
-    match CARRY.set(host, Holder::Player(uuid), c) {
+    let Some(key) = carry_key() else {
+        return false;
+    };
+    match key.set(host, Holder::Player(uuid), c) {
         Ok(_) => true,
         Err(e) => {
             eprintln!("[carryon] carry data not saved: {e:?}");
@@ -865,7 +865,13 @@ impl Mod {
         };
         let overrides = script.as_ref().is_some_and(|s| s.override_checks);
         let block_key = level.block(reader, pos);
-        let in_tag = |tag: &str| block_key.and_then(|k| reader.block_in_tag(k, tag)) == Some(true);
+        let tags = reader.tags();
+        let in_tag = |tag: &str| {
+            let (Some(block), Ok(id)) = (block_key, Identifier::parse(tag)) else {
+                return false;
+            };
+            tags.key(&id).and_then(|key| block.is_in_tag(tags, key)) == Some(true)
+        };
         let lists = Lists::get(reader);
         if block == "minecraft:air"
             || !permitted(
@@ -1283,7 +1289,10 @@ impl Mod {
                     f64::from(pos[2]) + 0.5,
                 ];
                 scripts::run(host, player, &script_part(&carry, "place"));
-                if host.summon(dim, &kind, at, data).is_none() {
+                let summoned = host
+                    .level(dim)
+                    .map(|level| level.summon(host, &kind, at, data));
+                if !matches!(summoned, Some(Ok(Some(_)))) {
                     eprintln!("[carryon] {kind} not summoned at {at:?}");
                     return fail(host);
                 }
@@ -1362,12 +1371,14 @@ impl Mod {
             Some(Tag::Compound(c)) => c.clone(),
             _ => Compound::new(),
         };
-        let Some(id) = host.summon(&dim, &kind, [at[0], at[1] + 2.6, at[2]], data) else {
+        let at = [at[0], at[1] + 2.6, at[2]];
+        let Some(Ok(Some(e))) = host
+            .level(&dim)
+            .map(|level| level.summon(host, &kind, at, data))
+        else {
             return fail(host);
         };
-        if let Some(e) = host.entity(id) {
-            let _ = e.start_riding(host, top, true);
-        }
+        let _ = e.start_riding(host, top, true);
         scripts::run(host, player, &script_part(&carry, "place"));
         set_carry(host, uuid, Compound::new());
         if let Some(ent) = host.player(uuid).map(|p| p.entity()) {
@@ -1424,7 +1435,9 @@ impl Mod {
             Some("entity") => {
                 let kind = get_str(carry, "kind").unwrap_or_default();
                 if let Some(Tag::Compound(data)) = carry.get(&"entity".into()) {
-                    host.summon(dim, &kind, at, data.clone());
+                    if let Some(level) = host.level(dim) {
+                        let _ = level.summon(host, &kind, at, data.clone());
+                    }
                 }
             }
             _ => {}
@@ -1676,17 +1689,17 @@ fn render_block(render: Option<&scripts::Render>) -> Option<String> {
 #[mod_api::sunrise_mod]
 impl Hooks for Mod {
     fn register(&self, r: &mut dyn Registrar, _cx: &RegistrationContext) {
-        let _ = r.register_attachment_type("carryon:carry", CARRY.sync);
-        for (name, kind) in config::SPECS {
-            let label = format!("carryon.config.{name}");
-            let spec = match kind {
-                config::Kind::Toggle(default) => SettingSpec::toggle(*name, &label, *default),
-                config::Kind::Range(min, max, step, default) => {
-                    SettingSpec::range(*name, &label, *min, *max, *step, *default)
-                }
-            };
-            let _ = r.register_setting(spec);
+        let descriptor = AttachmentDescriptor::new("carryon:carry", Compound::new)
+            .serialize(AttachmentCodec {
+                encode: |c| Ok(c.clone()),
+                decode: |c| Ok(c.clone()),
+            })
+            .copy_on_death();
+        match r.register_attachment_type(descriptor) {
+            Ok(key) => *CARRY.write().unwrap_or_else(|e| e.into_inner()) = Some(key),
+            Err(e) => eprintln!("[carryon] carry attachment not registered: {e}"),
         }
+        config::register_settings(r);
         r.register_key_mapping(
             KeyRegistration::new("carry", "key.keyboard.left.shift").label("key.carry.desc"),
         );
@@ -2107,8 +2120,8 @@ impl Hooks for Mod {
     }
 
     /// CarriedObjectRender.drawFirstPersonEntity: the carried mob over the hotbar.
-    fn gui_render_post(&self, host: &dyn ClientHost, event: &mut GuiRenderPostEvent<'_>) {
-        if event.gui_hidden || !host.camera_type().is_first_person() {
+    fn render_gui_post(&self, host: &dyn ClientHost, event: &mut RenderGuiPostEvent<'_>) {
+        if host.hud_mode() != HudMode::AllVisible || !host.camera_type().is_first_person() {
             return;
         }
         let Some(Carried {
@@ -2134,7 +2147,7 @@ impl Hooks for Mod {
             }
             _ => (kind, data),
         };
-        let [w, h] = event.batch.size();
+        let [w, h] = event.draw.size();
         let rect = [w / 2.0 - 45.0, h - 125.0, w / 2.0 + 45.0, h - 30.0];
         let view = GuiEntityView::new(
             rect,
@@ -2152,7 +2165,7 @@ impl Hooks for Mod {
             .entity(&GuiEntity::with_data(kind.clone(), data), view)
             .is_err()
         {
-            let _ = event.batch.entity(&GuiEntity::kind(kind), view);
+            let _ = event.draw.entity(&GuiEntity::kind(kind), view);
         }
     }
 }
