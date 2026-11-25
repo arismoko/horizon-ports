@@ -1,0 +1,13 @@
+[package]
+name = "mod-pickupnotifier"
+version = "0.5.0"
+edition = "2024"
+license = "MPL-2.0"
+description = "Pick Up Notifier for Sunrise: shows a HUD notification list of items, experience, and arrows you just collected"
+# Ported from: Pick Up Notifier 26.3.0 (Fuzss/pickupnotifier, MPL-2.0).
+# Cargo's name and version are not the mod's identity: sunrise-mod.toml is.
+publish = false
+
+[dependencies]
+# The pinned SDK's API crate, fetched into .sunrise/sdk/ by any `cargo sunrise-mod` command.
+sunrise-mod-api = { path = ".sunrise/sdk/api/crates/sunrise-mod-api" }

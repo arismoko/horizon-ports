@@ -1,0 +1,23 @@
+summary = "Shows a customizable HUD list of items, experience orbs, and arrows you have just picked up."
+description = """
+Pick Up Notifier adds a clean, customizable HUD feed showing everything you have just collected:
+
+- **Items, experience, and arrows**: displays collected item stacks, experience orbs (as XP points or orb count), and shot arrows in a dedicated HUD layer above status effects.
+- **Smart combining & animations**: combines repeated pick-ups (`ALWAYS`, `NEVER`, or `EXCLUDE_NAMED`), slides outdated entries off screen (`NONE`, `HORIZONTAL`, `VERTICAL`, `ALL`), and fades them out smoothly.
+- **Flexible layout & styling**: choose from 9 screen anchor points, custom X/Y offsets, scale, maximum height, `CHAT` / `TOOLTIP` / `NONE` backgrounds, item rarity colors or a custom text color, `TEXT` / `SPRITE` / `BOTH` / `OFF` counts, and optional total inventory count.
+- **Item filters & creative toggle**: hide specific items, `#tags`, or whole namespaces (`modid:*`) in `config/pickupnotifier-client.toml`, and optionally disable notifications in creative mode.
+- **Works anywhere**: uses optional server payloads in single player and on servers with Pick Up Notifier installed (supporting partial stack pick-ups), and automatically falls back to client-side tracking on unmodded servers.
+- **In-game settings**: configure directly in **Options → Mods → Pick Up Notifier** or edit `config/pickupnotifier-client.toml` and `config/pickupnotifier-server.toml`.
+
+Client-side only: works in single player and on any multiplayer server.
+
+Differences from the original:
+
+- Item icons cannot be drawn with partial alpha transparency or non-uniform pop-in squash/stretch yet; text, backgrounds, count overlays, and experience orbs fade smoothly while item icons stay opaque until the entry fades out (gap: TBD-gui-item-alpha).
+- On multiplayer servers without Pick Up Notifier installed (or in `client_only` mode), client-side tracking uses inventory and experience diffing rather than decoded `take_item_entity` packet fields, so individual orb counts (`experience_value = false`), Mending-absorbed XP, and creative pick-ups are not detected there (gap: TBD-client-take-entity-packet).
+- `backpack_integration` is preserved in `config/pickupnotifier-server.toml` but cannot observe another mod's cancelled `item_picked_up` pre-hook across listener priorities yet (gap: TBD-hook-priority).
+- Experience orb HUD icons use a procedural 11-tier orb sprite sheet with vanilla's oscillating color tint rather than reading `textures/entity/experience/experience_orb.png` from resource packs (gap: TBD-entity-atlas-gui-blit).
+
+A port of Pick Up Notifier by Fuzs, under the MPL-2.0 licence.
+"""
+categories = ["utility"]
