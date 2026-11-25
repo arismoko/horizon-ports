@@ -9,6 +9,7 @@
 //! the level's random in the original's order. Data packs can't change these rules yet
 //! (sunrise-org/sunrise#5368).
 use std::collections::HashMap;
+use std::ops::ControlFlow;
 use std::sync::{Mutex, OnceLock, PoisonError};
 use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -16,7 +17,7 @@ use mod_api::{
     BlockClass, BlockKey, BlockShapeKind, BlockState, BlockUpdateFlags, BonemealEvent, Flow, Hooks,
     Host, HostBlockStates, HostSide, IPayloadContext, ItemResource, ItemStack, LegacyRandomSource,
     LevelRef, LightLayer, ParticleKey, ParticleOptions, PayloadId, RandomSource, Registrar,
-    RegistrationContext, ServerHost, ToClient,
+    RegistrationContext, ServerHost, TagKey, ToClient,
 };
 
 /// Blocks bone meal never works on, whatever another mod says (`DENY`).
@@ -63,6 +64,21 @@ const PODZOL_GROUND: [(&str, i32); 6] = [
 /// `ParticleTypes.HAPPY_VILLAGER`, requested once when the mod registers.
 static HAPPY_VILLAGER: OnceLock<ParticleKey> = OnceLock::new();
 static GROWTH: OnceLock<ToClient<Growth>> = OnceLock::new();
+
+/// Every tag the mod reads, by ID, resolved once when the mod registers.
+const TAG_IDS: [&str; 10] = [
+    RESISTANT,
+    "minecraft:dirt",
+    "minecraft:small_flowers",
+    "minecraft:overrides_mushroom_light_requirement",
+    "minecraft:supports_dry_vegetation",
+    "minecraft:supports_lily_pad",
+    "minecraft:supports_melon_stem_fruit",
+    "minecraft:supports_pumpkin_stem_fruit",
+    "minecraft:supports_vegetation",
+    "minecraft:supports_wither_rose",
+];
+static TAGS: OnceLock<HashMap<&'static str, TagKey>> = OnceLock::new();
 
 /// `ClientboundGrowthParticlesMessage`: bone meal worked on a block that has no bone meal
 /// behaviour of its own, so the client draws the growth particles vanilla would have.
@@ -291,7 +307,7 @@ impl<'a> Reads<'a> {
     }
 
     fn tagged(self, state: BlockState, tag: &str) -> bool {
-        self.host.block_in_tag(state.block(), tag) == Some(true)
+        tag_key(tag).is_some_and(|key| state.block().is_in_tag(self.host.tags(), key) == Some(true))
     }
 
     /// `BlockState.isAir` of a state: air, cave air and void air.
@@ -332,7 +348,13 @@ impl<'a> Reads<'a> {
 
     fn shape(self, pos: [i32; 3], kind: BlockShapeKind) -> Option<Vec<[f64; 6]>> {
         let state = self.state(pos)?;
-        self.level.block_shape(self.host, state, pos, kind)
+        let mut boxes = Vec::new();
+        self.level
+            .visit_block_shape(self.host, state, pos, kind, &mut |b| {
+                boxes.push(b);
+                ControlFlow::Continue(())
+            })?;
+        Some(boxes)
     }
 
     /// `BlockState.isCollisionShapeFullBlock`.
@@ -351,8 +373,8 @@ impl<'a> Reads<'a> {
         self.level
             .fluid_state(self.host, pos)
             .filter(|fluid| !fluid.is_empty())
-            .and_then(|fluid| fluid.fluid.id(self.host))
-            .is_some_and(|id| self.host.fluid_in_tag(id, tag) == Some(true))
+            .zip(tag_key(tag))
+            .is_some_and(|(fluid, key)| fluid.fluid.is_in_tag(self.host.tags(), key) == Some(true))
     }
 
     /// `BlockState.propagatesSkylightDown`, the block's own answer.
@@ -1010,12 +1032,17 @@ fn on_growth(growth: Growth, cx: &mut dyn IPayloadContext) -> Result<(), String>
     Ok(())
 }
 
+fn tag_key(id: &str) -> Option<TagKey> {
+    TAGS.get()?.get(id).copied()
+}
+
 #[derive(Default)]
 struct Mod;
 
 #[mod_api::sunrise_mod]
 impl Hooks for Mod {
     fn register(&self, r: &mut dyn Registrar, _: &RegistrationContext) {
+        let _ = TAGS.set(TAG_IDS.into_iter().map(|id| (id, r.tag_key(id))).collect());
         let _ = HAPPY_VILLAGER.set(r.particle_key("minecraft:happy_villager"));
         let growth = r
             .payload_handlers()
