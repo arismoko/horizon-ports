@@ -4,8 +4,15 @@
     {
       "rolls": 1,
       "bonus_rolls": 0,
-      "conditions": [{"type": "minecraft:survives_explosion"}],
-      "entries": [{"type": "minecraft:item", "name": "sophisticatedstorage:decoration_table"}]
+      "entries": [
+        {
+          "type": "minecraft:item",
+          "name": "sophisticatedstorage:decoration_table"
+        }
+      ],
+      "condition": {
+        "type": "minecraft:survives_explosion"
+      }
     }
   ]
 }
