@@ -17,3 +17,7 @@ Differences from the original:
 A port of Tom's Simple Storage by tom5454, under the MIT licence.
 """
 categories = ["storage", "utility"]
+
+[[screenshots]]
+path = "page/world.png"
+caption = "Storage terminal listing items across connected chests and barrels"

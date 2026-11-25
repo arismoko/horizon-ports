@@ -20,3 +20,7 @@ Differences from the original:
 A port of Trinkets by Emi and C4, under the MIT licence.
 """
 categories = ["equipment", "utility"]
+
+[[screenshots]]
+path = "page/world.png"
+caption = "Trinkets 15-slot equipment menu opened with G"
