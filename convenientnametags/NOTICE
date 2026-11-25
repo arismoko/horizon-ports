@@ -1,0 +1,9 @@
+Convenient Name Tags for Sunrise (version 1.1.0)
+
+A port of Convenient Name Tags 1.1.0 by Mim1q.
+Original source: https://www.curseforge.com/projects/662763
+Original licence: Apache-2.0
+
+Earlier port to Horizon by lavoide. This port to Sunrise is by arismoko: the rules are re-implemented in Rust on
+Sunrise's typed mod API (no Java code is included). It is distributed under the same licence as the original
+(Apache-2.0); the licence text is in LICENSE.

@@ -1,0 +1,17 @@
+summary = "Name tags drop when a named mob dies, can be sheared off, and are not wasted on a mob that already has the name."
+description = """
+Convenient Name Tags makes name tags easier to live with:
+
+- **Drop on death**: a named mob drops a name tag with its name (colour and style kept) when it dies.
+- **Shear it off**: sneak and use shears on a named mob to take its name off as a name tag. The shears take 1 damage.
+- **No waste**: using a name tag on a mob that already has that name doesn't use the tag up. A tag with a different name drops the old name as a tag before renaming.
+
+Install on the server; clients need nothing.
+
+Differences from the original:
+
+- The original's rename screen (sneak and use a name tag in the air) is not ported. A text-input screen is possible on Sunrise but was not built; rename tags in an anvil.
+
+A port of Convenient Name Tags 1.1.0 by Mim1q, under the Apache-2.0 licence.
+"""
+categories = ["utility"]
