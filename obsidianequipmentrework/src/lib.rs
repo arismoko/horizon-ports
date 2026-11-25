@@ -167,7 +167,7 @@ impl Hooks for Mod {
                 let Some(ours) = stack(host, &format!("{NS}:{item}")) else {
                     continue;
                 };
-                let insert = |placement| {
+                let mut insert = |placement| {
                     event
                         .output
                         .insert(placement, ours.clone(), CreativeTabVisibility::Both)
