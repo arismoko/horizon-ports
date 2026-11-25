@@ -13,15 +13,16 @@ use crate::logic::{
 };
 use mod_api::client::hud_layout::Blend;
 use mod_api::{
-    ClientHost, CustomizeChatOverlayEvent, DrawContext, GameMode, GuiDraw, GuiLayerPlacement,
-    GuiLayerWrapContext, Hooks, HudMode, RegisterGuiLayersEvent, Registrar, RegistrationContext,
+    ClientHost, CustomizeChatOverlayEvent, DrawContext, GameMode, GuiCanvas, GuiDrawError,
+    GuiLayerPlacement, GuiLayerWrapContext, GuiSpriteRegion, Hooks, HudMode,
+    RegisterGuiLayersEvent, Registrar, RegistrationContext,
 };
-use std::borrow::Cow;
 use std::sync::{LazyLock, Mutex, MutexGuard, PoisonError};
 
 const LAYER_HEALTH: &str = "minecraft:player_health";
 const LAYER_ARMOR: &str = "minecraft:armor_level";
 const LAYER_FOOD: &str = "minecraft:food_level";
+const LAYER_VEHICLE: &str = "minecraft:vehicle_health";
 const LAYER_TOUGHNESS_LEFT: &str = "overflowingbars:toughness_level/left";
 const LAYER_TOUGHNESS_RIGHT: &str = "overflowingbars:toughness_level/right";
 
@@ -40,6 +41,11 @@ struct Snapshot {
     regenerating: bool,
     poisoned: bool,
     withered: bool,
+    /// Whether the world is hardcore (`LevelRef::is_hardcore`), which swaps vanilla's hearts.
+    hardcore: bool,
+    /// The height of vanilla's right-hand status column as the current layer starts
+    /// (`ClientHost::gui_status_heights`), only inside the HUD pass.
+    status_right: Option<i32>,
     tick: i64,
     millis: u64,
 }
@@ -61,6 +67,11 @@ fn read_snapshot(host: &dyn ClientHost) -> Option<Snapshot> {
         regenerating: effect("minecraft:regeneration"),
         poisoned: effect("minecraft:poison"),
         withered: effect("minecraft:wither"),
+        hardcore: host
+            .level(host.dimension())
+            .and_then(|level| level.is_hardcore(host))
+            .unwrap_or(false),
+        status_right: host.gui_status_heights().map(|[_, right]| right),
         tick: i64::from(host.gui_ticks()),
         millis: host.millis(),
     })
@@ -116,22 +127,64 @@ fn heights(cfg: &Config, snap: &Snapshot) -> Heights {
         health,
         armor,
         toughness_left: armor_base + armor_used + cfg.toughness.row_shift * logic::ROW_HEIGHT,
-        // The food row (or the mount's hearts) fills vanilla's first right-hand row.
-        toughness_right: BASE_HEIGHT + 10 + cfg.toughness.row_shift * logic::ROW_HEIGHT,
+        // The bar sits above whatever vanilla's right-hand column holds: the food row, or a
+        // mount's hearts, as far as the layer's slot has it.
+        toughness_right: snap.status_right.unwrap_or(BASE_HEIGHT + 10)
+            + cfg.toughness.row_shift * logic::ROW_HEIGHT,
     }
 }
 
-fn sprite_draws(ops: Vec<SpriteOp>, out: &mut Vec<GuiDraw>) {
-    out.extend(ops.into_iter().map(|op| GuiDraw::Sprite {
-        sprite: Cow::Owned(op.sprite),
-        x: op.x,
-        y: op.y,
-        w: op.w,
-        h: op.h,
-        region: op.region,
-        color: op.color,
-        blend: Blend::Textured,
-    }));
+/// One primitive of a bar, drawn together with the rest of its bar.
+enum Op {
+    Sprite(SpriteOp),
+    Text {
+        text: String,
+        x: i32,
+        y: i32,
+        color: u32,
+    },
+    Fill {
+        rect: [i32; 4],
+        color: u32,
+    },
+}
+
+fn sprite_draws(ops: Vec<SpriteOp>, out: &mut Vec<Op>) {
+    out.extend(ops.into_iter().map(Op::Sprite));
+}
+
+/// Draw a bar's primitives in order; a refused one leaves the others as they were.
+fn draw_ops(draw: &mut dyn DrawContext, ops: &[Op]) {
+    let _ = draw.draw_gui(&mut |canvas: &mut dyn GuiCanvas| {
+        for op in ops {
+            let _: Result<(), GuiDrawError> = match op {
+                Op::Sprite(op) => canvas.blit_sprite(
+                    &op.sprite,
+                    [op.x as f32, op.y as f32, op.w as f32, op.h as f32],
+                    op.region.map(|[sw, sh, u, v]| GuiSpriteRegion {
+                        size: [sw, sh],
+                        offset: [u, v],
+                    }),
+                    op.color,
+                    Blend::Textured,
+                ),
+                Op::Text { text, x, y, color } => canvas.text(
+                    &mod_api::Text::literal(text.clone()),
+                    [*x as f32, *y as f32],
+                    *color,
+                    false,
+                ),
+                Op::Fill {
+                    rect: [x0, y0, x1, y1],
+                    color,
+                } => canvas.fill(
+                    [*x0 as f32, *y0 as f32, (x1 - x0) as f32, (y1 - y0) as f32],
+                    *color,
+                ),
+            };
+        }
+        Ok(())
+    });
 }
 
 /// The row count next to a bar, from the bar's edge `(x, y)`; `left` puts it left of the edge.
@@ -142,7 +195,7 @@ fn row_count(
     max_row: i32,
     left: bool,
     (x, y): (i32, i32),
-    out: &mut Vec<GuiDraw>,
+    out: &mut Vec<Op>,
 ) {
     let Some(number) =
         logic::row_count_number(value, max_row, cfg.count_always, cfg.count_full_rows_only)
@@ -160,12 +213,11 @@ fn row_count(
         } else {
             x + 5
         };
-        let text = |dx: i32, dy: i32, color: u32| GuiDraw::Text {
-            text: mod_api::Text::literal(text.clone()),
+        let text = |dx: i32, dy: i32, color: u32| Op::Text {
+            text: text.clone(),
             x: px + dx,
             y: y + 1 + dy,
             color,
-            shadow: false,
         };
         for (dx, dy) in [
             (-1, -1),
@@ -191,11 +243,8 @@ fn row_count(
             (0, 0, color),
         ] {
             for [x0, y0, x1, y1] in logic::glyph_fills(glyph, gx + dx, gy + dy) {
-                out.push(GuiDraw::Fill {
-                    x0,
-                    y0,
-                    x1,
-                    y1,
+                out.push(Op::Fill {
+                    rect: [x0, y0, x1, y1],
                     color: tint,
                 });
             }
@@ -223,6 +272,7 @@ fn paint_health(draw: &mut dyn DrawContext, cfg: &Config, snap: &Snapshot) {
         base: logic::base_heart_style(snap.poisoned, snap.withered),
         inverse: cfg.health.inverse_coloring,
         colorize_first_row: cfg.health.colorize_first_row,
+        hardcore: snap.hardcore,
     };
     let mut ops = Vec::new();
     sprite_draws(logic::plan_hearts(&input, x, y, snap.tick), &mut ops);
@@ -239,7 +289,7 @@ fn paint_health(draw: &mut dyn DrawContext, cfg: &Config, snap: &Snapshot) {
             &mut ops,
         );
     }
-    let _ = draw.gui_paint(&ops);
+    draw_ops(draw, &ops);
 }
 
 fn paint_armor(draw: &mut dyn DrawContext, cfg: &Config, snap: &Snapshot) {
@@ -257,7 +307,7 @@ fn paint_armor(draw: &mut dyn DrawContext, cfg: &Config, snap: &Snapshot) {
     if row.allow_count {
         row_count(&*draw, cfg, snap.armor, 20, true, (x - 2, y), &mut ops);
     }
-    let _ = draw.gui_paint(&ops);
+    draw_ops(draw, &ops);
 }
 
 fn paint_toughness(draw: &mut dyn DrawContext, cfg: &Config, snap: &Snapshot, left: bool) {
@@ -298,7 +348,7 @@ fn paint_toughness(draw: &mut dyn DrawContext, cfg: &Config, snap: &Snapshot, le
     if row.allow_count && !match_vanilla {
         row_count(&*draw, cfg, snap.toughness, 20, left, (x - 2, y), &mut ops);
     }
-    let _ = draw.gui_paint(&ops);
+    draw_ops(draw, &ops);
 }
 
 /// Wrap a vanilla bar: with its layers on, draw the stacked bar instead; off, vanilla's own.
@@ -347,7 +397,7 @@ impl Hooks for OverflowingBars {
         );
         for (id, anchor, left) in [
             (LAYER_TOUGHNESS_LEFT, LAYER_ARMOR, true),
-            (LAYER_TOUGHNESS_RIGHT, LAYER_FOOD, false),
+            (LAYER_TOUGHNESS_RIGHT, LAYER_VEHICLE, false),
         ] {
             layers.register(
                 id.into(),

@@ -118,19 +118,25 @@ pub struct HeartSprite {
     pub style: HeartStyle,
     pub half: bool,
     pub blinking: bool,
+    /// The hardcore variant of a vanilla heart (`LevelData.isHardcore`); the layer colour has none.
+    pub hardcore: bool,
 }
 
 /// The GUI sprite id of a heart.
 pub fn heart_sprite_id(s: HeartSprite) -> String {
     let blink = if s.blinking { "_blinking" } else { "" };
     let half = if s.half { "half" } else { "full" };
+    let hardcore = if s.hardcore { "hardcore_" } else { "" };
     match s.style {
-        HeartStyle::Container => format!("hud/heart/container{blink}"),
+        HeartStyle::Container => {
+            let hardcore = if s.hardcore { "_hardcore" } else { "" };
+            format!("hud/heart/container{hardcore}{blink}")
+        }
         HeartStyle::Layer => format!("overflowingbars:hud/heart/layer_{half}{blink}"),
-        HeartStyle::Normal => format!("hud/heart/{half}{blink}"),
-        HeartStyle::Poisoned => format!("hud/heart/poisoned_{half}{blink}"),
-        HeartStyle::Withered => format!("hud/heart/withered_{half}{blink}"),
-        HeartStyle::Absorbing => format!("hud/heart/absorbing_{half}{blink}"),
+        HeartStyle::Normal => format!("hud/heart/{hardcore}{half}{blink}"),
+        HeartStyle::Poisoned => format!("hud/heart/poisoned_{hardcore}{half}{blink}"),
+        HeartStyle::Withered => format!("hud/heart/withered_{hardcore}{half}{blink}"),
+        HeartStyle::Absorbing => format!("hud/heart/absorbing_{hardcore}{half}{blink}"),
     }
 }
 
@@ -175,6 +181,8 @@ pub struct HeartInput {
     pub base: HeartStyle,
     pub inverse: bool,
     pub colorize_first_row: bool,
+    /// Whether the world is hardcore, which swaps vanilla's heart sprites.
+    pub hardcore: bool,
 }
 
 /// `Mth.ceil` for the heart maths.
@@ -205,6 +213,7 @@ pub fn plan_hearts(input: &HeartInput, x: i32, y: i32, tick: i64) -> Vec<SpriteO
         base,
         inverse,
         colorize_first_row,
+        hardcore,
     } = *input;
     let (current, display, blink) = (frame.current, frame.display, frame.blink);
     let normal = 10.min(ceil_i32(f64::from(max_health) / 2.0));
@@ -219,6 +228,7 @@ pub fn plan_hearts(input: &HeartInput, x: i32, y: i32, tick: i64) -> Vec<SpriteO
                 style,
                 half,
                 blinking,
+                hardcore,
             }),
             x: px,
             y: py,
@@ -604,6 +614,7 @@ mod tests {
             base: HeartStyle::Normal,
             inverse: false,
             colorize_first_row: false,
+            hardcore: false,
         }
     }
 
@@ -680,6 +691,7 @@ mod tests {
                 style,
                 half,
                 blinking,
+                hardcore: false,
             })
         };
         assert_eq!(
@@ -689,6 +701,38 @@ mod tests {
         assert_eq!(
             id(HeartStyle::Container, false, false),
             "hud/heart/container"
+        );
+        assert_eq!(
+            id(HeartStyle::Layer, false, false),
+            "overflowingbars:hud/heart/layer_full"
+        );
+    }
+
+    #[test]
+    fn hardcore_hearts_name_the_hardcore_sprites() {
+        let id = |style, half, blinking| {
+            heart_sprite_id(HeartSprite {
+                style,
+                half,
+                blinking,
+                hardcore: true,
+            })
+        };
+        assert_eq!(
+            id(HeartStyle::Normal, false, false),
+            "hud/heart/hardcore_full"
+        );
+        assert_eq!(
+            id(HeartStyle::Container, false, true),
+            "hud/heart/container_hardcore_blinking"
+        );
+        assert_eq!(
+            id(HeartStyle::Poisoned, true, false),
+            "hud/heart/poisoned_hardcore_half"
+        );
+        assert_eq!(
+            id(HeartStyle::Absorbing, false, false),
+            "hud/heart/absorbing_hardcore_full"
         );
         assert_eq!(
             id(HeartStyle::Layer, false, false),

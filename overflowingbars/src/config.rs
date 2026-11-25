@@ -2,7 +2,12 @@
 //! them from the client host.
 
 use crate::logic::MAX_ROW_SHIFT;
-use mod_api::{ClientHost, Registrar, SettingSpec};
+use mod_api::{ClientHost, Registrar, SettingKey, SettingSpec};
+use std::collections::HashMap;
+use std::sync::{LazyLock, PoisonError, RwLock};
+
+/// The keys `register_settings` was issued, by setting name; rebuilt on each registration.
+static KEYS: LazyLock<RwLock<HashMap<String, SettingKey>>> = LazyLock::new(RwLock::default);
 
 /// The dye colours' translation keys, in vanilla's order.
 const DYE_KEYS: [&str; 16] = [
@@ -93,7 +98,17 @@ impl Config {
     /// The player's settings, the defaults for any the host does not answer.
     pub fn read(host: &dyn ClientHost) -> Self {
         let d = Self::default();
-        let flag = |key: &str, default: bool| host.setting_bool(key).unwrap_or(default);
+        let keys = KEYS.read().unwrap_or_else(PoisonError::into_inner);
+        let flag = |name: &str, default: bool| {
+            keys.get(name)
+                .and_then(|key| host.setting_bool(*key).ok())
+                .unwrap_or(default)
+        };
+        let number = |name: &str| {
+            keys.get(name)
+                .and_then(|key| host.setting_f64(*key).ok())
+                .unwrap_or(0.0)
+        };
         let row = |prefix: &str, d: IconRow| IconRow {
             allow_layers: flag(&format!("{prefix}_allow_layers"), d.allow_layers),
             allow_count: flag(&format!("{prefix}_allow_count"), d.allow_count),
@@ -102,10 +117,7 @@ impl Config {
                 d.colorize_first_row,
             ),
             inverse_coloring: flag(&format!("{prefix}_inverse_coloring"), d.inverse_coloring),
-            row_shift: shift(
-                host.setting_f64(&format!("{prefix}_row_shift"))
-                    .unwrap_or(0.0),
-            ),
+            row_shift: shift(number(&format!("{prefix}_row_shift"))),
             skip_empty: flag(&format!("{prefix}_skip_empty"), d.skip_empty),
         };
         Self {
@@ -115,7 +127,10 @@ impl Config {
             move_chat_above_armor: flag("armor_move_chat", d.move_chat_above_armor),
             toughness_bar: flag("toughness_bar", d.toughness_bar),
             toughness_left: flag("toughness_left_side", d.toughness_left),
-            count_color: host.setting_choice("count_color").unwrap_or(d.count_color),
+            count_color: keys
+                .get("count_color")
+                .and_then(|key| host.setting_choice(*key).ok())
+                .unwrap_or(d.count_color),
             count_force_font: flag("count_force_font", d.count_force_font),
             count_full_rows_only: flag("count_full_rows_only", d.count_full_rows_only),
             count_always: flag("count_always", d.count_always),
@@ -181,8 +196,13 @@ pub fn register_settings(r: &mut dyn Registrar) {
     specs.push(toggle("count_full_rows_only", d.count_full_rows_only));
     specs.push(toggle("count_always", d.count_always));
     specs.push(toggle("count_x", d.count_x));
+    let mut keys = KEYS.write().unwrap_or_else(PoisonError::into_inner);
+    keys.clear();
     for spec in specs {
-        let _ = r.register_setting(spec);
+        let name = spec.key.clone();
+        if let Ok(key) = r.register_setting(spec) {
+            keys.insert(name, key);
+        }
     }
 }
 
