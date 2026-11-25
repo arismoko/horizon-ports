@@ -702,7 +702,7 @@ impl FallingLeavesConfig {
             SET_STARTING_SPAWN_RADIUS => range
                 .is_some_and(|v| store_changed(&mut self.starting_spawn_radius, rounded(v, 0, 23))),
             SET_DECAY_SPAWN_RATE_FACTOR => range.is_some_and(|v| {
-                replace(
+                store_changed(
                     &mut self.decay_spawn_rate_factor,
                     (v as f32).clamp(0.0, 10.0),
                 )
