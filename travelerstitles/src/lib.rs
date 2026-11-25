@@ -13,7 +13,7 @@ use mod_api::{
     ClientDisconnectingEvent, ClientHost, ClientTickPostEvent, ClientTickPreEvent, CommandEvent,
     ConfigContext, ConfigKind, ConfigLoadingEvent, ConfigReloadingEvent, DrawContext, Flow, Hooks,
     Host, HostSide, RegisterClientCommandsEvent, RegisterConfigsEvent, Registrar,
-    RegistrationContext, RenderGuiPostEvent, SoundPlay,
+    RegistrationContext, RenderFramePreEvent, RenderGuiPostEvent, SoundPlay,
 };
 use std::sync::Mutex;
 
@@ -22,9 +22,6 @@ use std::sync::Mutex;
 const UNDERGROUND_BIOMES: [&str; 2] = ["minecraft:lush_caves", "minecraft:dripstone_caves"];
 const UNDERGROUND_TAG: &str = "travelerstitles:is_underground";
 
-/// One client tick, in milliseconds, to interpolate the fade between ticks.
-const TICK_MS: f32 = 50.0;
-
 #[derive(Default)]
 pub(crate) struct State {
     pub biome: Title,
@@ -32,8 +29,8 @@ pub(crate) struct State {
     pub lists: Lists,
     /// The dimension the player was in at the last tick, to notice a change.
     last_dimension: Option<String>,
-    /// When the last unpaused client tick ran, on the game's clock.
-    last_tick_ms: u64,
+    /// The frame's world partial tick, from `render_frame_pre`.
+    partial_tick: f32,
 }
 
 #[derive(Default)]
@@ -245,11 +242,9 @@ impl Hooks for TravelersTitles {
         if !host.on(MOD_ID) || host.is_paused() {
             return;
         }
-        let now = host.millis();
         with_state(&self.state, |state| {
             state.dimension.tick();
             state.biome.tick();
-            state.last_tick_ms = now;
         });
     }
 
@@ -265,21 +260,24 @@ impl Hooks for TravelersTitles {
         with_state(&self.state, |state| state.last_dimension = None);
     }
 
+    /// `DeltaTracker.getGameTimeDeltaPartialTick` for the frame, held while paused.
+    fn render_frame_pre(&self, host: &mut dyn ClientHost, event: &mut RenderFramePreEvent) {
+        if !host.on(MOD_ID) {
+            return;
+        }
+        let partial = event.world_partial_tick;
+        with_state(&self.state, |state| state.partial_tick = partial);
+    }
+
     fn render_gui_post(&self, host: &dyn ClientHost, event: &mut RenderGuiPostEvent<'_>) {
         if !host.on(MOD_ID) || host.debug_overlay_visible() {
             return;
         }
-        let partial = if host.is_paused() {
-            0.0
-        } else {
-            let since = with_state(&self.state, |s| s.last_tick_ms);
-            (host.millis().saturating_sub(since) as f32 / TICK_MS).clamp(0.0, 1.0)
-        };
-        let (dimension, biome) =
-            with_state(&self.state, |s| (s.dimension.clone(), s.biome.clone()));
         let dimension_style = config::read_style(host, Kind::Dimension);
         let biome_style = config::read_style(host, Kind::Biome);
-        Self::draw_title(event.draw, &dimension, &dimension_style, partial);
-        Self::draw_title(event.draw, &biome, &biome_style, partial);
+        let state = self.state.lock().unwrap_or_else(|e| e.into_inner());
+        let partial = state.partial_tick;
+        Self::draw_title(event.draw, &state.dimension, &dimension_style, partial);
+        Self::draw_title(event.draw, &state.biome, &biome_style, partial);
     }
 }
