@@ -1,0 +1,9 @@
+Overflowing Bars for Sunrise 26.3 (version 0.5.0)
+
+A port of Overflowing Bars by Fuzs (26.3.0).
+Original source: https://github.com/Fuzss/overflowing-bars
+Original licence: MPL-2.0
+
+Ported to Sunrise by arismoko: the bars, row counts and settings are re-implemented in Rust on Sunrise's typed mod API (no Java code is included). This port is distributed under the same licence as the original (MPL-2.0); the licence text is in LICENSE.
+
+None of the original project's All-Rights-Reserved assets (its textures, tiny number font or pack icon) are included. The layer heart sprites under assets/ and icon.png are original work for this port, and the armor and toughness rows are tinted vanilla icons. The English translations are written for this port; the original ships none.
