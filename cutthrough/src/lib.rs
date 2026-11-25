@@ -100,6 +100,9 @@ impl Hooks for CutThrough {
     }
 
     fn setting_changed(&self, host: &dyn Host, event: &mut SettingChangedEvent<'_>) {
+        if event.mod_id != MOD_ID {
+            return;
+        }
         let text = {
             let mut rt = self.lock();
             if !rt.config.apply_single_setting(event.key, event.value) {
