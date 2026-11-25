@@ -15,3 +15,7 @@ Differences from the original:
 A port of Convenient Name Tags 1.1.0 by Mim1q, under the Apache-2.0 licence.
 """
 categories = ["utility"]
+
+[[screenshots]]
+path = "page/world.png"
+caption = "Sheared name tag dropped from a named mob"
