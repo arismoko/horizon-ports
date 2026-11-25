@@ -21,7 +21,6 @@ use std::sync::{LazyLock, Mutex, MutexGuard, PoisonError};
 
 const LAYER_HEALTH: &str = "minecraft:player_health";
 const LAYER_ARMOR: &str = "minecraft:armor_level";
-const LAYER_FOOD: &str = "minecraft:food_level";
 const LAYER_VEHICLE: &str = "minecraft:vehicle_health";
 const LAYER_TOUGHNESS_LEFT: &str = "overflowingbars:toughness_level/left";
 const LAYER_TOUGHNESS_RIGHT: &str = "overflowingbars:toughness_level/right";
