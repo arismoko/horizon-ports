@@ -50,6 +50,7 @@ Releases are tagged `<folder>/v<version>`; the shared Sunrise release workflow b
 | [armorhud](armorhud/) | Shows your worn armour and its durability in a small widget beside the hotbar. | [Armor HUD](https://github.com/uku3lig/armor-hud) by uku, BerdinskiyBear | MIT | Being ported |
 | [armorstatues](armorstatues/) | Sneak and use an armor stand with an empty hand to pose, style and move it. | [Armor Statues](https://github.com/Fuzss/armorstatues) by Fuzs | MPL-2.0 | Being ported |
 | [easymagic](easymagic/) | Enchanting tables keep their items and can re-roll. | [Easy Magic](https://github.com/Fuzss/easymagic) by Fuzs | MPL-2.0 | Being ported |
+| [overflowingbars](overflowingbars/) | Health, armor and armor toughness stack into coloured rows with row counts. | [Overflowing Bars](https://github.com/Fuzss/overflowing-bars) by Fuzs | MPL-2.0 | Being ported |
 | [cutthrough](cutthrough/) | Attacks pass through tall grass and flowers to hit mobs behind them. | [Cut Through](https://github.com/Fuzss/cut-through) by Fuzs | MPL-2.0 | Being ported |
 | [enchantmentdescriptions](enchantmentdescriptions/) | Enchanted books and gear show what each enchantment does in their tooltips. | [Enchantment Descriptions](https://github.com/Darkhax-Minecraft/Enchantment-Descriptions) by Darkhax | LGPL-2.1-only | Being ported |
 | [travelerstitles](travelerstitles/) | Shows a fading title when you enter a new biome or dimension. | [Traveler's Titles](https://github.com/YUNG-GANG/Travelers-Titles) by YUNGNICKYOUNG | LGPL-3.0-only | Being ported |
