@@ -1,0 +1,27 @@
+summary = "Epic, RPG-like titles that fade in when you enter a new biome or dimension."
+description = """
+Traveler's Titles shows a large title with the name of the biome or dimension you enter, ported from [Traveler's Titles](https://github.com/YUNG-GANG/Travelers-Titles) by YUNG to Sunrise (Minecraft Java 26.3):
+
+- **Biome titles**: a large title with the biome's name fades in and out when you enter a new biome. A cooldown (80 ticks) and a list of the 5 most recent biomes stop spam when you move between the same few biomes; the list is cleared when you change dimensions. The name is looked up as `travelerstitles.biome.<namespace>.<path>` first, then vanilla's `biome.<namespace>.<path>`, and its colour as the same key plus `.color`. Biomes with no name in the language are skipped.
+- **Dimension titles**: a title with the dimension's name (`travelerstitles.<namespace>.<path>`, `???` when unknown) and colour when you enter a dimension, once per dimension type until you leave it.
+- **Skylight rule**: biome titles only show when you can see the sky in dimensions that have a sky (so caves do not spam titles), except in `minecraft:lush_caves`, `minecraft:dripstone_caves` and the biomes of the `travelerstitles:is_underground` tag. The same rule is available for dimension titles (off by default).
+- **Appearance**: fade-in, display and fade-out times in ticks, colour, scale, text shadow, X and Y offsets, and centring on the screen. Titles are hidden while the F3 debug overlay is open.
+- **Sounds**: separate entry sounds for biomes and dimensions with their own volume and pitch. The dimension sound replaces the biome sound when both start together.
+- **Blacklists**: biomes and dimensions that never show a title (`minecraft:the_end`, `minecraft:river` and `minecraft:frozen_river` by default).
+- **Commands**: `/biometitle <biome>` and `/dimensiontitle <dimension>` show a title as a preview, and `/tt_reload` clears the running titles and recent lists.
+- **Translations**: the original's English, Japanese, Russian, Ukrainian and Chinese files, with about 470 dimension and modded-biome names and colours.
+- **Settings**: everything but the two blacklists is on **Options → Mods → Traveler's Titles**; the blacklists are in `config/travelerstitles.toml` and reload when saved.
+
+Client-side only: works in single player and on any multiplayer server.
+
+Differences from the original:
+
+- Waystone titles (the title for the nearest named waystone, its sound, cache, range, cooldown and "override biome title" options) are not available: they need the list of waystones another mod sends to the client, and mods cannot yet listen to another mod's events from the original's side (gap: TBD-waystones).
+- The biome and dimension blacklists are edited in `config/travelerstitles.toml` because Options → Mods has no text or list setting (gap: TBD-list-setting). Everything else is on the Options → Mods page, not a separate config file, and the option labels there are English only.
+- The optional text backdrop (drawn only when the player's Text Background option is not limited to chat) is not drawn, because mods cannot read that option (gap: TBD-text-backdrop).
+- The fade between two ticks is interpolated from the game clock, not the render partial tick, which mods are not given on the HUD (gap: TBD-partial-tick).
+- `/biometitle`, `/dimensiontitle` and `/tt_reload` are client commands with plain `namespace:path` arguments: they need no operator permission, give no suggestions and take no biome tags (gap: TBD-client-command-args). `/tt_reload` does not re-read settings, which always apply at once, and the blacklist file reloads on save.
+
+A port of Traveler's Titles by YUNG, under the LGPL-3.0-only licence.
+"""
+categories = ["utility", "decoration"]
