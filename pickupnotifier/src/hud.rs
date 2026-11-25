@@ -242,13 +242,11 @@ fn render_single_entry(
         };
 
         match &entry.kind {
-            EntryKind::Item {
-                stack, pop_time, ..
-            } => {
+            EntryKind::Item(item) => {
                 // DrawContext::item_stack does not yet support partial alpha tinting (gap: sunrise-org/sunrise#5594).
                 if alpha > 0.05 {
-                    let (draw_x, draw_y, item_size) = if *pop_time > 0 {
-                        let pt = (*pop_time as f32 - partial_tick).max(0.0);
+                    let (draw_x, draw_y, item_size) = if item.pop_time > 0 {
+                        let pt = (item.pop_time as f32 - partial_tick).max(0.0);
                         let pop_scale = 1.0 + pt / (ITEM_STACK_POP_TIME as f32);
                         let size = 16.0 * scale * ((pop_scale + 1.0) * 0.5).clamp(1.0, 1.35);
                         let x = (sprite_x as f32 + 8.0) * scale - size * 0.5;
@@ -257,7 +255,7 @@ fn render_single_entry(
                     } else {
                         (sprite_x as f32 * scale, pos_y as f32 * scale, 16.0 * scale)
                     };
-                    let _ = draw.item_stack(stack, [draw_x, draw_y], item_size);
+                    let _ = draw.item_stack(&item.stack, [draw_x, draw_y], item_size);
                 }
 
                 if config.display.display_amount.is_sprite()

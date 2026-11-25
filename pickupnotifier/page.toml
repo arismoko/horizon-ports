@@ -20,3 +20,15 @@ Differences from the original:
 A port of Pick Up Notifier by Fuzs, under the MPL-2.0 licence.
 """
 categories = ["utility"]
+
+[[screenshots]]
+path = "page/items-and-xp.png"
+caption = "Picked-up diamonds, golden apples, and experience orbs listed in the bottom-right HUD."
+
+[[screenshots]]
+path = "page/arrow-pickup.png"
+caption = "Shot arrows picked back up appear in the notification list alongside items and experience."
+
+[[screenshots]]
+path = "page/settings.png"
+caption = "In-game settings under Options → Mods → Pick Up Notifier."

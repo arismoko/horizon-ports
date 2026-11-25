@@ -49,20 +49,30 @@ impl ItemRarity {
 }
 
 #[derive(Clone, Debug)]
+pub struct ItemEntry {
+    pub stack: ItemStack,
+    pub item_key: ItemKey,
+    pub hover_name: Text,
+    pub base_name: Text,
+    pub enchanted: bool,
+    pub pop_time: i32,
+    pub inventory_count: u32,
+}
+
+#[derive(Clone, Debug)]
 pub enum EntryKind {
-    Item {
-        stack: ItemStack,
-        item_key: ItemKey,
-        hover_name: Text,
-        base_name: Text,
-        enchanted: bool,
-        pop_time: i32,
-        inventory_count: u32,
-    },
-    Experience {
-        name: Text,
-        tick_count: i32,
-    },
+    Item(Box<ItemEntry>),
+    Experience { name: Box<Text>, tick_count: i32 },
+}
+
+pub struct ItemPickup {
+    pub stack: ItemStack,
+    pub amount: u32,
+    pub hover_name: Text,
+    pub base_name: Text,
+    pub rarity: ItemRarity,
+    pub enchanted: bool,
+    pub inventory_count: u32,
 }
 
 #[derive(Clone, Debug)]
@@ -74,36 +84,30 @@ pub struct DisplayEntry {
 }
 
 impl DisplayEntry {
-    pub fn new_item(
-        stack: ItemStack,
-        amount: u32,
-        hover_name: Text,
-        base_name: Text,
-        rarity: ItemRarity,
-        enchanted: bool,
-        inventory_count: u32,
-        display_time: i32,
-    ) -> Self {
-        let item_key = stack.item();
+    pub fn new_item(pickup: ItemPickup, display_time: i32) -> Self {
+        let item_key = pickup.stack.item();
         Self {
-            kind: EntryKind::Item {
-                stack,
+            kind: EntryKind::Item(Box::new(ItemEntry {
+                stack: pickup.stack,
                 item_key,
-                hover_name,
-                base_name,
-                enchanted,
+                hover_name: pickup.hover_name,
+                base_name: pickup.base_name,
+                enchanted: pickup.enchanted,
                 pop_time: ITEM_STACK_POP_TIME,
-                inventory_count,
-            },
-            amount,
-            rarity,
+                inventory_count: pickup.inventory_count,
+            })),
+            amount: pickup.amount,
+            rarity: pickup.rarity,
             remaining_ticks: display_time,
         }
     }
 
     pub fn new_experience(name: Text, amount: u32, tick_count: i32, display_time: i32) -> Self {
         Self {
-            kind: EntryKind::Experience { name, tick_count },
+            kind: EntryKind::Experience {
+                name: Box::new(name),
+                tick_count,
+            },
             amount,
             rarity: ItemRarity::Uncommon,
             remaining_ticks: display_time,
@@ -119,9 +123,9 @@ impl DisplayEntry {
             self.remaining_ticks -= 1;
         }
         match &mut self.kind {
-            EntryKind::Item { pop_time, .. } => {
-                if *pop_time > 0 {
-                    *pop_time -= 1;
+            EntryKind::Item(item) => {
+                if item.pop_time > 0 {
+                    item.pop_time -= 1;
                 }
             }
             EntryKind::Experience { tick_count, .. } => {
@@ -135,26 +139,16 @@ impl DisplayEntry {
             return false;
         }
         match (&self.kind, &other.kind) {
-            (
-                EntryKind::Item {
-                    item_key: k1,
-                    hover_name: n1,
-                    enchanted: e1,
-                    ..
-                },
-                EntryKind::Item {
-                    item_key: k2,
-                    hover_name: n2,
-                    enchanted: e2,
-                    ..
-                },
-            ) => {
-                if k1 != k2 || self.rarity != other.rarity || e1 != e2 {
+            (EntryKind::Item(a), EntryKind::Item(b)) => {
+                if a.item_key != b.item_key
+                    || self.rarity != other.rarity
+                    || a.enchanted != b.enchanted
+                {
                     return false;
                 }
                 match mode {
                     CombineEntries::Always => true,
-                    CombineEntries::ExcludeNamed => n1 == n2,
+                    CombineEntries::ExcludeNamed => a.hover_name == b.hover_name,
                     CombineEntries::Never => false,
                 }
             }
@@ -167,8 +161,8 @@ impl DisplayEntry {
         self.amount = self.amount.saturating_add(old.amount);
         self.remaining_ticks = display_time;
         match (&mut self.kind, &old.kind) {
-            (EntryKind::Item { pop_time, .. }, _) => {
-                *pop_time = ITEM_STACK_POP_TIME;
+            (EntryKind::Item(item), _) => {
+                item.pop_time = ITEM_STACK_POP_TIME;
             }
             (
                 EntryKind::Experience { tick_count, .. },
@@ -195,28 +189,22 @@ impl DisplayEntry {
         let reverse = config.display.screen_corner.is_right();
         let mut parts: Vec<Text> = Vec::with_capacity(3);
 
-        if let EntryKind::Item {
-            inventory_count, ..
-        } = &self.kind
+        if let EntryKind::Item(item) = &self.kind
             && config.display.inventory_count
         {
-            parts.push(Text::literal(format!("({inventory_count})")));
+            parts.push(Text::literal(format!("({})", item.inventory_count)));
         }
 
         if config.display.display_item_name {
             let name = match &self.kind {
-                EntryKind::Item {
-                    hover_name,
-                    base_name,
-                    ..
-                } => {
+                EntryKind::Item(item) => {
                     if config.behavior.combine_entries == CombineEntries::Always {
-                        base_name.clone()
+                        item.base_name.clone()
                     } else {
-                        hover_name.clone()
+                        item.hover_name.clone()
                     }
                 }
-                EntryKind::Experience { name, .. } => name.clone(),
+                EntryKind::Experience { name, .. } => (**name).clone(),
             };
             parts.push(name);
         }

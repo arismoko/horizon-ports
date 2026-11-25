@@ -1578,9 +1578,11 @@ mod tests {
 
     #[test]
     fn move_time_is_clamped_to_display_time() {
-        let mut b = BehaviorConfig::default();
-        b.display_time = 10;
-        b.move_time = 25;
+        let b = BehaviorConfig {
+            display_time: 10,
+            move_time: 25,
+            ..Default::default()
+        };
         assert_eq!(b.effective_move_time(), 10);
     }
 

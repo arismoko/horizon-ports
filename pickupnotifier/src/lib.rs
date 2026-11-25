@@ -12,7 +12,7 @@ use crate::config::{
     CLIENT_CONFIG_FILE, ClientConfig, MOD_ID, ServerConfig, register_mod_configs, register_settings,
 };
 use crate::entries::{
-    ClientFallbackTracker, DisplayEntry, EntryCollector, count_in_local_inventory,
+    ClientFallbackTracker, DisplayEntry, EntryCollector, ItemPickup, count_in_local_inventory,
     is_arrow_item_id, is_stack_enchanted, max_entries_for_height, resolve_stack_rarity,
 };
 use crate::hud::{ensure_xp_orb_texture, render_entries};
@@ -141,13 +141,15 @@ fn add_item_entry(
     };
 
     let entry = DisplayEntry::new_item(
-        stack,
-        amount,
-        hover_name,
-        base_name,
-        rarity,
-        enchanted,
-        inv_count,
+        ItemPickup {
+            stack,
+            amount,
+            hover_name,
+            base_name,
+            rarity,
+            enchanted,
+            inventory_count: inv_count,
+        },
         state.config.behavior.display_time,
     );
     let max_size = max_entries_for_height(
