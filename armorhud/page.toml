@@ -23,3 +23,11 @@ Differences from the original:
 A port of uku's Armor HUD by uku (uku3lig), based on BerdinskiyBear's Armor HUD, under the MIT licence.
 """
 categories = ["utility", "equipment"]
+
+[[screenshots]]
+path = "page/widget.png"
+caption = "The armour widget beside the hotbar, with durability bars; the boss bar and effect icons draw as in vanilla."
+
+[[screenshots]]
+path = "page/settings.png"
+caption = "The settings page under Options > Mods."
