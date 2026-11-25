@@ -1,6 +1,10 @@
-use mod_api::{ClientHost, Config, ConfigKind, ConfigPath, Registrar, ServerHost, SettingSpec};
+use mod_api::{
+    ClientHost, ConfigEvent, ConfigKind, ConfigSnapshot, ConfigSpec, HostSide, Registrar,
+    SettingKey, SettingSpec, SettingValue,
+};
 use std::collections::BTreeMap;
-use std::sync::{PoisonError, RwLock};
+use std::path::{Path, PathBuf};
+use std::sync::{Arc, PoisonError, RwLock};
 
 pub const MOD_ID: &str = "pingwheel";
 pub const CLIENT_CONFIG_FILE: &str = "pingwheel-client.toml";
@@ -92,7 +96,7 @@ impl PlayerInfoMode {
         }
     }
 
-    pub fn from_index(idx: u32) -> Self {
+    pub fn from_index(idx: usize) -> Self {
         match idx {
             0 => Self::Hold,
             1 => Self::Disabled,
@@ -148,7 +152,7 @@ impl TeamColorMode {
         }
     }
 
-    pub fn from_index(idx: u32) -> Self {
+    pub fn from_index(idx: usize) -> Self {
         match idx {
             0 => Self::Full,
             1 => Self::Disabled,
@@ -412,101 +416,78 @@ impl ClientConfig {
         cfg
     }
 
-    pub fn write_to_host_settings(&self, host: &dyn ClientHost) {
-        host.set_setting(MOD_ID, SETTING_PING_VOLUME, &self.ping_volume.to_string());
-        host.set_setting(
-            MOD_ID,
-            SETTING_PING_DURATION,
-            &self.ping_duration.to_string(),
-        );
-        host.set_setting(
-            MOD_ID,
-            SETTING_PING_DISTANCE,
-            &self.ping_distance.to_string(),
-        );
-        host.set_setting(
-            MOD_ID,
-            SETTING_CORRECTION_PERIOD,
-            &format!("{:.1}", self.correction_period),
-        );
-        host.set_setting(
-            MOD_ID,
-            SETTING_ITEM_ICON_VISIBLE,
-            if self.item_icon_visible {
-                "true"
-            } else {
-                "false"
-            },
-        );
-        host.set_setting(
-            MOD_ID,
-            SETTING_DIRECTION_INDICATOR_VISIBLE,
-            if self.direction_indicator_visible {
-                "true"
-            } else {
-                "false"
-            },
-        );
-        host.set_setting(
-            MOD_ID,
-            SETTING_PLAYER_INFO_MODE,
-            &self.player_info_mode.to_index().to_string(),
-        );
-        host.set_setting(
-            MOD_ID,
-            SETTING_TEAM_COLOR_MODE,
-            &self.team_color_mode.to_index().to_string(),
-        );
-        host.set_setting(MOD_ID, SETTING_PING_SIZE, &self.ping_size.to_string());
+    /// Mirrors this config into the Options > Mods settings. Each changed value notifies
+    /// `setting_changed`, which stores it back through `apply_setting`.
+    pub fn write_to_host_settings(&self, host: &mut dyn ClientHost) {
+        let values = [
+            (
+                SETTING_PING_VOLUME,
+                SettingValue::Range(f64::from(self.ping_volume)),
+            ),
+            (
+                SETTING_PING_DURATION,
+                SettingValue::Range(f64::from(self.ping_duration)),
+            ),
+            (
+                SETTING_PING_DISTANCE,
+                SettingValue::Range(f64::from(self.ping_distance)),
+            ),
+            (
+                SETTING_CORRECTION_PERIOD,
+                SettingValue::Range(f64::from((self.correction_period * 10.0).round()) / 10.0),
+            ),
+            (
+                SETTING_ITEM_ICON_VISIBLE,
+                SettingValue::Toggle(self.item_icon_visible),
+            ),
+            (
+                SETTING_DIRECTION_INDICATOR_VISIBLE,
+                SettingValue::Toggle(self.direction_indicator_visible),
+            ),
+            (
+                SETTING_PLAYER_INFO_MODE,
+                SettingValue::Choice(self.player_info_mode.to_index()),
+            ),
+            (
+                SETTING_TEAM_COLOR_MODE,
+                SettingValue::Choice(self.team_color_mode.to_index()),
+            ),
+            (
+                SETTING_PING_SIZE,
+                SettingValue::Range(f64::from(self.ping_size)),
+            ),
+        ];
+        for (name, value) in values {
+            if let Some(key) = setting_key(name) {
+                let _ = host.set_setting(key, value);
+            }
+        }
     }
 
-    pub fn apply_setting_from_host(&mut self, host: &dyn ClientHost, key: &str) {
-        match key {
-            SETTING_PING_VOLUME => {
-                if let Some(v) = host.setting_f64(SETTING_PING_VOLUME) {
-                    self.ping_volume = v.round() as i32;
-                }
+    /// Applies the new `value` of the registered setting `key` (a `setting_changed` notice).
+    pub fn apply_setting(&mut self, key: &str, value: SettingValue) {
+        match (key, value) {
+            (SETTING_PING_VOLUME, SettingValue::Range(v)) => self.ping_volume = v.round() as i32,
+            (SETTING_PING_DURATION, SettingValue::Range(v)) => {
+                self.ping_duration = v.round() as i32;
             }
-            SETTING_PING_DURATION => {
-                if let Some(v) = host.setting_f64(SETTING_PING_DURATION) {
-                    self.ping_duration = v.round() as i32;
-                }
+            (SETTING_PING_DISTANCE, SettingValue::Range(v)) => {
+                self.ping_distance = v.round() as i32;
             }
-            SETTING_PING_DISTANCE => {
-                if let Some(v) = host.setting_f64(SETTING_PING_DISTANCE) {
-                    self.ping_distance = v.round() as i32;
-                }
+            (SETTING_CORRECTION_PERIOD, SettingValue::Range(v)) => {
+                self.correction_period = (v * 10.0).round() as f32 / 10.0;
             }
-            SETTING_CORRECTION_PERIOD => {
-                if let Some(v) = host.setting_f64(SETTING_CORRECTION_PERIOD) {
-                    self.correction_period = (v * 10.0).round() as f32 / 10.0;
-                }
+            (SETTING_ITEM_ICON_VISIBLE, SettingValue::Toggle(v)) => self.item_icon_visible = v,
+            (SETTING_DIRECTION_INDICATOR_VISIBLE, SettingValue::Toggle(v)) => {
+                self.direction_indicator_visible = v;
             }
-            SETTING_ITEM_ICON_VISIBLE => {
-                if let Some(v) = host.setting_bool(SETTING_ITEM_ICON_VISIBLE) {
-                    self.item_icon_visible = v;
-                }
+            (SETTING_PLAYER_INFO_MODE, SettingValue::Choice(v)) => {
+                self.player_info_mode = PlayerInfoMode::from_index(v);
             }
-            SETTING_DIRECTION_INDICATOR_VISIBLE => {
-                if let Some(v) = host.setting_bool(SETTING_DIRECTION_INDICATOR_VISIBLE) {
-                    self.direction_indicator_visible = v;
-                }
+            (SETTING_TEAM_COLOR_MODE, SettingValue::Choice(v)) => {
+                self.team_color_mode = TeamColorMode::from_index(v);
             }
-            SETTING_PLAYER_INFO_MODE => {
-                if let Some(v) = host.setting_choice(SETTING_PLAYER_INFO_MODE) {
-                    self.player_info_mode = PlayerInfoMode::from_index(v);
-                }
-            }
-            SETTING_TEAM_COLOR_MODE => {
-                if let Some(v) = host.setting_choice(SETTING_TEAM_COLOR_MODE) {
-                    self.team_color_mode = TeamColorMode::from_index(v);
-                }
-            }
-            SETTING_PING_SIZE => {
-                if let Some(v) = host.setting_f64(SETTING_PING_SIZE) {
-                    self.ping_size = v.round() as i32;
-                }
-            }
+            (SETTING_PING_SIZE, SettingValue::Range(v)) => self.ping_size = v.round() as i32,
             _ => {}
         }
         self.validate();
@@ -610,6 +591,9 @@ rate_limit = 5
     }
 }
 
+static CLIENT_PATH: RwLock<Option<PathBuf>> = RwLock::new(None);
+static SERVER_PATH: RwLock<Option<PathBuf>> = RwLock::new(None);
+static SETTING_KEYS: RwLock<Vec<(&'static str, SettingKey)>> = RwLock::new(Vec::new());
 static CLIENT_CONFIG: RwLock<Option<ClientConfig>> = RwLock::new(None);
 static SERVER_CONFIG: RwLock<ServerConfig> = RwLock::new(ServerConfig {
     default_channel_mode: ChannelMode::Auto,
@@ -643,10 +627,13 @@ pub fn update_client_config(f: impl FnOnce(&mut ClientConfig)) -> ClientConfig {
     cfg.clone()
 }
 
-pub fn persist_client_config(host: &dyn ClientHost, cfg: &ClientConfig) {
-    if let Ok(path) = ConfigPath::new(CLIENT_CONFIG_FILE) {
-        let _ = host.config_files().write(&path, cfg.to_toml().as_bytes());
-    }
+/// Writes the client config to the path the engine loaded it from, else `config_dir`.
+pub fn persist_client_config(config_dir: &Path, cfg: &ClientConfig) {
+    write_config(
+        &CLIENT_PATH,
+        &config_dir.join(CLIENT_CONFIG_FILE),
+        &cfg.to_toml(),
+    );
 }
 
 pub fn server_config() -> ServerConfig {
@@ -672,95 +659,184 @@ pub fn update_server_config(f: impl FnOnce(&mut ServerConfig)) -> ServerConfig {
     guard.clone()
 }
 
-pub fn persist_server_config(host: &dyn ServerHost, cfg: &ServerConfig) {
-    if let Ok(path) = ConfigPath::new(SERVER_CONFIG_FILE) {
-        let _ = host.config_files().write(&path, cfg.to_toml().as_bytes());
+/// Writes the server config to the path the engine loaded it from (the world's
+/// `serverconfig/` when it has one), else `config_dir`.
+pub fn persist_server_config(config_dir: &Path, cfg: &ServerConfig) {
+    write_config(
+        &SERVER_PATH,
+        &config_dir.join(SERVER_CONFIG_FILE),
+        &cfg.to_toml(),
+    );
+}
+
+fn write_config(loaded: &RwLock<Option<PathBuf>>, fallback: &Path, text: &str) {
+    let path = loaded
+        .read()
+        .unwrap_or_else(PoisonError::into_inner)
+        .clone()
+        .unwrap_or_else(|| fallback.to_path_buf());
+    if let Some(parent) = path.parent() {
+        let _ = std::fs::create_dir_all(parent);
+    }
+    let _ = std::fs::write(path, text);
+}
+
+fn client_config_listener(event: ConfigEvent<'_>, snapshot: &ConfigSnapshot) -> Result<(), String> {
+    *CLIENT_PATH.write().unwrap_or_else(PoisonError::into_inner) = Some(snapshot.path.clone());
+    match event {
+        ConfigEvent::Loading(_) => {
+            set_client_config(ClientConfig::parse_toml(&snapshot.text));
+        }
+        ConfigEvent::Reloading(host) => {
+            let parsed = ClientConfig::parse_toml(&snapshot.text);
+            set_client_config(parsed.clone());
+            if let HostSide::Client(client_host) = host {
+                parsed.write_to_host_settings(client_host);
+            }
+        }
+        _ => {}
+    }
+    Ok(())
+}
+
+fn server_config_listener(event: ConfigEvent<'_>, snapshot: &ConfigSnapshot) -> Result<(), String> {
+    *SERVER_PATH.write().unwrap_or_else(PoisonError::into_inner) = Some(snapshot.path.clone());
+    if matches!(event, ConfigEvent::Loading(_) | ConfigEvent::Reloading(_)) {
+        set_server_config(ServerConfig::parse_toml(&snapshot.text));
+    }
+    Ok(())
+}
+
+pub fn register_mod_configs(r: &mut dyn Registrar) {
+    let client = ConfigSpec::new(ConfigKind::Client, ClientConfig::default_toml());
+    if let Err(err) = r.register_config(client, Some(Arc::new(client_config_listener))) {
+        eprintln!("pingwheel: client config registration failed: {err}");
+    }
+    let server = ConfigSpec::new(ConfigKind::Server, ServerConfig::default_toml());
+    if let Err(err) = r.register_config(server, Some(Arc::new(server_config_listener))) {
+        eprintln!("pingwheel: server config registration failed: {err}");
     }
 }
 
-pub fn register_mod_configs(configs: &mut Vec<Config>) {
-    let client_default = ClientConfig::default_toml();
-    configs.push(Config::new(MOD_ID, ConfigKind::Client, &client_default));
-    configs.push(Config::new(
-        MOD_ID,
-        ConfigKind::Server,
-        ServerConfig::default_toml(),
-    ));
+/// The owner-bound handle of the registered setting named `name`.
+pub fn setting_key(name: &str) -> Option<SettingKey> {
+    SETTING_KEYS
+        .read()
+        .unwrap_or_else(PoisonError::into_inner)
+        .iter()
+        .find_map(|(registered, key)| (*registered == name).then_some(*key))
 }
 
 pub fn register_settings(r: &mut dyn Registrar) {
-    let _ = r.register_setting(SettingSpec::range(
-        SETTING_PING_VOLUME,
-        "pingwheel.setting.ping_volume",
-        0.0,
-        100.0,
-        1.0,
-        100.0,
-    ));
-    let _ = r.register_setting(SettingSpec::range(
-        SETTING_PING_DURATION,
-        "pingwheel.setting.ping_duration",
-        1.0,
-        f64::from(MAX_PING_DURATION),
-        1.0,
-        7.0,
-    ));
-    let _ = r.register_setting(SettingSpec::range(
-        SETTING_PING_DISTANCE,
-        "pingwheel.setting.ping_distance",
-        0.0,
-        f64::from(MAX_PING_DISTANCE),
-        16.0,
-        f64::from(MAX_PING_DISTANCE),
-    ));
-    let _ = r.register_setting(SettingSpec::range(
-        SETTING_CORRECTION_PERIOD,
-        "pingwheel.setting.correction_period",
-        0.1,
-        f64::from(MAX_CORRECTION_PERIOD),
-        0.1,
-        1.0,
-    ));
-    let _ = r.register_setting(SettingSpec::toggle(
-        SETTING_ITEM_ICON_VISIBLE,
-        "settings.pingwheel.item_icon_visible",
-        true,
-    ));
-    let _ = r.register_setting(SettingSpec::toggle(
-        SETTING_DIRECTION_INDICATOR_VISIBLE,
-        "settings.pingwheel.direction_indicator_visible",
-        true,
-    ));
-    let _ = r.register_setting(SettingSpec::choice(
-        SETTING_PLAYER_INFO_MODE,
-        "settings.pingwheel.player_info_mode",
-        [
-            "value.pingwheel.hold",
-            "value.pingwheel.disabled",
-            "value.pingwheel.always",
-            "value.pingwheel.compact",
-        ],
-        0,
-    ));
-    let _ = r.register_setting(SettingSpec::choice(
-        SETTING_TEAM_COLOR_MODE,
-        "settings.pingwheel.team_color_mode",
-        [
-            "value.pingwheel.full",
-            "value.pingwheel.disabled",
-            "value.pingwheel.ping_only",
-            "value.pingwheel.labels_only",
-        ],
-        0,
-    ));
-    let _ = r.register_setting(SettingSpec::range(
-        SETTING_PING_SIZE,
-        "pingwheel.setting.ping_size",
-        40.0,
-        300.0,
-        10.0,
-        100.0,
-    ));
+    let specs = [
+        (
+            SETTING_PING_VOLUME,
+            SettingSpec::range(
+                SETTING_PING_VOLUME,
+                "pingwheel.setting.ping_volume",
+                0.0,
+                100.0,
+                1.0,
+                100.0,
+            ),
+        ),
+        (
+            SETTING_PING_DURATION,
+            SettingSpec::range(
+                SETTING_PING_DURATION,
+                "pingwheel.setting.ping_duration",
+                1.0,
+                f64::from(MAX_PING_DURATION),
+                1.0,
+                7.0,
+            ),
+        ),
+        (
+            SETTING_PING_DISTANCE,
+            SettingSpec::range(
+                SETTING_PING_DISTANCE,
+                "pingwheel.setting.ping_distance",
+                0.0,
+                f64::from(MAX_PING_DISTANCE),
+                16.0,
+                f64::from(MAX_PING_DISTANCE),
+            ),
+        ),
+        (
+            SETTING_CORRECTION_PERIOD,
+            SettingSpec::range(
+                SETTING_CORRECTION_PERIOD,
+                "pingwheel.setting.correction_period",
+                0.1,
+                f64::from(MAX_CORRECTION_PERIOD),
+                0.1,
+                1.0,
+            ),
+        ),
+        (
+            SETTING_ITEM_ICON_VISIBLE,
+            SettingSpec::toggle(
+                SETTING_ITEM_ICON_VISIBLE,
+                "settings.pingwheel.item_icon_visible",
+                true,
+            ),
+        ),
+        (
+            SETTING_DIRECTION_INDICATOR_VISIBLE,
+            SettingSpec::toggle(
+                SETTING_DIRECTION_INDICATOR_VISIBLE,
+                "settings.pingwheel.direction_indicator_visible",
+                true,
+            ),
+        ),
+        (
+            SETTING_PLAYER_INFO_MODE,
+            SettingSpec::choice(
+                SETTING_PLAYER_INFO_MODE,
+                "settings.pingwheel.player_info_mode",
+                [
+                    "value.pingwheel.hold",
+                    "value.pingwheel.disabled",
+                    "value.pingwheel.always",
+                    "value.pingwheel.compact",
+                ],
+                0,
+            ),
+        ),
+        (
+            SETTING_TEAM_COLOR_MODE,
+            SettingSpec::choice(
+                SETTING_TEAM_COLOR_MODE,
+                "settings.pingwheel.team_color_mode",
+                [
+                    "value.pingwheel.full",
+                    "value.pingwheel.disabled",
+                    "value.pingwheel.ping_only",
+                    "value.pingwheel.labels_only",
+                ],
+                0,
+            ),
+        ),
+        (
+            SETTING_PING_SIZE,
+            SettingSpec::range(
+                SETTING_PING_SIZE,
+                "pingwheel.setting.ping_size",
+                40.0,
+                300.0,
+                10.0,
+                100.0,
+            ),
+        ),
+    ];
+    let mut keys = Vec::with_capacity(specs.len());
+    for (name, spec) in specs {
+        match r.register_setting(spec) {
+            Ok(key) => keys.push((name, key)),
+            Err(err) => eprintln!("pingwheel: setting {name} registration failed: {err:?}"),
+        }
+    }
+    *SETTING_KEYS.write().unwrap_or_else(PoisonError::into_inner) = keys;
 }
 
 pub fn truncate_channel(s: &str) -> String {
@@ -898,6 +974,27 @@ mod tests {
         let bad = ServerConfig::parse_toml("ms_to_regenerate = -5\nrate_limit = -2\n");
         assert_eq!(bad.ms_to_regenerate, 1000);
         assert_eq!(bad.rate_limit, 0);
+    }
+
+    #[test]
+    fn apply_setting_maps_values_and_ignores_mismatched_kinds() {
+        let mut cfg = ClientConfig::default();
+        cfg.apply_setting(SETTING_PING_VOLUME, SettingValue::Range(250.0));
+        assert_eq!(cfg.ping_volume, 100);
+        cfg.apply_setting(SETTING_CORRECTION_PERIOD, SettingValue::Range(2.34));
+        assert_eq!(cfg.correction_period, 2.3);
+        cfg.apply_setting(SETTING_PLAYER_INFO_MODE, SettingValue::Choice(3));
+        assert_eq!(cfg.player_info_mode, PlayerInfoMode::Compact);
+        cfg.apply_setting(SETTING_TEAM_COLOR_MODE, SettingValue::Choice(usize::MAX));
+        assert_eq!(cfg.team_color_mode, TeamColorMode::LabelsOnly);
+        cfg.apply_setting(SETTING_ITEM_ICON_VISIBLE, SettingValue::Toggle(false));
+        assert!(!cfg.item_icon_visible);
+        let before = cfg.clone();
+        cfg.apply_setting(SETTING_PING_SIZE, SettingValue::Toggle(true));
+        cfg.apply_setting("unknown", SettingValue::Toggle(true));
+        assert_eq!(cfg, before);
+        cfg.apply_setting(SETTING_PING_SIZE, SettingValue::Range(f64::NAN));
+        assert_eq!(cfg.ping_size, 40);
     }
 
     #[test]
