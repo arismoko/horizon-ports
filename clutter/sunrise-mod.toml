@@ -1,7 +1,7 @@
 # Clutter for Sunrise: native code in src/, blocks' data in data/, models and textures in assets/.
 id = "clutter"
 name = "Clutter"
-version = "0.3.0"
+version = "0.3.1"
 description = "Decorations by EmilSG: furniture you can sit on, candles, chandeliers and lamps that light up, curtains that open, cupboards, plushies, copper that weathers, silver and onyx, coral, plants and crops"
 authors = ["EmilSG", "arismoko"]
 license = "MIT"

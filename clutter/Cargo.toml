@@ -1,6 +1,6 @@
 [package]
 name = "mod-clutter"
-version = "0.3.0"
+version = "0.3.1"
 edition = "2024"
 license = "MIT"
 description = "Clutter for Sunrise: furniture, lamps, curtains, candles, plants and crops on the typed mod API"
