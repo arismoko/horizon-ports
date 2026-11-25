@@ -1,63 +1,21 @@
 //! HUD layer rendering and procedural 11-tier experience orb sprite sheet.
 
-use crate::config::{ClientConfig, EntryBackground, MOD_ID};
+use crate::config::{ClientConfig, EntryBackground};
 use crate::entries::{
-    DisplayEntry, ELEMENT_HEIGHT, EntryKind, ITEM_STACK_POP_TIME, TEXT_ITEM_MARGIN,
+    DisplayEntry, ELEMENT_HEIGHT, EntryKind, ITEM_STACK_POP_TIME, ItemEntry, TEXT_ITEM_MARGIN,
     covered_area_alpha, shorten_value, vertical_move_offset, xp_orb_color, xp_texture_index,
 };
 use mod_api::client::hud_layout::PoseOp;
-use mod_api::{ClientHost, DrawContext, GuiDraw, HudMode, Identifier, Text};
+use mod_api::{
+    ClientHost, DrawContext, GuiBlitRegion, GuiCanvas, GuiDrawError, HudMode, Identifier, Text,
+};
+use std::sync::LazyLock;
 
-pub const XP_ORB_TEXTURE_PATH: &str = "xp_orb_sheet";
-pub const XP_ORB_SPRITE_ID: &str = "pickupnotifier:xp_orb_sheet";
+/// Vanilla's experience orb sheet: a 64x64 grid of 16x16 icons, so resource packs apply.
+const XP_ORB_TEXTURE: &str = "textures/entity/experience/experience_orb.png";
 
-pub fn ensure_xp_orb_texture(host: &mut dyn ClientHost) -> bool {
-    let Ok(id) = Identifier::from_parts(MOD_ID, XP_ORB_TEXTURE_PATH) else {
-        return false;
-    };
-    let rgba = generate_xp_orb_sheet_rgba();
-    host.create_dynamic_texture(&id, 64, 64, &rgba).is_ok()
-}
-
-/// Generates an original 64x64 RGBA sprite sheet containing 11 glowing experience orb tiers
-/// arranged in a 4x3 grid of 16x16 cells (matching vanilla's 0..=10 orb icon indices).
-pub fn generate_xp_orb_sheet_rgba() -> Vec<u8> {
-    let mut buf = vec![0u8; 64 * 64 * 4];
-    for tier in 0u32..11 {
-        let cell_x = (tier % 4) * 16;
-        let cell_y = (tier / 4) * 16;
-        // Radius grows smoothly from 2.6 px (tier 0) to 7.2 px (tier 10).
-        let radius = 2.6 + (tier as f32) * 0.46;
-        for py in 0u32..16 {
-            for px in 0u32..16 {
-                let dx = px as f32 + 0.5 - 8.0;
-                let dy = py as f32 + 0.5 - 8.0;
-                let dist = (dx * dx + dy * dy).sqrt();
-                if dist <= radius {
-                    let t = (dist / radius).clamp(0.0, 1.0);
-                    // Bright white-tinted core with soft translucent halo so tinting pops.
-                    let alpha = if t < 0.65 {
-                        255.0
-                    } else {
-                        ((1.0 - (t - 0.65) / 0.35).clamp(0.0, 1.0)) * 230.0
-                    };
-                    let highlight =
-                        if (dx + radius * 0.25).hypot(dy + radius * 0.25) < radius * 0.45 {
-                            255u8
-                        } else {
-                            (255.0 - t * 48.0).clamp(180.0, 255.0) as u8
-                        };
-                    let idx = (((cell_y + py) * 64 + (cell_x + px)) * 4) as usize;
-                    buf[idx] = highlight;
-                    buf[idx + 1] = highlight;
-                    buf[idx + 2] = highlight;
-                    buf[idx + 3] = alpha.round() as u8;
-                }
-            }
-        }
-    }
-    buf
-}
+static XP_ORB_TEXTURE_ID: LazyLock<Option<Identifier>> =
+    LazyLock::new(|| Identifier::from_parts("minecraft", XP_ORB_TEXTURE).ok());
 
 fn argb_white(alpha: f32) -> u32 {
     let a = (alpha.clamp(0.0, 1.0) * 255.0).round() as u32;
@@ -71,7 +29,6 @@ pub fn render_entries(
     entries: &[DisplayEntry],
     config: &ClientConfig,
     partial_tick: f32,
-    xp_texture_ready: bool,
 ) {
     if entries.is_empty() || host.hud_mode() != HudMode::AllVisible {
         return;
@@ -157,7 +114,6 @@ pub fn render_entries(
                 alpha,
                 partial_tick,
                 bg_opacity_setting,
-                xp_texture_ready,
             );
         }
 
@@ -177,7 +133,6 @@ fn render_single_entry(
     alpha: f32,
     partial_tick: f32,
     bg_opacity_setting: f32,
-    xp_texture_ready: bool,
 ) {
     let scale = config.display.scale();
     let mirror = config.display.screen_corner.is_right();
@@ -216,99 +171,115 @@ fn render_single_entry(
         }
     }
 
-    // 2. Entry text (scaled with GuiDraw::Push(Scale) + GuiDraw::Text)
+    // 2. Entry text and 3. entry sprite (item icon or experience orb), one scoped group.
     let text = entry.build_text(config);
     let text_width = host.text_width(&text);
-    if text_width > 0 {
-        let _ = draw.gui_paint(&[
-            GuiDraw::Push(vec![PoseOp::Scale(scale, scale)]),
-            GuiDraw::Text {
-                text,
-                x: text_start_x,
-                y: pos_y + 4,
-                color: argb_white(alpha),
-                shadow: true,
-            },
-            GuiDraw::Pop,
-        ]);
-    }
-
-    // 3. Entry sprite (item icon or experience orb)
-    if with_sprite {
-        let sprite_x = if mirror {
-            pos_x + text_width + if text_width == 0 { 0 } else { TEXT_ITEM_MARGIN }
-        } else {
-            pos_x
-        };
-
-        match &entry.kind {
-            EntryKind::Item(item) => {
-                // DrawContext::item_stack does not yet support partial alpha tinting (gap: sunrise-org/sunrise#5594).
-                if alpha > 0.05 {
-                    let (draw_x, draw_y, item_size) = if item.pop_time > 0 {
-                        let pt = (item.pop_time as f32 - partial_tick).max(0.0);
-                        let pop_scale = 1.0 + pt / (ITEM_STACK_POP_TIME as f32);
-                        let size = 16.0 * scale * ((pop_scale + 1.0) * 0.5).clamp(1.0, 1.35);
-                        let x = (sprite_x as f32 + 8.0) * scale - size * 0.5;
-                        let y = (pos_y as f32 + 12.0) * scale - size * 0.75;
-                        (x, y, size)
-                    } else {
-                        (sprite_x as f32 * scale, pos_y as f32 * scale, 16.0 * scale)
-                    };
-                    let _ = draw.item_stack(&item.stack, [draw_x, draw_y], item_size);
-                }
-
-                if config.display.display_amount.is_sprite()
-                    && (entry.amount > 1 || config.display.display_single_count)
-                {
-                    let label = shorten_value(entry.amount);
-                    let label_w = host.text_width(&Text::literal(&label)).max(1) as f32;
-                    let count_scale = (16.0 / label_w).min(1.0);
-                    let total_scale = scale * count_scale;
-                    let cx = (sprite_x as f32 + 17.0) * scale - label_w * total_scale;
-                    let cy = (pos_y as f32 + 18.0) * scale - 9.0 * total_scale;
-                    draw.text_scaled(&label, [cx, cy], total_scale, argb_white(alpha), true);
-                }
-            }
-            EntryKind::Experience { tick_count, .. } => {
-                if xp_texture_ready {
-                    let tier = xp_texture_index(entry.amount);
-                    let tx = (tier % 4) * 16;
-                    let ty = (tier / 4) * 16;
-                    let tint = xp_orb_color(*tick_count as f32 / 2.0, alpha);
-                    let _ = draw.sprite(
-                        XP_ORB_SPRITE_ID,
-                        [tx as f32, ty as f32, 16.0, 16.0],
-                        [
-                            sprite_x as f32 * scale,
-                            pos_y as f32 * scale,
-                            16.0 * scale,
-                            16.0 * scale,
-                        ],
-                        Some(tint),
-                    );
-                }
-            }
+    let sprite_x = if mirror {
+        pos_x + text_width + if text_width == 0 { 0 } else { TEXT_ITEM_MARGIN }
+    } else {
+        pos_x
+    };
+    let count_label = match &entry.kind {
+        EntryKind::Item(_)
+            if with_sprite
+                && config.display.display_amount.is_sprite()
+                && (entry.amount > 1 || config.display.display_single_count) =>
+        {
+            let label = shorten_value(entry.amount);
+            let label_w = host.text_width(&Text::literal(&label)).max(1) as f32;
+            Some((Text::literal(label), label_w))
         }
+        _ => None,
+    };
+    let _ = draw.draw_gui(&mut |canvas| {
+        canvas.scope(&[PoseOp::Scale(scale, scale)], None, &mut |c| {
+            if text_width > 0 {
+                let _ = c.text(
+                    &text,
+                    [text_start_x as f32, (pos_y + 4) as f32],
+                    argb_white(alpha),
+                    true,
+                );
+            }
+            if with_sprite {
+                match &entry.kind {
+                    EntryKind::Item(item) => {
+                        // Item models take no alpha tint, so the icon stays opaque until the
+                        // entry is gone (gap: sunrise-org/sunrise#5594).
+                        if alpha > 0.05 {
+                            let _ = draw_item(c, item, sprite_x, pos_y, partial_tick);
+                        }
+                        if let Some((label, label_w)) = &count_label {
+                            let count_scale = (16.0 / label_w).min(1.0);
+                            let cx = (sprite_x as f32 + 17.0) - label_w * count_scale;
+                            let cy = (pos_y as f32 + 18.0) - 9.0 * count_scale;
+                            let _ = c.scope(
+                                &[
+                                    PoseOp::Translate(cx, cy),
+                                    PoseOp::Scale(count_scale, count_scale),
+                                ],
+                                None,
+                                &mut |label_canvas| {
+                                    label_canvas.text(label, [0.0, 0.0], argb_white(alpha), true)
+                                },
+                            );
+                        }
+                    }
+                    EntryKind::Experience { tick_count, .. } => {
+                        if let Some(id) = XP_ORB_TEXTURE_ID.as_ref() {
+                            let tier = xp_texture_index(entry.amount);
+                            let tint = xp_orb_color(*tick_count as f32 / 2.0, alpha);
+                            let _ = c.texture(
+                                id,
+                                [sprite_x as f32, pos_y as f32, 16.0, 16.0],
+                                GuiBlitRegion::new(
+                                    [((tier % 4) * 16) as f32, ((tier / 4) * 16) as f32],
+                                    [16, 16],
+                                    [64, 64],
+                                ),
+                                tint,
+                            );
+                        }
+                    }
+                }
+            }
+            Ok(())
+        })
+    });
+}
+
+/// Draws an item icon with vanilla's hotbar pop-in squash (`Gui.renderSlot`), then its
+/// decorations (bar, cooldown) outside the squeeze. The count is drawn by the caller.
+fn draw_item(
+    canvas: &mut dyn GuiCanvas,
+    item: &ItemEntry,
+    x: i32,
+    y: i32,
+    partial_tick: f32,
+) -> Result<(), GuiDrawError> {
+    let at = [x as f32, y as f32];
+    let pop = item.pop_time as f32 - partial_tick;
+    if item.pop_time > 0 && pop > 0.0 {
+        let grow = 1.0 + pop / (ITEM_STACK_POP_TIME as f32);
+        let (px, py) = (x as f32 + 8.0, y as f32 + 12.0);
+        canvas.scope(
+            &[
+                PoseOp::Translate(px, py),
+                PoseOp::Scale(1.0 / grow, (grow + 1.0) / 2.0),
+                PoseOp::Translate(-px, -py),
+            ],
+            None,
+            &mut |model| model.item(&item.stack, at, 0),
+        )?;
+    } else {
+        canvas.item(&item.stack, at, 0)?;
     }
+    canvas.item_decorations(&item.stack, at, Some(""))
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn xp_orb_sheet_has_expected_size_and_nonempty_tiers() {
-        let rgba = generate_xp_orb_sheet_rgba();
-        assert_eq!(rgba.len(), 64 * 64 * 4);
-        // Every tier 0..=10 has an opaque center pixel at (cell_x + 8, cell_y + 8).
-        for tier in 0u32..11 {
-            let cx = (tier % 4) * 16 + 8;
-            let cy = (tier / 4) * 16 + 8;
-            let alpha = rgba[((cy * 64 + cx) * 4 + 3) as usize];
-            assert_eq!(alpha, 255, "tier {tier} center should be opaque");
-        }
-    }
 
     #[test]
     fn argb_white_packs_alpha_channel() {

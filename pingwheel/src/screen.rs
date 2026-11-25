@@ -54,7 +54,7 @@ pub fn on_screen_init_post(
         |host, value| {
             let updated = update_client_config(|c| c.ping_volume = value);
             updated.write_to_host_settings(host);
-            persist_client_config(host, &updated);
+            persist_client_config(host.config_dir(), &updated);
         },
     )));
     widgets.add_widget(Box::new(IntSlider::new(
@@ -67,7 +67,7 @@ pub fn on_screen_init_post(
         |host, value| {
             let updated = update_client_config(|c| c.ping_duration = value);
             updated.write_to_host_settings(host);
-            persist_client_config(host, &updated);
+            persist_client_config(host.config_dir(), &updated);
         },
     )));
 
@@ -82,7 +82,7 @@ pub fn on_screen_init_post(
         |host, value| {
             let updated = update_client_config(|c| c.ping_distance = value);
             updated.write_to_host_settings(host);
-            persist_client_config(host, &updated);
+            persist_client_config(host.config_dir(), &updated);
         },
     )));
     widgets.add_widget(Box::new(IntSlider::new(
@@ -95,7 +95,7 @@ pub fn on_screen_init_post(
         |host, tenths| {
             let updated = update_client_config(|c| c.correction_period = tenths as f32 / 10.0);
             updated.write_to_host_settings(host);
-            persist_client_config(host, &updated);
+            persist_client_config(host.config_dir(), &updated);
         },
     )));
 
@@ -109,7 +109,7 @@ pub fn on_screen_init_post(
         |state, host| {
             let updated = update_client_config(|c| c.item_icon_visible = !c.item_icon_visible);
             updated.write_to_host_settings(host);
-            persist_client_config(host, &updated);
+            persist_client_config(host.config_dir(), &updated);
             state.label = format_bool_option(
                 "settings.pingwheel.item_icon_visible",
                 updated.item_icon_visible,
@@ -127,7 +127,7 @@ pub fn on_screen_init_post(
                 c.direction_indicator_visible = !c.direction_indicator_visible
             });
             updated.write_to_host_settings(host);
-            persist_client_config(host, &updated);
+            persist_client_config(host.config_dir(), &updated);
             state.label = format_bool_option(
                 "settings.pingwheel.direction_indicator_visible",
                 updated.direction_indicator_visible,
@@ -145,7 +145,7 @@ pub fn on_screen_init_post(
         |state, host| {
             let updated = update_client_config(|c| c.player_info_mode = c.player_info_mode.next());
             updated.write_to_host_settings(host);
-            persist_client_config(host, &updated);
+            persist_client_config(host.config_dir(), &updated);
             state.label = format_enum_option(
                 "settings.pingwheel.player_info_mode",
                 updated.player_info_mode.as_str(),
@@ -161,7 +161,7 @@ pub fn on_screen_init_post(
         |state, host| {
             let updated = update_client_config(|c| c.team_color_mode = c.team_color_mode.next());
             updated.write_to_host_settings(host);
-            persist_client_config(host, &updated);
+            persist_client_config(host.config_dir(), &updated);
             state.label = format_enum_option(
                 "settings.pingwheel.team_color_mode",
                 updated.team_color_mode.as_str(),
@@ -180,7 +180,7 @@ pub fn on_screen_init_post(
         |host, value| {
             let updated = update_client_config(|c| c.ping_size = value);
             updated.write_to_host_settings(host);
-            persist_client_config(host, &updated);
+            persist_client_config(host.config_dir(), &updated);
         },
     )));
 
@@ -210,7 +210,7 @@ pub fn on_screen_init_post(
                 let updated = update_client_config(|c| {
                     c.set_active_channel(addr.as_deref(), text);
                 });
-                persist_client_config(host, &updated);
+                persist_client_config(host.config_dir(), &updated);
                 CHANNEL_DIRTY.store(true, Ordering::Relaxed);
             })
             .on_submit(|_, host| {
@@ -271,7 +271,7 @@ pub fn on_screen_closing(host: &dyn ClientHost, screen: &ScreenView<'_>) {
         return;
     }
     let cfg: ClientConfig = client_config();
-    persist_client_config(host, &cfg);
+    persist_client_config(host.config_dir(), &cfg);
 }
 
 pub fn take_channel_dirty() -> bool {

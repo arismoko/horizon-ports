@@ -7,12 +7,13 @@
 //! first column whose `MOTION_BLOCKING` surface stands on a safe, solid full block with room for a
 //! player above is taken; the player is teleported there and their spawn point set to it.
 use std::collections::HashSet;
+use std::ops::ControlFlow;
 use std::sync::{Mutex, OnceLock};
 
 use mod_api::{
-    BlockPos, BlockShapeKind, Compound, ConfigPath, GlobalPos, Heightmap, Hooks, Host, HostSide,
+    BlockPos, BlockShapeKind, Compound, GlobalPos, Heightmap, Hooks, Host, HostSide, Identifier,
     JavaString, LevelRef, PlayerLoggedInEvent, PlayerRef, PlayerRespawnConfig, PlayerTickPostEvent,
-    ServerHost, Tag,
+    ServerHost, Tag, TagKey,
 };
 
 pub const MAX_SEARCH_RADIUS: i32 = 128;
@@ -55,25 +56,39 @@ pub fn parse_blocked(text: &str) -> Blocked {
     out
 }
 
+/// The blocked list with its tag names resolved to keys.
+struct Loaded {
+    list: Blocked,
+    tags: Vec<TagKey>,
+}
+
 /// The list in `config/safespawn/blocked_blocks.txt`, written with the defaults when missing; read once.
-fn blocked(host: &dyn Host) -> &'static Blocked {
-    static BLOCKED: OnceLock<Blocked> = OnceLock::new();
+fn blocked(host: &dyn Host) -> &'static Loaded {
+    static BLOCKED: OnceLock<Loaded> = OnceLock::new();
     BLOCKED.get_or_init(|| {
-        let files = host.config_files();
-        let Ok(path) = ConfigPath::new(CONFIG) else {
-            return parse_blocked(&DEFAULT_BLOCKED.join("\n"));
-        };
-        match files.read(&path) {
+        let path = host.config_dir().join(CONFIG);
+        let list = match std::fs::read(&path) {
             Ok(bytes) => parse_blocked(&String::from_utf8_lossy(&bytes)),
             Err(_) => {
                 let text = format!(
                     "; Blocks a new player may not spawn standing on.\n; One entry per line: a block id or a #tag.\n{}\n",
                     DEFAULT_BLOCKED.join("\n")
                 );
-                let _ = files.write(&path, text.as_bytes());
+                if let Some(parent) = path.parent() {
+                    let _ = std::fs::create_dir_all(parent);
+                }
+                let _ = std::fs::write(&path, &text);
                 parse_blocked(&text)
             }
-        }
+        };
+        let tags_host = host.tags();
+        let tags = list
+            .tags
+            .iter()
+            .filter_map(|t| Identifier::parse(t).ok())
+            .filter_map(|id| tags_host.key(&id))
+            .collect();
+        Loaded { list, tags }
     })
 }
 
@@ -111,28 +126,27 @@ fn is_blocked(host: &dyn Host, level: LevelRef, pos: [i32; 3]) -> bool {
     let Some(block) = level.block(host, pos) else {
         return false;
     };
-    let list = blocked(host);
+    let loaded = blocked(host);
     let id = block.id(host);
-    list.ids.iter().any(|b| Some(b.as_str()) == id)
-        || list
+    loaded.list.ids.iter().any(|b| Some(b.as_str()) == id)
+        || loaded
             .tags
             .iter()
-            .any(|t| host.block_in_tag(block, t) == Some(true))
+            .any(|&t| block.is_in_tag(host.tags(), t) == Some(true))
 }
 
 fn collision(host: &dyn Host, level: LevelRef, pos: [i32; 3]) -> Vec<[f64; 6]> {
-    level
-        .block_state(host, pos)
-        .and_then(|state| level.block_shape(host, state, pos, BlockShapeKind::Collision))
-        .unwrap_or_default()
+    let mut boxes = Vec::new();
+    if let Some(state) = level.block_state(host, pos) {
+        level.visit_block_shape(host, state, pos, BlockShapeKind::Collision, &mut |b| {
+            boxes.push(b);
+            ControlFlow::Continue(())
+        });
+    }
+    boxes
 }
 
-fn find_safe(
-    host: &mut dyn ServerHost,
-    level: LevelRef,
-    dimension: &str,
-    origin: [i32; 3],
-) -> Option<[i32; 3]> {
+fn find_safe(host: &mut dyn ServerHost, level: LevelRef, origin: [i32; 3]) -> Option<[i32; 3]> {
     let mut loaded = HashSet::new();
     for radius in 1..=MAX_SEARCH_RADIUS {
         let cols = ring([origin[0], origin[2]], radius);
@@ -142,11 +156,15 @@ fn find_safe(
                 let _ = level.load_chunk(host, chunk);
             }
         }
-        let heights = host
-            .surface_heights(dimension, &cols, Heightmap::MotionBlocking)
-            .ok()?;
         let host: &dyn Host = &*host;
-        for (&(x, z), h) in cols.iter().zip(heights) {
+        let mut heights = Vec::with_capacity(cols.len());
+        let _visited = level
+            .visit_surface_heights(host, &cols, Heightmap::MotionBlocking, &mut |pos, h| {
+                heights.push((pos, h));
+                ControlFlow::Continue(())
+            })
+            .ok()?;
+        for ((x, z), h) in heights {
             let Some(y) = h else { continue };
             let c = Column {
                 below_blocked: is_blocked(host, level, [x, y - 1, z]),
@@ -199,7 +217,7 @@ fn check(host: &mut dyn ServerHost, player: PlayerRef) {
     if !is_blocked(&*host, level, [feet[0], feet[1] - 1, feet[2]]) {
         return;
     }
-    let Some([x, y, z]) = find_safe(host, level, &dim.to_string(), feet) else {
+    let Some([x, y, z]) = find_safe(host, level, feet) else {
         eprintln!("[safespawn] no safe spawn within {MAX_SEARCH_RADIUS} blocks of {feet:?}");
         return;
     };

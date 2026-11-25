@@ -1,6 +1,11 @@
 //! Client and server configuration, TOML persistence, item filters, and Options -> Mods settings.
 
-use mod_api::{ClientHost, Config, ConfigKind, Identifier, ItemKey, Registrar, SettingSpec};
+use mod_api::{
+    ClientHost, ConfigKind, ConfigSpec, Identifier, ItemKey, Registrar, SettingKey, SettingSpec,
+    SettingValue,
+};
+use std::collections::HashMap;
+use std::sync::{LazyLock, Mutex, PoisonError};
 
 pub const MOD_ID: &str = "pickupnotifier";
 pub const CLIENT_CONFIG_FILE: &str = "pickupnotifier-client.toml";
@@ -958,194 +963,202 @@ display_item_name = {}
         cfg
     }
 
-    pub fn write_to_host_settings(&self, host: &dyn ClientHost) {
-        let set_bool =
-            |k: &str, v: bool| host.set_setting(MOD_ID, k, if v { "true" } else { "false" });
-        let set_u32 = |k: &str, v: u32| host.set_setting(MOD_ID, k, &v.to_string());
-        let set_f64 = |k: &str, v: f64| host.set_setting(MOD_ID, k, &format!("{v}"));
+    pub fn write_to_host_settings(&self, host: &mut dyn ClientHost) {
+        let mut w = SettingWriter { host };
+        w.set_bool(SET_CLIENT_ONLY, self.general.client_only);
+        w.set_bool(SET_INCLUDE_ITEMS, self.general.include_items);
+        w.set_bool(SET_INCLUDE_EXPERIENCE, self.general.include_experience);
+        w.set_bool(SET_INCLUDE_ARROWS, self.general.include_arrows);
+        w.set_bool(SET_EXPERIENCE_VALUE, self.general.experience_value);
+        w.set_bool(SET_DISABLE_IN_CREATIVE, self.general.disable_in_creative);
 
-        set_bool(SET_CLIENT_ONLY, self.general.client_only);
-        set_bool(SET_INCLUDE_ITEMS, self.general.include_items);
-        set_bool(SET_INCLUDE_EXPERIENCE, self.general.include_experience);
-        set_bool(SET_INCLUDE_ARROWS, self.general.include_arrows);
-        set_bool(SET_EXPERIENCE_VALUE, self.general.experience_value);
-        set_bool(SET_DISABLE_IN_CREATIVE, self.general.disable_in_creative);
-
-        set_u32(
+        w.set_u32(
             SET_COMBINE_ENTRIES,
             self.behavior.combine_entries.to_choice(),
         );
-        set_f64(
+        w.set_f64(
             SET_DISPLAY_TIME,
             f64::from(self.behavior.display_time.min(600)),
         );
-        set_u32(SET_MOVE_OUT, self.behavior.move_out.to_choice());
-        set_f64(SET_MOVE_TIME, f64::from(self.behavior.move_time.min(200)));
-        set_bool(SET_FADE_OUT, self.behavior.fade_out);
+        w.set_u32(SET_MOVE_OUT, self.behavior.move_out.to_choice());
+        w.set_f64(SET_MOVE_TIME, f64::from(self.behavior.move_time.min(200)));
+        w.set_bool(SET_FADE_OUT, self.behavior.fade_out);
 
-        set_bool(SET_DRAW_SPRITE, self.display.draw_sprite);
-        set_u32(
+        w.set_bool(SET_DRAW_SPRITE, self.display.draw_sprite);
+        w.set_u32(
             SET_DEFAULT_TEXT_COLOR,
             self.display.default_text_color.to_choice(),
         );
-        set_bool(SET_IGNORE_RARITY, self.display.ignore_rarity);
-        set_u32(SET_SCREEN_CORNER, self.display.screen_corner.to_choice());
-        set_f64(SET_OFFSET_X, f64::from(self.display.offset_x.min(200)));
-        set_f64(SET_OFFSET_Y, f64::from(self.display.offset_y.min(200)));
-        set_f64(SET_MAX_HEIGHT, (self.display.max_height * 100.0).round());
-        set_f64(SET_DISPLAY_SCALE, f64::from(self.display.display_scale));
-        set_u32(SET_DISPLAY_AMOUNT, self.display.display_amount.to_choice());
-        set_bool(SET_INVENTORY_COUNT, self.display.inventory_count);
-        set_bool(SET_DISPLAY_SINGLE_COUNT, self.display.display_single_count);
-        set_u32(
+        w.set_bool(SET_IGNORE_RARITY, self.display.ignore_rarity);
+        w.set_u32(SET_SCREEN_CORNER, self.display.screen_corner.to_choice());
+        w.set_f64(SET_OFFSET_X, f64::from(self.display.offset_x.min(200)));
+        w.set_f64(SET_OFFSET_Y, f64::from(self.display.offset_y.min(200)));
+        w.set_f64(SET_MAX_HEIGHT, (self.display.max_height * 100.0).round());
+        w.set_f64(SET_DISPLAY_SCALE, f64::from(self.display.display_scale));
+        w.set_u32(SET_DISPLAY_AMOUNT, self.display.display_amount.to_choice());
+        w.set_bool(SET_INVENTORY_COUNT, self.display.inventory_count);
+        w.set_bool(SET_DISPLAY_SINGLE_COUNT, self.display.display_single_count);
+        w.set_u32(
             SET_ENTRY_BACKGROUND,
             self.display.entry_background.to_choice(),
         );
-        set_bool(SET_DISPLAY_ITEM_NAME, self.display.display_item_name);
+        w.set_bool(SET_DISPLAY_ITEM_NAME, self.display.display_item_name);
     }
 
-    pub fn apply_setting(&mut self, host: &dyn ClientHost, key: &str) -> bool {
+    pub fn apply_setting(&mut self, key: &str, value: SettingValue) -> bool {
+        let toggle = match value {
+            SettingValue::Toggle(v) => Some(v),
+            _ => None,
+        };
+        let choice = match value {
+            SettingValue::Choice(v) => u32::try_from(v).ok(),
+            _ => None,
+        };
+        let range = match value {
+            SettingValue::Range(v) => Some(v),
+            _ => None,
+        };
         match key {
             SET_CLIENT_ONLY => {
-                if let Some(v) = host.setting_bool(key) {
+                if let Some(v) = toggle {
                     self.general.client_only = v;
                     return true;
                 }
             }
             SET_INCLUDE_ITEMS => {
-                if let Some(v) = host.setting_bool(key) {
+                if let Some(v) = toggle {
                     self.general.include_items = v;
                     return true;
                 }
             }
             SET_INCLUDE_EXPERIENCE => {
-                if let Some(v) = host.setting_bool(key) {
+                if let Some(v) = toggle {
                     self.general.include_experience = v;
                     return true;
                 }
             }
             SET_INCLUDE_ARROWS => {
-                if let Some(v) = host.setting_bool(key) {
+                if let Some(v) = toggle {
                     self.general.include_arrows = v;
                     return true;
                 }
             }
             SET_EXPERIENCE_VALUE => {
-                if let Some(v) = host.setting_bool(key) {
+                if let Some(v) = toggle {
                     self.general.experience_value = v;
                     return true;
                 }
             }
             SET_DISABLE_IN_CREATIVE => {
-                if let Some(v) = host.setting_bool(key) {
+                if let Some(v) = toggle {
                     self.general.disable_in_creative = v;
                     return true;
                 }
             }
             SET_COMBINE_ENTRIES => {
-                if let Some(v) = host.setting_choice(key) {
+                if let Some(v) = choice {
                     self.behavior.combine_entries = CombineEntries::from_choice(v);
                     return true;
                 }
             }
             SET_DISPLAY_TIME => {
-                if let Some(v) = host.setting_f64(key) {
+                if let Some(v) = range {
                     self.behavior.display_time = (v.round() as i32).max(0);
                     return true;
                 }
             }
             SET_MOVE_OUT => {
-                if let Some(v) = host.setting_choice(key) {
+                if let Some(v) = choice {
                     self.behavior.move_out = MovementDirection::from_choice(v);
                     return true;
                 }
             }
             SET_MOVE_TIME => {
-                if let Some(v) = host.setting_f64(key) {
+                if let Some(v) = range {
                     self.behavior.move_time = (v.round() as i32).max(0);
                     return true;
                 }
             }
             SET_FADE_OUT => {
-                if let Some(v) = host.setting_bool(key) {
+                if let Some(v) = toggle {
                     self.behavior.fade_out = v;
                     return true;
                 }
             }
             SET_DRAW_SPRITE => {
-                if let Some(v) = host.setting_bool(key) {
+                if let Some(v) = toggle {
                     self.display.draw_sprite = v;
                     return true;
                 }
             }
             SET_DEFAULT_TEXT_COLOR => {
-                if let Some(v) = host.setting_choice(key) {
+                if let Some(v) = choice {
                     self.display.default_text_color = TextColorChoice::from_choice(v);
                     return true;
                 }
             }
             SET_IGNORE_RARITY => {
-                if let Some(v) = host.setting_bool(key) {
+                if let Some(v) = toggle {
                     self.display.ignore_rarity = v;
                     return true;
                 }
             }
             SET_SCREEN_CORNER => {
-                if let Some(v) = host.setting_choice(key) {
+                if let Some(v) = choice {
                     self.display.screen_corner = AnchorPoint::from_choice(v);
                     return true;
                 }
             }
             SET_OFFSET_X => {
-                if let Some(v) = host.setting_f64(key) {
+                if let Some(v) = range {
                     self.display.offset_x = (v.round() as i32).max(0);
                     return true;
                 }
             }
             SET_OFFSET_Y => {
-                if let Some(v) = host.setting_f64(key) {
+                if let Some(v) = range {
                     self.display.offset_y = (v.round() as i32).max(0);
                     return true;
                 }
             }
             SET_MAX_HEIGHT => {
-                if let Some(v) = host.setting_f64(key) {
+                if let Some(v) = range {
                     self.display.max_height = (v / 100.0).clamp(0.0, 1.0);
                     return true;
                 }
             }
             SET_DISPLAY_SCALE => {
-                if let Some(v) = host.setting_f64(key) {
+                if let Some(v) = range {
                     self.display.display_scale = (v.round() as i32).clamp(1, 24);
                     return true;
                 }
             }
             SET_DISPLAY_AMOUNT => {
-                if let Some(v) = host.setting_choice(key) {
+                if let Some(v) = choice {
                     self.display.display_amount = DisplayAmount::from_choice(v);
                     return true;
                 }
             }
             SET_INVENTORY_COUNT => {
-                if let Some(v) = host.setting_bool(key) {
+                if let Some(v) = toggle {
                     self.display.inventory_count = v;
                     return true;
                 }
             }
             SET_DISPLAY_SINGLE_COUNT => {
-                if let Some(v) = host.setting_bool(key) {
+                if let Some(v) = toggle {
                     self.display.display_single_count = v;
                     return true;
                 }
             }
             SET_ENTRY_BACKGROUND => {
-                if let Some(v) = host.setting_choice(key) {
+                if let Some(v) = choice {
                     self.display.entry_background = EntryBackground::from_choice(v);
                     return true;
                 }
             }
             SET_DISPLAY_ITEM_NAME => {
-                if let Some(v) = host.setting_bool(key) {
+                if let Some(v) = toggle {
                     self.display.display_item_name = v;
                     return true;
                 }
@@ -1202,13 +1215,57 @@ backpack_integration = true
     }
 }
 
-pub fn register_mod_configs(configs: &mut Vec<Config>) {
+/// Setting handles by registered key, kept from `register_settings` for typed writes.
+static SETTING_KEYS: LazyLock<Mutex<HashMap<String, SettingKey>>> =
+    LazyLock::new(|| Mutex::new(HashMap::new()));
+
+fn setting_key(name: &str) -> Option<SettingKey> {
+    SETTING_KEYS
+        .lock()
+        .unwrap_or_else(PoisonError::into_inner)
+        .get(name)
+        .copied()
+}
+
+/// Writes this mod's settings through their owner-bound handles.
+struct SettingWriter<'a> {
+    host: &'a mut dyn ClientHost,
+}
+
+impl SettingWriter<'_> {
+    fn put(&mut self, name: &str, value: SettingValue) {
+        if let Some(key) = setting_key(name) {
+            let _ = self.host.set_setting(key, value);
+        }
+    }
+
+    fn set_bool(&mut self, name: &str, v: bool) {
+        self.put(name, SettingValue::Toggle(v));
+    }
+
+    fn set_u32(&mut self, name: &str, v: u32) {
+        self.put(name, SettingValue::Choice(v as usize));
+    }
+
+    fn set_f64(&mut self, name: &str, v: f64) {
+        self.put(name, SettingValue::Range(v));
+    }
+}
+
+/// Registers the client and server config files; `listener` hears each file's lifecycle.
+pub fn register_mod_configs(
+    r: &mut dyn Registrar,
+    listener: std::sync::Arc<mod_api::ConfigListener>,
+) {
     let client_toml = ClientConfig::default().to_toml();
-    configs.push(Config::new(MOD_ID, ConfigKind::Client, &client_toml).file(CLIENT_CONFIG_FILE));
-    configs.push(
-        Config::new(MOD_ID, ConfigKind::Server, ServerConfig::default_toml())
-            .file(SERVER_CONFIG_FILE),
-    );
+    let specs = [
+        ConfigSpec::new(ConfigKind::Client, client_toml).file(CLIENT_CONFIG_FILE),
+        ConfigSpec::new(ConfigKind::Server, ServerConfig::default_toml()).file(SERVER_CONFIG_FILE),
+    ];
+    for spec in specs {
+        // A refused duplicate is logged by the registrar; the first registration stays active.
+        let _ = r.register_config(spec, Some(listener.clone()));
+    }
 }
 
 pub fn register_settings(r: &mut dyn Registrar) {
@@ -1416,8 +1473,12 @@ pub fn register_settings(r: &mut dyn Registrar) {
         .tooltip("pickupnotifier.setting.display_item_name.tooltip"),
     ];
 
+    let mut keys = SETTING_KEYS.lock().unwrap_or_else(PoisonError::into_inner);
     for spec in specs {
-        let _ = r.register_setting(spec);
+        let name = spec.key.clone();
+        if let Ok(key) = r.register_setting(spec) {
+            keys.insert(name, key);
+        }
     }
 }
 
