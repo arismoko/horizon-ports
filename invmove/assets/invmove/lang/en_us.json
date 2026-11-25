@@ -84,5 +84,20 @@
   "config.invmove.screen.background.smithing": "Hide Background in Smithing Table",
   "config.invmove.screen.background.villager": "Hide Background in Villager",
   "config.invmove.screen.background.book": "Hide Background in Book",
-  "config.invmove.screen.background.advancements": "Hide Background in Advancements"
+  "config.invmove.screen.background.advancements": "Hide Background in Advancements",
+  "config.invmove.screen.title": "InvMove",
+  "config.invmove.tab.general": "General",
+  "config.invmove.tab.movement": "Movement",
+  "config.invmove.tab.keys": "Keys",
+  "config.invmove.tab.background": "Background",
+  "config.invmove.tab.screens_movement": "Screen Movement",
+  "config.invmove.tab.screens_background": "Screen Background",
+  "config.invmove.tab.unrecognized": "Unrecognized",
+  "config.invmove.list.movement": "Movement in",
+  "config.invmove.list.background": "Background of",
+  "config.invmove.list.remove": "Remove extra key:",
+  "config.invmove.list.empty": "Nothing listed yet. Screens appear here once you open them.",
+  "config.invmove.page.previous": "Previous",
+  "config.invmove.page.next": "Next",
+  "config.invmove.extra_key.hint": "Add an extra key, e.g. key.attack"
 }

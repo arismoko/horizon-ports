@@ -77,6 +77,15 @@
   "config.dynamicfps.mock_battery_data": "Use Mock Battery Data",
   "config.dynamicfps.mock_battery_data_tooltip": "Simulate a battery for testing battery state, HUD indicator, and notifications.",
 
+  "gui.dynamicfps.config.title": "Dynamic FPS",
+  "config.dynamicfps.tab.general": "General",
+  "config.dynamicfps.tab.unfocused": "Unfocused",
+  "config.dynamicfps.tab.invisible": "Minimized",
+  "config.dynamicfps.tab.abandoned": "Idle",
+  "config.dynamicfps.tab.hovered": "Hovered",
+  "config.dynamicfps.tab.battery": "Battery",
+  "config.dynamicfps.tab.battery_hud": "Battery HUD",
+
   "key.dynamicfps.toggle_forced": "Force Unfocused Mode (Toggle)",
   "key.dynamicfps.toggle_disabled": "Disable Dynamic FPS (Toggle)",
 

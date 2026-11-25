@@ -1,6 +1,10 @@
 //! Bridging Mod configuration model, TOML persistence, and Options > Mods settings.
 
-use mod_api::{ClientHost, Config, ConfigKind, Registrar, SettingSpec};
+use mod_api::{
+    ClientHost, ConfigKind, ConfigListener, ConfigSpec, Registrar, SettingKey, SettingSpec,
+    SettingValue,
+};
+use std::sync::Arc;
 
 pub const MOD_ID: &str = "bridgingmod";
 pub const CONFIG_FILE_NAME: &str = "bridgingmod.toml";
@@ -511,382 +515,387 @@ show_debug_trace = {}\n",
         cfg
     }
 
-    /// Apply a single Options > Mods `setting_changed` key onto `self`.
-    pub fn apply_single_setting(&mut self, host: &dyn ClientHost, key: &str) -> bool {
-        match key {
-            SET_ENABLE_BRIDGING => {
-                if let Some(v) = host.setting_bool(key) {
-                    self.enable_bridging_assist = v;
-                    return true;
-                }
+    /// Apply one changed setting (`setting_changed`) onto `self`; true when a field changed.
+    pub fn apply_single_setting(&mut self, key: &str, value: SettingValue) -> bool {
+        let before = self.clone();
+        let choice = |index: usize| u32::try_from(index).unwrap_or(u32::MAX);
+        match (key, value) {
+            (SET_ENABLE_BRIDGING, SettingValue::Toggle(v)) => self.enable_bridging_assist = v,
+            (SET_MIN_BRIDGE_DISTANCE, SettingValue::Range(v)) if v.is_finite() => {
+                self.min_bridge_distance = (v as f32).clamp(0.0, 100.0);
             }
-            SET_MIN_BRIDGE_DISTANCE => {
-                if let Some(v) = host.setting_f64(key)
-                    && v.is_finite()
-                {
-                    self.min_bridge_distance = (v as f32).clamp(0.0, 100.0);
-                    return true;
-                }
+            (SET_ONLY_WHEN_CROUCHED, SettingValue::Toggle(v)) => {
+                self.only_bridge_when_crouched = v;
             }
-            SET_ONLY_WHEN_CROUCHED => {
-                if let Some(v) = host.setting_bool(key) {
-                    self.only_bridge_when_crouched = v;
-                    return true;
-                }
+            (SET_SUPPORTED_AXES, SettingValue::Choice(v)) => {
+                self.supported_bridge_axes = PlacementAxisMode::from_choice(choice(v));
             }
-            SET_SUPPORTED_AXES => {
-                if let Some(v) = host.setting_choice(key) {
-                    self.supported_bridge_axes = PlacementAxisMode::from_choice(v);
-                    return true;
-                }
+            (SET_SUPPORTED_AXES_CROUCHED, SettingValue::Choice(v)) => {
+                self.supported_bridge_axes_when_crouched =
+                    PlacementAxisModeOverride::from_choice(choice(v));
             }
-            SET_SUPPORTED_AXES_CROUCHED => {
-                if let Some(v) = host.setting_choice(key) {
-                    self.supported_bridge_axes_when_crouched =
-                        PlacementAxisModeOverride::from_choice(v);
-                    return true;
-                }
+            (SET_DELAY_POST_BRIDGING, SettingValue::Range(v)) if v.is_finite() => {
+                self.delay_post_bridging = v.round().clamp(0.0, 20.0) as u32;
             }
-            SET_DELAY_POST_BRIDGING => {
-                if let Some(v) = host.setting_f64(key)
-                    && v.is_finite()
-                {
-                    self.delay_post_bridging = v.round().clamp(0.0, 20.0) as u32;
-                    return true;
-                }
+            (SET_SHOW_CROSSHAIR, SettingValue::Toggle(v)) => self.show_crosshair = v,
+            (SET_SHOW_OUTLINE, SettingValue::Toggle(v)) => self.show_outline = v,
+            (SET_SHOW_NON_BRIDGING_OUTLINE, SettingValue::Toggle(v)) => {
+                self.show_outline_even_when_not_bridging = v;
             }
-            SET_SHOW_CROSSHAIR => {
-                if let Some(v) = host.setting_bool(key) {
-                    self.show_crosshair = v;
-                    return true;
-                }
+            (SET_NON_BRIDGE_RESPECTS_CROUCH, SettingValue::Toggle(v)) => {
+                self.non_bridge_respects_crouch_rules = v;
             }
-            SET_SHOW_OUTLINE => {
-                if let Some(v) = host.setting_bool(key) {
-                    self.show_outline = v;
-                    return true;
-                }
+            (SET_OUTLINE_COLOR, SettingValue::Color(v)) => self.outline_color_rgb = v & 0x00FF_FFFF,
+            (SET_OUTLINE_ALPHA, SettingValue::Range(v)) if v.is_finite() => {
+                self.outline_alpha = (v as f32).clamp(0.0, 1.0);
             }
-            SET_SHOW_NON_BRIDGING_OUTLINE => {
-                if let Some(v) = host.setting_bool(key) {
-                    self.show_outline_even_when_not_bridging = v;
-                    return true;
-                }
+            (SET_SKIP_TORCH_BRIDGING, SettingValue::Toggle(v)) => self.skip_torch_bridging = v,
+            (SET_ENABLE_SLAB_ASSIST, SettingValue::Toggle(v)) => self.enable_slab_assist = v,
+            (SET_ENABLE_NON_SOLID_REPLACE, SettingValue::Toggle(v)) => {
+                self.enable_non_solid_replace = v;
             }
-            SET_NON_BRIDGE_RESPECTS_CROUCH => {
-                if let Some(v) = host.setting_bool(key) {
-                    self.non_bridge_respects_crouch_rules = v;
-                    return true;
-                }
+            (SET_SNAP_STRENGTH, SettingValue::Range(v)) if v.is_finite() => {
+                self.bridging_snap_strength = (v as f32).clamp(0.0, 1.0);
             }
-            SET_OUTLINE_COLOR => {
-                if let Some(v) = host.setting_color(key) {
-                    self.outline_color_rgb = v & 0x00FF_FFFF;
-                    return true;
-                }
+            (SET_ADJACENCY, SettingValue::Choice(v)) => {
+                self.bridging_adjacency = BridgingAdjacency::from_choice(choice(v));
             }
-            SET_OUTLINE_ALPHA => {
-                if let Some(v) = host.setting_f64(key)
-                    && v.is_finite()
-                {
-                    self.outline_alpha = (v as f32).clamp(0.0, 1.0);
-                    return true;
-                }
+            (SET_PERSPECTIVE_LOCK, SettingValue::Choice(v)) => {
+                self.perspective_lock = SourcePerspective::from_choice(choice(v));
             }
-            SET_SKIP_TORCH_BRIDGING => {
-                if let Some(v) = host.setting_bool(key) {
-                    self.skip_torch_bridging = v;
-                    return true;
-                }
+            (SET_SHOW_DEBUG_HIGHLIGHT, SettingValue::Toggle(v)) => self.show_debug_highlight = v,
+            (SET_SHOW_NON_BRIDGING_DEBUG_HIGHLIGHT, SettingValue::Toggle(v)) => {
+                self.show_non_bridging_debug_highlight = v;
             }
-            SET_ENABLE_SLAB_ASSIST => {
-                if let Some(v) = host.setting_bool(key) {
-                    self.enable_slab_assist = v;
-                    return true;
-                }
-            }
-            SET_ENABLE_NON_SOLID_REPLACE => {
-                if let Some(v) = host.setting_bool(key) {
-                    self.enable_non_solid_replace = v;
-                    return true;
-                }
-            }
-            SET_SNAP_STRENGTH => {
-                if let Some(v) = host.setting_f64(key)
-                    && v.is_finite()
-                {
-                    self.bridging_snap_strength = (v as f32).clamp(0.0, 1.0);
-                    return true;
-                }
-            }
-            SET_ADJACENCY => {
-                if let Some(v) = host.setting_choice(key) {
-                    self.bridging_adjacency = BridgingAdjacency::from_choice(v);
-                    return true;
-                }
-            }
-            SET_PERSPECTIVE_LOCK => {
-                if let Some(v) = host.setting_choice(key) {
-                    self.perspective_lock = SourcePerspective::from_choice(v);
-                    return true;
-                }
-            }
-            SET_SHOW_DEBUG_HIGHLIGHT => {
-                if let Some(v) = host.setting_bool(key) {
-                    self.show_debug_highlight = v;
-                    return true;
-                }
-            }
-            SET_SHOW_NON_BRIDGING_DEBUG_HIGHLIGHT => {
-                if let Some(v) = host.setting_bool(key) {
-                    self.show_non_bridging_debug_highlight = v;
-                    return true;
-                }
-            }
-            SET_SHOW_DEBUG_TRACE => {
-                if let Some(v) = host.setting_bool(key) {
-                    self.show_debug_trace = v;
-                    return true;
-                }
-            }
+            (SET_SHOW_DEBUG_TRACE, SettingValue::Toggle(v)) => self.show_debug_trace = v,
             _ => {}
         }
-        false
+        *self != before
     }
 
-    /// Mirror all config fields into Sunrise's Options > Mods settings store.
-    pub fn write_to_host_settings(&self, host: &dyn ClientHost) {
-        let set_bool = |k: &str, v: bool| {
-            host.set_setting(MOD_ID, k, if v { "true" } else { "false" });
-        };
-        let set_u32 = |k: &str, v: u32| {
-            host.set_setting(MOD_ID, k, &v.to_string());
-        };
-        let set_f64 = |k: &str, v: f64| {
-            host.set_setting(MOD_ID, k, &v.to_string());
-        };
-        let set_color = |k: &str, rgb: u32| {
-            let masked = rgb & 0x00FF_FFFF;
-            host.set_setting(MOD_ID, k, &format!("#{masked:06x}"));
+    /// Mirror all config fields into Sunrise's Options > Mods settings store. Each write
+    /// notifies `setting_changed` synchronously, so the caller must not hold its runtime lock.
+    pub fn write_to_host_settings(&self, host: &mut dyn ClientHost, keys: &SettingKeys) {
+        let mut set = |name: &str, value: SettingValue| {
+            if let Some(key) = keys.get(name) {
+                let _ = host.set_setting(key, value);
+            }
         };
 
-        set_bool(SET_ENABLE_BRIDGING, self.enable_bridging_assist);
-        set_f64(SET_MIN_BRIDGE_DISTANCE, f64::from(self.min_bridge_distance));
-        set_bool(SET_ONLY_WHEN_CROUCHED, self.only_bridge_when_crouched);
-        set_u32(SET_SUPPORTED_AXES, self.supported_bridge_axes.to_choice());
-        set_u32(
-            SET_SUPPORTED_AXES_CROUCHED,
-            self.supported_bridge_axes_when_crouched.to_choice(),
-        );
-        set_f64(SET_DELAY_POST_BRIDGING, f64::from(self.delay_post_bridging));
-
-        set_bool(SET_SHOW_CROSSHAIR, self.show_crosshair);
-        set_bool(SET_SHOW_OUTLINE, self.show_outline);
-        set_bool(
-            SET_SHOW_NON_BRIDGING_OUTLINE,
-            self.show_outline_even_when_not_bridging,
-        );
-        set_bool(
-            SET_NON_BRIDGE_RESPECTS_CROUCH,
-            self.non_bridge_respects_crouch_rules,
-        );
-        set_color(SET_OUTLINE_COLOR, self.outline_color_rgb);
-        set_f64(SET_OUTLINE_ALPHA, f64::from(self.outline_alpha));
-
-        set_bool(SET_SKIP_TORCH_BRIDGING, self.skip_torch_bridging);
-        set_bool(SET_ENABLE_SLAB_ASSIST, self.enable_slab_assist);
-        set_bool(SET_ENABLE_NON_SOLID_REPLACE, self.enable_non_solid_replace);
-        set_f64(SET_SNAP_STRENGTH, f64::from(self.bridging_snap_strength));
-        set_u32(SET_ADJACENCY, self.bridging_adjacency.to_choice());
-        set_u32(SET_PERSPECTIVE_LOCK, self.perspective_lock.to_choice());
-
-        set_bool(SET_SHOW_DEBUG_HIGHLIGHT, self.show_debug_highlight);
-        set_bool(
-            SET_SHOW_NON_BRIDGING_DEBUG_HIGHLIGHT,
-            self.show_non_bridging_debug_highlight,
-        );
-        set_bool(SET_SHOW_DEBUG_TRACE, self.show_debug_trace);
-    }
-}
-
-/// Register the client config file `config/bridgingmod.toml`.
-pub fn register_mod_configs(configs: &mut Vec<Config>) {
-    let default_toml = BridgingConfig::default().to_toml();
-    configs.push(Config::new(MOD_ID, ConfigKind::Client, &default_toml).file(CONFIG_FILE_NAME));
-}
-
-/// Register all in-game settings on Sunrise's Options > Mods > Bridging Mod page.
-pub fn register_settings(r: &mut dyn Registrar) {
-    let specs = [
-        // Features
-        SettingSpec::toggle(
+        set(
             SET_ENABLE_BRIDGING,
-            "config.bridgingmod.option.enableBridgingAssist",
-            true,
-        )
-        .tooltip("config.bridgingmod.option.enableBridgingAssist.description.0"),
-        SettingSpec::range(
+            SettingValue::Toggle(self.enable_bridging_assist),
+        );
+        set(
             SET_MIN_BRIDGE_DISTANCE,
-            "config.bridgingmod.option.minBridgeDistance",
-            0.0,
-            100.0,
-            0.5,
-            20.0,
-        )
-        .tooltip("config.bridgingmod.option.minBridgeDistance.description.0"),
-        SettingSpec::toggle(
+            SettingValue::Range(f64::from(self.min_bridge_distance)),
+        );
+        set(
             SET_ONLY_WHEN_CROUCHED,
-            "config.bridgingmod.option.onlyBridgeWhenCrouched",
-            false,
-        )
-        .tooltip("config.bridgingmod.option.onlyBridgeWhenCrouched.description.0"),
-        SettingSpec::choice(
+            SettingValue::Toggle(self.only_bridge_when_crouched),
+        );
+        set(
             SET_SUPPORTED_AXES,
-            "config.bridgingmod.option.supportedBridgeAxes",
-            [
-                "enum.bridgingmod.placement_axis.horizontal",
-                "enum.bridgingmod.placement_axis.vertical",
-                "enum.bridgingmod.placement_axis.both",
-            ],
-            2,
-        )
-        .tooltip("config.bridgingmod.option.supportedBridgeAxes.description.0"),
-        SettingSpec::choice(
+            SettingValue::Choice(self.supported_bridge_axes.to_choice() as usize),
+        );
+        set(
             SET_SUPPORTED_AXES_CROUCHED,
-            "config.bridgingmod.option.supportedBridgeAxesWhenCrouched",
-            [
-                "enum.bridgingmod.placement_axis.horizontal",
-                "enum.bridgingmod.placement_axis.vertical",
-                "enum.bridgingmod.placement_axis.both",
-                "enum.bridgingmod.placement_axis.fallback",
-            ],
-            3,
-        )
-        .tooltip("config.bridgingmod.option.supportedBridgeAxesWhenCrouched.description.0"),
-        SettingSpec::range(
+            SettingValue::Choice(self.supported_bridge_axes_when_crouched.to_choice() as usize),
+        );
+        set(
             SET_DELAY_POST_BRIDGING,
-            "config.bridgingmod.option.delayPostBridging",
-            0.0,
-            20.0,
-            1.0,
-            4.0,
-        )
-        .tooltip("config.bridgingmod.option.delayPostBridging.description.0"),
-        // Visuals
-        SettingSpec::toggle(
-            SET_SHOW_CROSSHAIR,
-            "config.bridgingmod.option.showCrosshair",
-            true,
-        )
-        .tooltip("config.bridgingmod.option.showCrosshair.description.0"),
-        SettingSpec::toggle(
-            SET_SHOW_OUTLINE,
-            "config.bridgingmod.option.showOutline",
-            true,
-        )
-        .tooltip("config.bridgingmod.option.showOutline.description.0"),
-        SettingSpec::toggle(
-            SET_SHOW_NON_BRIDGING_OUTLINE,
-            "config.bridgingmod.option.showOutlineEvenWhenNotBridging",
-            false,
-        )
-        .tooltip("config.bridgingmod.option.showOutlineEvenWhenNotBridging.description.0"),
-        SettingSpec::toggle(
-            SET_NON_BRIDGE_RESPECTS_CROUCH,
-            "config.bridgingmod.option.nonBridgeRespectsCrouchRules",
-            true,
-        )
-        .tooltip("config.bridgingmod.option.nonBridgeRespectsCrouchRules.description.0"),
-        SettingSpec::color(
-            SET_OUTLINE_COLOR,
-            "config.bridgingmod.option.outlineColour",
-            0x00_0000,
-        )
-        .tooltip("config.bridgingmod.option.outlineColour.description.0"),
-        SettingSpec::range(
-            SET_OUTLINE_ALPHA,
-            "config.bridgingmod.option.outlineAlpha",
-            0.0,
-            1.0,
-            0.05,
-            0.4,
-        )
-        .tooltip("config.bridgingmod.option.outlineAlpha.description.0"),
-        // Fixes
-        SettingSpec::toggle(
-            SET_SKIP_TORCH_BRIDGING,
-            "config.bridgingmod.option.skipTorchBridging",
-            true,
-        )
-        .tooltip("config.bridgingmod.option.skipTorchBridging.description.0"),
-        SettingSpec::toggle(
-            SET_ENABLE_SLAB_ASSIST,
-            "config.bridgingmod.option.enableSlabAssist",
-            true,
-        )
-        .tooltip("config.bridgingmod.option.enableSlabAssist.description.0"),
-        SettingSpec::toggle(
-            SET_ENABLE_NON_SOLID_REPLACE,
-            "config.bridgingmod.option.enableNonSolidReplace",
-            true,
-        )
-        .tooltip("config.bridgingmod.option.enableNonSolidReplace.description.0"),
-        SettingSpec::range(
-            SET_SNAP_STRENGTH,
-            "config.bridgingmod.option.bridgingSnapStrength",
-            0.0,
-            1.0,
-            0.05,
-            1.0,
-        )
-        .tooltip("config.bridgingmod.option.bridgingSnapStrength.description.0"),
-        SettingSpec::choice(
-            SET_ADJACENCY,
-            "config.bridgingmod.option.bridgingAdjacency",
-            [
-                "enum.bridgingmod.bridging_adjacency.disabled",
-                "enum.bridgingmod.bridging_adjacency.faces",
-                "enum.bridgingmod.bridging_adjacency.edges",
-                "enum.bridgingmod.bridging_adjacency.corners",
-            ],
-            3,
-        )
-        .tooltip("config.bridgingmod.option.bridgingAdjacency.description.0"),
-        SettingSpec::choice(
-            SET_PERSPECTIVE_LOCK,
-            "config.bridgingmod.option.perspectiveLock",
-            [
-                "enum.bridgingmod.source_perspective.let_bridging_mod_decide",
-                "enum.bridgingmod.source_perspective.copy_toggle_perspective",
-                "enum.bridgingmod.source_perspective.always_eyeline",
-            ],
-            0,
-        )
-        .tooltip("config.bridgingmod.option.perspectiveLock.description.0"),
-        // Debug
-        SettingSpec::toggle(
-            SET_SHOW_DEBUG_HIGHLIGHT,
-            "config.bridgingmod.option.showDebugHighlight",
-            true,
-        )
-        .tooltip("config.bridgingmod.option.showDebugHighlight.description.0"),
-        SettingSpec::toggle(
-            SET_SHOW_NON_BRIDGING_DEBUG_HIGHLIGHT,
-            "config.bridgingmod.option.showNonBridgingDebugHighlight",
-            false,
-        )
-        .tooltip("config.bridgingmod.option.showNonBridgingDebugHighlight.description.0"),
-        SettingSpec::toggle(
-            SET_SHOW_DEBUG_TRACE,
-            "config.bridgingmod.option.showDebugTrace",
-            false,
-        )
-        .tooltip("config.bridgingmod.option.showDebugTrace.description.0"),
-    ];
+            SettingValue::Range(f64::from(self.delay_post_bridging)),
+        );
 
-    for spec in specs {
-        let _ = r.register_setting(spec);
+        set(
+            SET_SHOW_CROSSHAIR,
+            SettingValue::Toggle(self.show_crosshair),
+        );
+        set(SET_SHOW_OUTLINE, SettingValue::Toggle(self.show_outline));
+        set(
+            SET_SHOW_NON_BRIDGING_OUTLINE,
+            SettingValue::Toggle(self.show_outline_even_when_not_bridging),
+        );
+        set(
+            SET_NON_BRIDGE_RESPECTS_CROUCH,
+            SettingValue::Toggle(self.non_bridge_respects_crouch_rules),
+        );
+        set(
+            SET_OUTLINE_COLOR,
+            SettingValue::Color(self.outline_color_rgb & 0x00FF_FFFF),
+        );
+        set(
+            SET_OUTLINE_ALPHA,
+            SettingValue::Range(f64::from(self.outline_alpha)),
+        );
+
+        set(
+            SET_SKIP_TORCH_BRIDGING,
+            SettingValue::Toggle(self.skip_torch_bridging),
+        );
+        set(
+            SET_ENABLE_SLAB_ASSIST,
+            SettingValue::Toggle(self.enable_slab_assist),
+        );
+        set(
+            SET_ENABLE_NON_SOLID_REPLACE,
+            SettingValue::Toggle(self.enable_non_solid_replace),
+        );
+        set(
+            SET_SNAP_STRENGTH,
+            SettingValue::Range(f64::from(self.bridging_snap_strength)),
+        );
+        set(
+            SET_ADJACENCY,
+            SettingValue::Choice(self.bridging_adjacency.to_choice() as usize),
+        );
+        set(
+            SET_PERSPECTIVE_LOCK,
+            SettingValue::Choice(self.perspective_lock.to_choice() as usize),
+        );
+
+        set(
+            SET_SHOW_DEBUG_HIGHLIGHT,
+            SettingValue::Toggle(self.show_debug_highlight),
+        );
+        set(
+            SET_SHOW_NON_BRIDGING_DEBUG_HIGHLIGHT,
+            SettingValue::Toggle(self.show_non_bridging_debug_highlight),
+        );
+        set(
+            SET_SHOW_DEBUG_TRACE,
+            SettingValue::Toggle(self.show_debug_trace),
+        );
     }
+}
+
+/// Translation keys of the config screen's tabs, in tab order (the original's YACL categories).
+pub const TAB_LABELS: [&str; 4] = [
+    "config.bridgingmod.category.feature",
+    "config.bridgingmod.category.vfx",
+    "config.bridgingmod.category.fixes",
+    "config.bridgingmod.category.debug",
+];
+
+/// A registered setting with the config screen tab that shows it.
+#[derive(Clone, Debug)]
+pub struct RegisteredSetting {
+    pub tab: usize,
+    pub key: SettingKey,
+    pub spec: SettingSpec,
+}
+
+/// The keys `Registrar::register_setting` returned, in registration order.
+#[derive(Clone, Debug, Default)]
+pub struct SettingKeys(Vec<RegisteredSetting>);
+
+impl SettingKeys {
+    /// The key registered under `name`, if registration accepted it.
+    pub fn get(&self, name: &str) -> Option<SettingKey> {
+        self.0
+            .iter()
+            .find(|setting| setting.spec.key == name)
+            .map(|setting| setting.key)
+    }
+
+    pub fn iter(&self) -> impl Iterator<Item = &RegisteredSetting> {
+        self.0.iter()
+    }
+}
+
+/// Register the client config file `config/bridgingmod.toml` with its lifecycle listener.
+pub fn register_config_file(r: &mut dyn Registrar, listener: Arc<ConfigListener>) {
+    let default_toml = BridgingConfig::default().to_toml();
+    let spec = ConfigSpec::new(ConfigKind::Client, default_toml).file(CONFIG_FILE_NAME);
+    let _ = r.register_config(spec, Some(listener));
+}
+
+/// Register all in-game settings on Sunrise's Options > Mods > Bridging Mod page and return
+/// their owner-bound keys.
+pub fn register_settings(r: &mut dyn Registrar) -> SettingKeys {
+    let mut keys = Vec::new();
+    for (tab, specs) in setting_specs().into_iter().enumerate() {
+        for spec in specs {
+            if let Ok(key) = r.register_setting(spec.clone()) {
+                keys.push(RegisteredSetting { tab, key, spec });
+            }
+        }
+    }
+    SettingKeys(keys)
+}
+
+/// Every setting, grouped by config screen tab (`TAB_LABELS`).
+fn setting_specs() -> [Vec<SettingSpec>; 4] {
+    [
+        vec![
+            SettingSpec::toggle(
+                SET_ENABLE_BRIDGING,
+                "config.bridgingmod.option.enableBridgingAssist",
+                true,
+            )
+            .tooltip("config.bridgingmod.option.enableBridgingAssist.description.0"),
+            SettingSpec::range(
+                SET_MIN_BRIDGE_DISTANCE,
+                "config.bridgingmod.option.minBridgeDistance",
+                0.0,
+                100.0,
+                0.5,
+                20.0,
+            )
+            .tooltip("config.bridgingmod.option.minBridgeDistance.description.0"),
+            SettingSpec::toggle(
+                SET_ONLY_WHEN_CROUCHED,
+                "config.bridgingmod.option.onlyBridgeWhenCrouched",
+                false,
+            )
+            .tooltip("config.bridgingmod.option.onlyBridgeWhenCrouched.description.0"),
+            SettingSpec::choice(
+                SET_SUPPORTED_AXES,
+                "config.bridgingmod.option.supportedBridgeAxes",
+                [
+                    "enum.bridgingmod.placement_axis.horizontal",
+                    "enum.bridgingmod.placement_axis.vertical",
+                    "enum.bridgingmod.placement_axis.both",
+                ],
+                2,
+            )
+            .tooltip("config.bridgingmod.option.supportedBridgeAxes.description.0"),
+            SettingSpec::choice(
+                SET_SUPPORTED_AXES_CROUCHED,
+                "config.bridgingmod.option.supportedBridgeAxesWhenCrouched",
+                [
+                    "enum.bridgingmod.placement_axis.horizontal",
+                    "enum.bridgingmod.placement_axis.vertical",
+                    "enum.bridgingmod.placement_axis.both",
+                    "enum.bridgingmod.placement_axis.fallback",
+                ],
+                3,
+            )
+            .tooltip("config.bridgingmod.option.supportedBridgeAxesWhenCrouched.description.0"),
+            SettingSpec::range(
+                SET_DELAY_POST_BRIDGING,
+                "config.bridgingmod.option.delayPostBridging",
+                0.0,
+                20.0,
+                1.0,
+                4.0,
+            )
+            .tooltip("config.bridgingmod.option.delayPostBridging.description.0"),
+        ],
+        vec![
+            SettingSpec::toggle(
+                SET_SHOW_CROSSHAIR,
+                "config.bridgingmod.option.showCrosshair",
+                true,
+            )
+            .tooltip("config.bridgingmod.option.showCrosshair.description.0"),
+            SettingSpec::toggle(
+                SET_SHOW_OUTLINE,
+                "config.bridgingmod.option.showOutline",
+                true,
+            )
+            .tooltip("config.bridgingmod.option.showOutline.description.0"),
+            SettingSpec::toggle(
+                SET_SHOW_NON_BRIDGING_OUTLINE,
+                "config.bridgingmod.option.showOutlineEvenWhenNotBridging",
+                false,
+            )
+            .tooltip("config.bridgingmod.option.showOutlineEvenWhenNotBridging.description.0"),
+            SettingSpec::toggle(
+                SET_NON_BRIDGE_RESPECTS_CROUCH,
+                "config.bridgingmod.option.nonBridgeRespectsCrouchRules",
+                true,
+            )
+            .tooltip("config.bridgingmod.option.nonBridgeRespectsCrouchRules.description.0"),
+            SettingSpec::color(
+                SET_OUTLINE_COLOR,
+                "config.bridgingmod.option.outlineColour",
+                0x00_0000,
+            )
+            .tooltip("config.bridgingmod.option.outlineColour.description.0"),
+            SettingSpec::range(
+                SET_OUTLINE_ALPHA,
+                "config.bridgingmod.option.outlineAlpha",
+                0.0,
+                1.0,
+                0.05,
+                0.4,
+            )
+            .tooltip("config.bridgingmod.option.outlineAlpha.description.0"),
+        ],
+        vec![
+            SettingSpec::toggle(
+                SET_SKIP_TORCH_BRIDGING,
+                "config.bridgingmod.option.skipTorchBridging",
+                true,
+            )
+            .tooltip("config.bridgingmod.option.skipTorchBridging.description.0"),
+            SettingSpec::toggle(
+                SET_ENABLE_SLAB_ASSIST,
+                "config.bridgingmod.option.enableSlabAssist",
+                true,
+            )
+            .tooltip("config.bridgingmod.option.enableSlabAssist.description.0"),
+            SettingSpec::toggle(
+                SET_ENABLE_NON_SOLID_REPLACE,
+                "config.bridgingmod.option.enableNonSolidReplace",
+                true,
+            )
+            .tooltip("config.bridgingmod.option.enableNonSolidReplace.description.0"),
+            SettingSpec::range(
+                SET_SNAP_STRENGTH,
+                "config.bridgingmod.option.bridgingSnapStrength",
+                0.0,
+                1.0,
+                0.05,
+                1.0,
+            )
+            .tooltip("config.bridgingmod.option.bridgingSnapStrength.description.0"),
+            SettingSpec::choice(
+                SET_ADJACENCY,
+                "config.bridgingmod.option.bridgingAdjacency",
+                [
+                    "enum.bridgingmod.bridging_adjacency.disabled",
+                    "enum.bridgingmod.bridging_adjacency.faces",
+                    "enum.bridgingmod.bridging_adjacency.edges",
+                    "enum.bridgingmod.bridging_adjacency.corners",
+                ],
+                3,
+            )
+            .tooltip("config.bridgingmod.option.bridgingAdjacency.description.0"),
+            SettingSpec::choice(
+                SET_PERSPECTIVE_LOCK,
+                "config.bridgingmod.option.perspectiveLock",
+                [
+                    "enum.bridgingmod.source_perspective.let_bridging_mod_decide",
+                    "enum.bridgingmod.source_perspective.copy_toggle_perspective",
+                    "enum.bridgingmod.source_perspective.always_eyeline",
+                ],
+                0,
+            )
+            .tooltip("config.bridgingmod.option.perspectiveLock.description.0"),
+        ],
+        vec![
+            SettingSpec::toggle(
+                SET_SHOW_DEBUG_HIGHLIGHT,
+                "config.bridgingmod.option.showDebugHighlight",
+                true,
+            )
+            .tooltip("config.bridgingmod.option.showDebugHighlight.description.0"),
+            SettingSpec::toggle(
+                SET_SHOW_NON_BRIDGING_DEBUG_HIGHLIGHT,
+                "config.bridgingmod.option.showNonBridgingDebugHighlight",
+                false,
+            )
+            .tooltip("config.bridgingmod.option.showNonBridgingDebugHighlight.description.0"),
+            SettingSpec::toggle(
+                SET_SHOW_DEBUG_TRACE,
+                "config.bridgingmod.option.showDebugTrace",
+                false,
+            )
+            .tooltip("config.bridgingmod.option.showDebugTrace.description.0"),
+        ],
+    ]
 }
 
 fn strip_comment(line: &str) -> &str {
@@ -936,6 +945,7 @@ fn parse_hex_rgb(raw: &str) -> Option<u32> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use mod_api::SettingKind;
 
     #[test]
     fn toml_round_trip_preserves_custom_values() {
@@ -985,14 +995,53 @@ mod tests {
     }
 
     #[test]
-    fn register_mod_configs_targets_single_owned_client_file() {
-        let mut configs = Vec::new();
-        register_mod_configs(&mut configs);
-        assert_eq!(configs.len(), 1);
-        let registered = &configs[0];
-        assert_eq!(registered.mod_id, MOD_ID);
-        assert_eq!(registered.kind, ConfigKind::Client);
-        assert_eq!(registered.file, CONFIG_FILE_NAME);
-        assert!(mod_api::ConfigPath::new(&registered.file).is_ok_and(|path| path.owned_by(MOD_ID)));
+    fn setting_defaults_match_default_config() {
+        let mut config = BridgingConfig::default();
+        let mut count = 0;
+        for spec in setting_specs().into_iter().flatten() {
+            let value = match spec.kind {
+                SettingKind::Toggle { default } => SettingValue::Toggle(default),
+                SettingKind::Choice { default, .. } => SettingValue::Choice(default),
+                SettingKind::Range { default, .. } => SettingValue::Range(default),
+                SettingKind::Color { default } => SettingValue::Color(default),
+                _ => panic!("unexpected setting kind for {}", spec.key),
+            };
+            assert!(
+                !config.apply_single_setting(&spec.key, value),
+                "default of {} differs from BridgingConfig::default",
+                spec.key
+            );
+            count += 1;
+        }
+        assert_eq!(count, 21);
+    }
+
+    #[test]
+    fn applying_a_changed_setting_reports_the_change_once() {
+        let mut config = BridgingConfig::default();
+        assert!(config.apply_single_setting(SET_ENABLE_BRIDGING, SettingValue::Toggle(false)));
+        assert!(!config.enable_bridging_assist);
+        assert!(!config.apply_single_setting(SET_ENABLE_BRIDGING, SettingValue::Toggle(false)));
+        assert!(config.apply_single_setting(SET_DELAY_POST_BRIDGING, SettingValue::Range(9.0)));
+        assert_eq!(config.delay_post_bridging, 9);
+        assert!(
+            !config.apply_single_setting(SET_DELAY_POST_BRIDGING, SettingValue::Range(f64::NAN))
+        );
+        assert!(!config.apply_single_setting(SET_SHOW_OUTLINE, SettingValue::Range(1.0)));
+    }
+
+    #[test]
+    fn every_setting_has_a_unique_key_and_a_tab() {
+        let tabs = setting_specs();
+        let mut keys: Vec<&str> = tabs
+            .iter()
+            .flatten()
+            .map(|spec| spec.key.as_str())
+            .collect();
+        keys.sort_unstable();
+        keys.dedup();
+        assert_eq!(keys.len(), 21);
+        assert!(tabs.iter().all(|specs| !specs.is_empty()));
+        assert_eq!(tabs.len(), TAB_LABELS.len());
     }
 }
