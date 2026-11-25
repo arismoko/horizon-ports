@@ -220,7 +220,6 @@ impl Hooks for Mod {
         let Some(name) = display_name(view, &stack).map(|text| view.text_string(&text)) else {
             return;
         };
-        host.close_screen();
         if host.open_chat(&name).is_ok() {
             *lock(&SHARING) = Some(Pending { name, stack });
         }
