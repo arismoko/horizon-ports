@@ -1,0 +1,9 @@
+Visual Workbench for Sunrise 26.3 (version 0.5.0)
+
+A port of Visual Workbench by Fuzs (26.3.0).
+Original source: https://github.com/Fuzss/visualworkbench
+Original licence: MPL-2.0 (code); the original's images are All Rights Reserved.
+
+Ported to Sunrise by arismoko: the rules are re-implemented in Rust on Sunrise's typed mod API (no Java code is included). This port is distributed under the same licence as the original's code (MPL-2.0); the licence text is in LICENSE.
+
+None of the original project's All-Rights-Reserved images are included: the icon is original work for this port. The English language strings and the `unaltered_workbenches` tag follow the original's MPL-2.0 data.

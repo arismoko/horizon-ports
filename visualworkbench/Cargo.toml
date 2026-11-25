@@ -1,0 +1,13 @@
+[package]
+name = "mod-visualworkbench"
+version = "0.5.0"
+edition = "2024"
+license = "MPL-2.0"
+description = "Visual Workbench for Sunrise: crafting tables that keep their items"
+# Ported from: Visual Workbench 26.3.0 (Fuzss/visualworkbench, MPL-2.0).
+# Cargo's name and version are not the mod's identity: sunrise-mod.toml is.
+publish = false
+
+[dependencies]
+# The pinned SDK's API crate, fetched into .sunrise/sdk/ by any `cargo sunrise-mod` command.
+sunrise-mod-api = { path = ".sunrise/sdk/api/crates/sunrise-mod-api" }
