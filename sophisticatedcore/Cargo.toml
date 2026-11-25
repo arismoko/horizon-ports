@@ -1,6 +1,6 @@
 [package]
 name = "mod-sophisticatedcore"
-version = "0.5.0"
+version = "0.5.1"
 edition = "2024"
 license = "GPL-3.0-only"
 description = "Sophisticated Backpacks and Storage for Sunrise: tiered backpacks, chests, barrels and shulker boxes with upgrades"
