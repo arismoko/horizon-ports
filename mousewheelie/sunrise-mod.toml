@@ -1,0 +1,14 @@
+# Mouse Wheelie for Sunrise: client-only native code in src/ using the typed mod API.
+id = "mousewheelie"
+name = "Mouse Wheelie"
+version = "0.5.0"
+description = "Scroll items between inventories, sort with the middle button, refill the hotbar."
+authors = ["Siphalor", "arismoko"]
+license = "Apache-2.0"
+credits = "Original mod by Siphalor (Apache-2.0); ported to Sunrise by arismoko."
+homepage = "https://github.com/arismoko/sunrise-ports"
+side = "client"
+
+[native]
+game = "26.3"
+sunrise = "bdad86d2d398ff9293002d2dc08702822aea7265"

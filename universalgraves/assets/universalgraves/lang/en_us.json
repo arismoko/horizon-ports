@@ -1,0 +1,5 @@
+{
+ "block.universalgraves.grave": "Grave",
+ "universalgraves.config.protection_seconds": "Seconds only the owner may open a grave",
+ "universalgraves.config.expiry_seconds": "Seconds until a grave spills its items (0 never)"
+}
