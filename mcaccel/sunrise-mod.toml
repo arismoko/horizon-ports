@@ -2,7 +2,7 @@
 # textures and translations in assets/.
 id = "mcaccel"
 name = "Minecraft Accelerated"
-version = "0.5.1"
+version = "0.5.2"
 description = "Shears carve nine faces into carved pumpkins, jack o'lanterns and soul jack o'lanterns."
 authors = ["Mari", "arismoko"]
 license = "CC0-1.0"
