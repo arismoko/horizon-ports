@@ -16,3 +16,15 @@ Differences from the original:
 A port of Cut Through by Fuzs, under the MPL-2.0 licence.
 """
 categories = ["utility"]
+
+[[screenshots]]
+path = "page/cow-through-grass.png"
+caption = "The crosshair targets a cow standing behind tall grass."
+
+[[screenshots]]
+path = "page/after-hits.png"
+caption = "After hitting the cow through the grass, the plant is still there."
+
+[[screenshots]]
+path = "page/stone-blocks.png"
+caption = "A solid block between you and the mob still blocks the pick."
