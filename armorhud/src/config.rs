@@ -1,7 +1,9 @@
 //! Armor HUD settings: the option enums, their Options > Mods registration and the read of
 //! a snapshot from the client host.
 
-use mod_api::{ClientHost, Registrar, SettingSpec};
+use mod_api::{ClientHost, Registrar, SettingKey, SettingSpec, SettingValue};
+use std::collections::HashMap;
+use std::sync::{LazyLock, Mutex, MutexGuard, PoisonError};
 
 pub const MOD_ID: &str = "armorhud";
 
@@ -163,44 +165,42 @@ impl ArmorHudConfig {
     /// The player's settings, the defaults for any the host does not answer.
     pub fn read(host: &dyn ClientHost) -> Self {
         let d = Self::default();
-        let flag = |key: &str, default: bool| host.setting_bool(key).unwrap_or(default);
-        let number = |key: &str, default: f64| host.setting_f64(key).unwrap_or(default);
+        let flag = |name: &str, default: bool| {
+            key(name)
+                .and_then(|key| host.setting_bool(key).ok())
+                .unwrap_or(default)
+        };
+        let number = |name: &str, default: f64| {
+            key(name)
+                .and_then(|key| host.setting_f64(key).ok())
+                .unwrap_or(default)
+        };
+        let index = |name: &str, default: u32| {
+            key(name)
+                .and_then(|key| host.setting_choice(key).ok())
+                .unwrap_or(default)
+        };
         Self {
             enabled: flag(SET_ENABLED, d.enabled),
-            anchor: Anchor::from_choice(
-                host.setting_choice(SET_ANCHOR)
-                    .unwrap_or(d.anchor.to_choice()),
-                d.anchor,
-            ),
-            side: Side::from_choice(
-                host.setting_choice(SET_SIDE).unwrap_or(d.side.to_choice()),
-                d.side,
-            ),
+            anchor: Anchor::from_choice(index(SET_ANCHOR, d.anchor.to_choice()), d.anchor),
+            side: Side::from_choice(index(SET_SIDE, d.side.to_choice()), d.side),
             offset_x: whole(number(SET_OFFSET_X, 0.0), OFFSET_LIMIT),
             offset_y: whole(number(SET_OFFSET_Y, 0.0), OFFSET_LIMIT),
-            style: Style::from_choice(
-                host.setting_choice(SET_STYLE)
-                    .unwrap_or(d.style.to_choice()),
-                d.style,
-            ),
+            style: Style::from_choice(index(SET_STYLE, d.style.to_choice()), d.style),
             orientation: Orientation::from_choice(
-                host.setting_choice(SET_ORIENTATION)
-                    .unwrap_or(d.orientation.to_choice()),
+                index(SET_ORIENTATION, d.orientation.to_choice()),
                 d.orientation,
             ),
             widget_shown: WidgetShown::from_choice(
-                host.setting_choice(SET_WIDGET_SHOWN)
-                    .unwrap_or(d.widget_shown.to_choice()),
+                index(SET_WIDGET_SHOWN, d.widget_shown.to_choice()),
                 d.widget_shown,
             ),
             offhand_behavior: OffhandBehavior::from_choice(
-                host.setting_choice(SET_OFFHAND_BEHAVIOR)
-                    .unwrap_or(d.offhand_behavior.to_choice()),
+                index(SET_OFFHAND_BEHAVIOR, d.offhand_behavior.to_choice()),
                 d.offhand_behavior,
             ),
             durability_display: DurabilityDisplay::from_choice(
-                host.setting_choice(SET_DURABILITY_DISPLAY)
-                    .unwrap_or(d.durability_display.to_choice()),
+                index(SET_DURABILITY_DISPLAY, d.durability_display.to_choice()),
                 d.durability_display,
             ),
             offhand_durability: flag(SET_OFFHAND_DURABILITY, d.offhand_durability),
@@ -224,168 +224,333 @@ impl ArmorHudConfig {
     }
 }
 
-fn choice<S: Into<String>>(
-    key: &str,
-    label: &str,
-    options: impl IntoIterator<Item = S>,
-    default: u32,
-) -> SettingSpec {
-    SettingSpec::choice(key, label, options, default as usize)
+/// The keys the host minted for this mod's settings at registration.
+static KEYS: LazyLock<Mutex<HashMap<&'static str, SettingKey>>> =
+    LazyLock::new(|| Mutex::new(HashMap::new()));
+
+fn keys() -> MutexGuard<'static, HashMap<&'static str, SettingKey>> {
+    KEYS.lock().unwrap_or_else(PoisonError::into_inner)
 }
 
-/// Register every setting on Options > Mods > Armor HUD, in the original screen's order
-/// (style, position, warning, then the rest).
-pub fn register_settings(r: &mut dyn Registrar) {
+/// The registered key of setting `name`, if the host accepted it.
+pub fn key(name: &str) -> Option<SettingKey> {
+    keys().get(name).copied()
+}
+
+/// Write setting `name` through the host, which validates it against the registered bounds.
+pub fn write(host: &mut dyn ClientHost, name: &str, value: SettingValue) {
+    if let Some(key) = key(name) {
+        let _ = host.set_setting(key, value);
+    }
+}
+
+/// The tab of the settings screen a setting sits on (the original's Style, Position and
+/// Warning tabs).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Tab {
+    Style,
+    Position,
+    Warning,
+}
+
+impl Tab {
+    pub const ALL: [Self; 3] = [Self::Style, Self::Position, Self::Warning];
+
+    /// The translation key of the tab's title.
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::Style => "armorhud.config.style",
+            Self::Position => "armorhud.config.position",
+            Self::Warning => "armorhud.config.warning",
+        }
+    }
+}
+
+/// What a setting holds.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum Kind {
+    Toggle {
+        default: bool,
+    },
+    Choice {
+        /// Translation keys of the options, in index order.
+        options: &'static [&'static str],
+        default: u32,
+    },
+    Range {
+        min: f64,
+        max: f64,
+        step: f64,
+        default: f64,
+    },
+}
+
+/// One setting, shared by the Options > Mods page and the settings screen.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Row {
+    pub name: &'static str,
+    /// Translation key of the label.
+    pub label: &'static str,
+    /// Translation key of the tooltip.
+    pub tooltip: Option<&'static str>,
+    pub tab: Tab,
+    pub kind: Kind,
+}
+
+impl Row {
+    fn spec(&self) -> SettingSpec {
+        let spec = match self.kind {
+            Kind::Toggle { default } => SettingSpec::toggle(self.name, self.label, default),
+            Kind::Choice { options, default } => SettingSpec::choice(
+                self.name,
+                self.label,
+                options.iter().copied(),
+                default as usize,
+            ),
+            Kind::Range {
+                min,
+                max,
+                step,
+                default,
+            } => SettingSpec::range(self.name, self.label, min, max, step, default),
+        };
+        match self.tooltip {
+            Some(tooltip) => spec.tooltip(tooltip),
+            None => spec,
+        }
+    }
+}
+
+const STYLE_OPTIONS: &[&str] = &[
+    "armorhud.option.hotbar",
+    "armorhud.option.roundedCorners",
+    "armorhud.option.rounded",
+    "armorhud.option.none",
+];
+const ORIENTATION_OPTIONS: &[&str] = &["armorhud.option.horizontal", "armorhud.option.vertical"];
+const WIDGET_SHOWN_OPTIONS: &[&str] = &[
+    "armorhud.option.always",
+    "armorhud.option.ifAnyPresent",
+    "armorhud.option.notEmpty",
+    "armorhud.option.damagedPieces",
+];
+const DURABILITY_OPTIONS: &[&str] = &[
+    "armorhud.option.bar",
+    "armorhud.option.numeric",
+    "armorhud.option.percentage",
+];
+const ANCHOR_OPTIONS: &[&str] = &[
+    "armorhud.option.topCenter",
+    "armorhud.option.top",
+    "armorhud.option.verticalCenter",
+    "armorhud.option.bottom",
+    "armorhud.option.hotbar",
+];
+const SIDE_OPTIONS: &[&str] = &["options.mainHand.left", "options.mainHand.right"];
+const OFFHAND_OPTIONS: &[&str] = &[
+    "armorhud.option.alwaysIgnore",
+    "armorhud.option.adhere",
+    "armorhud.option.alwaysLeaveSpace",
+];
+
+/// Every setting in the original screen's order (style, position, warning).
+pub fn rows() -> Vec<Row> {
     let d = ArmorHudConfig::default();
-    let specs = [
-        SettingSpec::toggle(SET_ENABLED, "armorhud.option.enabled", d.enabled)
-            .tooltip("armorhud.tooltip.enabled"),
+    let toggle = |name, label, tooltip, tab, default| Row {
+        name,
+        label,
+        tooltip,
+        tab,
+        kind: Kind::Toggle { default },
+    };
+    let choice = |name, label, tooltip, tab, options, default: u32| Row {
+        name,
+        label,
+        tooltip,
+        tab,
+        kind: Kind::Choice { options, default },
+    };
+    let range = |name, label, tooltip, tab, min, max, step, default| Row {
+        name,
+        label,
+        tooltip,
+        tab,
+        kind: Kind::Range {
+            min,
+            max,
+            step,
+            default,
+        },
+    };
+    vec![
+        toggle(
+            SET_ENABLED,
+            "armorhud.option.enabled",
+            Some("armorhud.tooltip.enabled"),
+            Tab::Style,
+            d.enabled,
+        ),
         choice(
             SET_STYLE,
             "armorhud.option.style",
-            [
-                "armorhud.option.hotbar",
-                "armorhud.option.roundedCorners",
-                "armorhud.option.rounded",
-                "armorhud.option.none",
-            ],
+            Some("armorhud.tooltip.style"),
+            Tab::Style,
+            STYLE_OPTIONS,
             d.style.to_choice(),
-        )
-        .tooltip("armorhud.tooltip.style"),
+        ),
         choice(
             SET_ORIENTATION,
             "armorhud.option.orientation",
-            ["armorhud.option.horizontal", "armorhud.option.vertical"],
+            None,
+            Tab::Style,
+            ORIENTATION_OPTIONS,
             d.orientation.to_choice(),
         ),
         choice(
             SET_WIDGET_SHOWN,
             "armorhud.option.widgetShown",
-            [
-                "armorhud.option.always",
-                "armorhud.option.ifAnyPresent",
-                "armorhud.option.notEmpty",
-                "armorhud.option.damagedPieces",
-            ],
+            Some("armorhud.tooltip.widgetShown"),
+            Tab::Style,
+            WIDGET_SHOWN_OPTIONS,
             d.widget_shown.to_choice(),
-        )
-        .tooltip("armorhud.tooltip.widgetShown"),
-        SettingSpec::toggle(SET_REVERSED, "armorhud.option.reversed", d.reversed),
-        SettingSpec::toggle(SET_ICONS_SHOWN, "armorhud.option.showIcons", d.icons_shown)
-            .tooltip("armorhud.tooltip.showIcons"),
+        ),
+        toggle(
+            SET_REVERSED,
+            "armorhud.option.reversed",
+            None,
+            Tab::Style,
+            d.reversed,
+        ),
+        toggle(
+            SET_ICONS_SHOWN,
+            "armorhud.option.showIcons",
+            Some("armorhud.tooltip.showIcons"),
+            Tab::Style,
+            d.icons_shown,
+        ),
         choice(
             SET_DURABILITY_DISPLAY,
             "armorhud.option.durabilityDisplay",
-            [
-                "armorhud.option.bar",
-                "armorhud.option.numeric",
-                "armorhud.option.percentage",
-            ],
+            None,
+            Tab::Style,
+            DURABILITY_OPTIONS,
             d.durability_display.to_choice(),
         ),
-        SettingSpec::toggle(
+        toggle(
             SET_OFFHAND_DURABILITY,
             "armorhud.option.offhandDura",
+            None,
+            Tab::Style,
             d.offhand_durability,
         ),
-        SettingSpec::toggle(
+        toggle(
             SET_MAINHAND_DURABILITY,
             "armorhud.option.mainHandDura",
+            Some("armorhud.tooltip.mainHandDura"),
+            Tab::Style,
             d.mainhand_durability,
-        )
-        .tooltip("armorhud.tooltip.mainHandDura"),
+        ),
         choice(
             SET_ANCHOR,
             "armorhud.option.anchor",
-            [
-                "armorhud.option.topCenter",
-                "armorhud.option.top",
-                "armorhud.option.verticalCenter",
-                "armorhud.option.bottom",
-                "armorhud.option.hotbar",
-            ],
+            Some("armorhud.tooltip.anchor"),
+            Tab::Position,
+            ANCHOR_OPTIONS,
             d.anchor.to_choice(),
-        )
-        .tooltip("armorhud.tooltip.anchor"),
+        ),
         choice(
             SET_SIDE,
             "armorhud.option.side",
-            ["options.mainHand.left", "options.mainHand.right"],
+            Some("armorhud.tooltip.side"),
+            Tab::Position,
+            SIDE_OPTIONS,
             d.side.to_choice(),
-        )
-        .tooltip("armorhud.tooltip.side"),
-        SettingSpec::range(
+        ),
+        range(
             SET_OFFSET_X,
             "armorhud.option.offsetX",
+            Some("armorhud.tooltip.offsetX"),
+            Tab::Position,
             -OFFSET_LIMIT,
             OFFSET_LIMIT,
             1.0,
             0.0,
-        )
-        .tooltip("armorhud.tooltip.offsetX"),
-        SettingSpec::range(
+        ),
+        range(
             SET_OFFSET_Y,
             "armorhud.option.offsetY",
+            Some("armorhud.tooltip.offsetY"),
+            Tab::Position,
             -OFFSET_LIMIT,
             OFFSET_LIMIT,
             1.0,
             0.0,
-        )
-        .tooltip("armorhud.tooltip.offsetY"),
+        ),
         choice(
             SET_OFFHAND_BEHAVIOR,
             "armorhud.option.offhandSlotBehavior",
-            [
-                "armorhud.option.alwaysIgnore",
-                "armorhud.option.adhere",
-                "armorhud.option.alwaysLeaveSpace",
-            ],
+            Some("armorhud.tooltip.offhandSlotBehavior"),
+            Tab::Position,
+            OFFHAND_OPTIONS,
             d.offhand_behavior.to_choice(),
-        )
-        .tooltip("armorhud.tooltip.offhandSlotBehavior"),
-        SettingSpec::toggle(
+        ),
+        toggle(
             SET_WARNING_SHOWN,
             "armorhud.option.showWarning",
+            Some("armorhud.tooltip.showWarning"),
+            Tab::Warning,
             d.warning_shown,
-        )
-        .tooltip("armorhud.tooltip.showWarning"),
-        SettingSpec::range(
+        ),
+        range(
             SET_MIN_DURABILITY_VALUE,
             "armorhud.option.minDuraValue",
+            Some("armorhud.tooltip.minDuraValue"),
+            Tab::Warning,
             0.0,
             MIN_DURABILITY_LIMIT,
             1.0,
             f64::from(d.min_durability_value),
-        )
-        .tooltip("armorhud.tooltip.minDuraValue"),
-        SettingSpec::range(
+        ),
+        range(
             SET_MIN_DURABILITY_PERCENT,
             "armorhud.option.minDuraPercent",
+            Some("armorhud.tooltip.minDuraPercent"),
+            Tab::Warning,
             0.0,
             1.0,
             0.01,
             d.min_durability_percentage,
-        )
-        .tooltip("armorhud.tooltip.minDuraPercent"),
-        SettingSpec::range(
+        ),
+        range(
             SET_WARNING_BOB,
             "armorhud.option.iconBobIntensity",
+            Some("armorhud.tooltip.iconBobIntensity"),
+            Tab::Warning,
             0.0,
             BOB_LIMIT,
             1.0,
             f64::from(d.warning_bob),
-        )
-        .tooltip("armorhud.tooltip.iconBobIntensity"),
-        SettingSpec::toggle(
+        ),
+        toggle(
             SET_PLAY_BREAK_SOUND,
             "armorhud.option.playBreakSound",
+            Some("armorhud.tooltip.playBreakSound"),
+            Tab::Warning,
             d.play_break_sound,
-        )
-        .tooltip("armorhud.tooltip.playBreakSound"),
-    ];
-    for spec in specs {
-        let _ = r.register_setting(spec);
+        ),
+    ]
+}
+
+/// Register every setting on Options > Mods > Armor HUD, in the original screen's order
+/// (style, position, warning), and keep the keys the host minted for them.
+pub fn register_settings(r: &mut dyn Registrar) {
+    let mut minted = HashMap::new();
+    for row in rows() {
+        if let Ok(key) = r.register_setting(row.spec()) {
+            minted.insert(row.name, key);
+        }
     }
+    *keys() = minted;
 }
 
 #[cfg(test)]
@@ -418,6 +583,46 @@ mod tests {
         assert_eq!(d.min_durability_value, 20);
         assert_eq!(d.warning_bob, 3);
         assert_eq!(d.anchor, Anchor::Hotbar);
+    }
+
+    #[test]
+    fn rows_have_unique_keys_and_valid_defaults() {
+        let rows = rows();
+        for (i, row) in rows.iter().enumerate() {
+            assert!(rows[i + 1..].iter().all(|other| other.name != row.name));
+            match row.kind {
+                Kind::Choice { options, default } => assert!((default as usize) < options.len()),
+                Kind::Range {
+                    min,
+                    max,
+                    step,
+                    default,
+                } => assert!(min < max && step > 0.0 && (min..=max).contains(&default)),
+                Kind::Toggle { .. } => {}
+            }
+        }
+        for tab in Tab::ALL {
+            assert!(rows.iter().any(|row| row.tab == tab));
+        }
+    }
+
+    #[test]
+    fn choice_rows_match_the_enums() {
+        let options = |name: &str| match rows().iter().find(|row| row.name == name).map(|r| r.kind)
+        {
+            Some(Kind::Choice { options, .. }) => options.len(),
+            _ => 0,
+        };
+        assert_eq!(options(SET_ANCHOR), Anchor::ALL.len());
+        assert_eq!(options(SET_SIDE), Side::ALL.len());
+        assert_eq!(options(SET_STYLE), Style::ALL.len());
+        assert_eq!(options(SET_ORIENTATION), Orientation::ALL.len());
+        assert_eq!(options(SET_WIDGET_SHOWN), WidgetShown::ALL.len());
+        assert_eq!(options(SET_OFFHAND_BEHAVIOR), OffhandBehavior::ALL.len());
+        assert_eq!(
+            options(SET_DURABILITY_DISPLAY),
+            DurabilityDisplay::ALL.len()
+        );
     }
 
     #[test]

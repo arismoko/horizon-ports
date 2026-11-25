@@ -5,8 +5,9 @@
 
 mod config;
 mod layout;
+mod screen;
 
-use crate::config::{ArmorHudConfig, MOD_ID, SET_ENABLED, Side, register_settings};
+use crate::config::{ArmorHudConfig, MOD_ID, SET_ENABLED, Side, register_settings, write};
 use crate::layout::{
     EMPTY_SLOT_SPRITES, Frame, Jitter, Label, PieceFacts, Remembered, SIZE, WARNING_SIZE,
     WatchedSlot, attack_indicator_showing, background, bar_color, plan_mainhand, plan_offhand,
@@ -14,13 +15,13 @@ use crate::layout::{
 };
 use mod_api::client::hud_layout::{Blend, PoseOp};
 use mod_api::{
-    ClientHost, ClientTickPostEvent, ComponentId, DrawContext, GuiDraw, GuiLayerPlacement, Hooks,
-    HotbarAttackIndicatorProgressEvent, HudMode, ItemKey, ItemResource, ItemStack, ItemStackView,
-    KeyConflictContext, KeyRegistration, ModKeyMappingRef, RegisterGuiLayersEvent, Registrar,
-    RegistrationContext, SoundPlay, SoundSource, Tag, Text,
+    ClientHost, ClientTickPostEvent, ComponentId, DrawContext, GuiCanvas, GuiDrawError,
+    GuiLayerPlacement, GuiSpriteRegion, Hooks, HotbarAttackIndicatorProgressEvent, HudMode,
+    ItemKey, ItemResource, ItemStack, ItemStackView, KeyConflictContext, KeyRegistration,
+    ModKeyMappingRef, RegisterGuiLayersEvent, Registrar, RegistrationContext, ScreenInitPostEvent,
+    SettingValue, SoundPlay, SoundSource, Tag, Text,
 };
-use std::borrow::Cow;
-use std::sync::{LazyLock, Mutex, MutexGuard, PoisonError};
+use std::sync::{Arc, LazyLock, Mutex, MutexGuard, PoisonError};
 
 const HUD_LAYER_ID: &str = "armorhud:armor_hud";
 const WARNING_SPRITE: &str = "armorhud:warn";
@@ -171,6 +172,9 @@ fn lock() -> MutexGuard<'static, State> {
 }
 
 fn render_widget(host: &dyn ClientHost, draw: &mut dyn DrawContext) {
+    // The hotbar layer, below this one, reports the charge each frame it draws the indicator;
+    // take it before any early return so a skipped frame never leaves a stale charge behind.
+    let attack_progress = lock().attack_progress.take();
     if !host.on(MOD_ID) || host.hud_mode() != HudMode::AllVisible {
         return;
     }
@@ -183,8 +187,6 @@ fn render_widget(host: &dyn ClientHost, draw: &mut dyn DrawContext) {
     };
     let size = draw.size();
     let mut jitter_guard = lock();
-    // The hotbar layer, below this one, reports the charge each frame it draws the indicator.
-    let attack_progress = jitter_guard.attack_progress.take();
     let frame = frame_of(host, &cfg, size, &worn, attack_progress);
     let slots = slots_of(&cfg, &worn);
     let jitter = jitter_guard
@@ -193,31 +195,38 @@ fn render_widget(host: &dyn ClientHost, draw: &mut dyn DrawContext) {
     let mut bob = |bound: i32| jitter.below(bound);
 
     if let Some(rect) = widget_rect(&cfg, &frame, slots.len()) {
-        let mut ops = vec![GuiDraw::Push(
-            if cfg.orientation == config::Orientation::Vertical {
-                vec![
-                    PoseOp::Translate(rect.x as f32, rect.y as f32),
-                    PoseOp::Rotate(std::f32::consts::FRAC_PI_2),
-                    PoseOp::Translate(0.0, -(SIZE as f32)),
-                ]
-            } else {
-                vec![PoseOp::Translate(rect.x as f32, rect.y as f32)]
+        let pose = if cfg.orientation == config::Orientation::Vertical {
+            vec![
+                PoseOp::Translate(rect.x as f32, rect.y as f32),
+                PoseOp::Rotate(std::f32::consts::FRAC_PI_2),
+                PoseOp::Translate(0.0, -(SIZE as f32)),
+            ]
+        } else {
+            vec![PoseOp::Translate(rect.x as f32, rect.y as f32)]
+        };
+        let slices = background(cfg.style, slots.len());
+        let _ = draw.draw_gui(
+            &mut |canvas: &mut dyn GuiCanvas| -> Result<(), GuiDrawError> {
+                canvas.scope(
+                    &pose,
+                    None,
+                    &mut |child: &mut dyn GuiCanvas| -> Result<(), GuiDrawError> {
+                        for slice in &slices {
+                            let [sw, sh, u, v] = slice.region;
+                            let [x, y, w, h] = slice.dst;
+                            child.blit_sprite(
+                                slice.sprite,
+                                [x as f32, y as f32, w as f32, h as f32],
+                                Some(GuiSpriteRegion::new([sw, sh], [u, v])),
+                                0xFFFF_FFFF,
+                                Blend::Textured,
+                            )?;
+                        }
+                        Ok(())
+                    },
+                )
             },
-        )];
-        for slice in background(cfg.style, slots.len()) {
-            ops.push(GuiDraw::Sprite {
-                sprite: Cow::Borrowed(slice.sprite),
-                x: slice.dst[0],
-                y: slice.dst[1],
-                w: slice.dst[2],
-                h: slice.dst[3],
-                region: Some(slice.region),
-                color: 0xFFFF_FFFF,
-                blend: Blend::Textured,
-            });
-        }
-        ops.push(GuiDraw::Pop);
-        let _ = draw.gui_paint(&ops);
+        );
 
         let facts: Vec<(usize, Option<PieceFacts>)> = slots
             .iter()
@@ -346,8 +355,8 @@ fn poll_toggle_key(host: &mut dyn ClientHost) {
         toggled = !toggled;
     }
     if toggled {
-        let enabled = !host.setting_bool(SET_ENABLED).unwrap_or(true);
-        host.set_setting(MOD_ID, SET_ENABLED, if enabled { "true" } else { "false" });
+        let enabled = !ArmorHudConfig::read(host).enabled;
+        write(host, SET_ENABLED, SettingValue::Toggle(enabled));
         let _ = host.set_overlay_message(
             Text::translate("armorhud.keybind.toggle.msg", vec![]),
             false,
@@ -362,6 +371,9 @@ struct ArmorHud;
 impl Hooks for ArmorHud {
     fn register(&self, r: &mut dyn Registrar, _cx: &RegistrationContext) {
         register_settings(r);
+        // The Config button on the Mods screen opens the sectioned screen below (mounted in
+        // `screen_init_post`) instead of the flat settings page.
+        let _ = r.register_config_screen(Arc::new(|_host: &dyn ClientHost| true));
         r.register_key_mapping(
             KeyRegistration::new(KEY_TOGGLE, "key.keyboard.unknown")
                 .label("armorhud.keybind.toggle")
@@ -380,6 +392,16 @@ impl Hooks for ArmorHud {
             GuiLayerPlacement::Above(LAYER_HOTBAR.into()),
             Box::new(render_widget),
         );
+    }
+
+    fn screen_init_post(&self, _host: &dyn ClientHost, event: &mut ScreenInitPostEvent<'_>) {
+        if event.screen.mod_screen != Some(MOD_ID) {
+            return;
+        }
+        let rect = event.screen.rect;
+        event
+            .widgets
+            .add_widget(Box::new(screen::ConfigScreen::new([rect[2], rect[3]])));
     }
 
     fn hotbar_attack_indicator_progress(
