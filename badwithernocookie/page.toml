@@ -1,0 +1,25 @@
+summary = "Silences loud global and mob sounds, with configurable toggles, Silence books for headwear, and operator commands."
+description = """
+Bad Wither No Cookie - Reloaded silences loud broadcast and mob sounds, either globally via config and operator commands or per player via craftable Silence books:
+
+- **Configurable loud-sound toggles**: silence Wither spawn and death (`silenceWither`, on), wandering trader and llama ambient sounds (`silenceTrader`, on), Ender Dragon death (`silenceDragon`, on), thunder (`silenceLightning`, on), and explosion/TNT/creeper/wind charge sounds (`silenceExplosion`, off).
+- **Custom sound list (`silenceUs`)**: silence any sound by path (`entity.sheep.step`) or full id (`othermod:entity.thing.hurt`), while leaving other mods' sound cancellations and replacements intact.
+- **Book of Silence (`bwncr:silence`)**: surround a book with 8 wool and apply it to headwear at an anvil to silence all `entity.*` sounds and hostile, neutral, weather, and ambient sounds for the wearer.
+- **88 Mob Silence books & 37 Environment Silence books**: combine a Book of Silence with a mob drop or environment item to silence a single mob or block/environment sound group; stack multiple Silence enchantments on one helmet.
+- **Silence All (`bwncr:silence_all`)**: surround a Book of Silence with 8 diamonds to silence every sound for the wearer, including music, records, and UI.
+- **Operator & client commands**: `/bad_wither_no_cookie_reloaded` and `/bwncr` (operator level 2 on servers) to view, toggle, and save all options live, plus `/bwncr listen` and `/bwncr listen mute <sound>` to discover and mute sounds.
+- **Optional server sync**: servers share active settings over the optional `bwncr:settings` channel so vanilla clients can still join while modded clients obey server settings.
+
+Works on the client, on the server, or both.
+
+Differences from the original:
+
+- Server-side silencing of global level events (1023 Wither spawn, 1028 Ender Dragon death, 1038 End Portal spawn) and sound-only level events for vanilla clients without the mod is not available yet; clients with the mod installed silence all of them (gap: TBD-server-level-event-sound-filter).
+- Per-player server-side sound filtering for Silence books on vanilla clients is not available yet because server level-sound hooks cancel level-wide; clients with the mod installed filter per wearer (gap: TBD-per-player-server-sound-filter).
+- Clearing only the `playSound` flag on server explosion packets for vanilla clients when `silenceExplosion` is enabled is not available yet; clients with the mod installed silence the explosion sound while keeping knockback and particles (gap: TBD-explosion-packet-sound-toggle).
+- The `silenceUs` string list cannot be edited in **Options → Mods** (which shows the 6 boolean toggles); edit `silenceUs` with `/bwncr silenceUs`, `/bwncr listen mute <sound>`, or `config/badwithernocookie-common.toml` (gap: TBD-config-string-list-setting).
+- The config file is `config/badwithernocookie-common.toml` rather than `config/bwncr-common.toml`.
+
+A port of Bad Wither No Cookie - Reloaded by Kreezxil and Eleksploded, under the MIT licence.
+"""
+categories = ["utility"]
