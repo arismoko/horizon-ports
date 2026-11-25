@@ -1,6 +1,6 @@
 [package]
 name = "mod-betterpingdisplay"
-version = "0.5.2"
+version = "0.5.3"
 edition = "2024"
 license = "MIT"
 description = "Better Ping Display for Sunrise: shows each player's ping as a coloured number in the player list"
