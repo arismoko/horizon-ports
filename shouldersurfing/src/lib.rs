@@ -400,7 +400,7 @@ fn with_facts<R>(
     let animation = crosshair::animation_name(stack.use_animation(host));
     let components: Vec<String> = stack
         .components()
-        .map(|c| c.as_nbt().keys().map(|k| k.to_string()).collect())
+        .map(|c| c.as_nbt().keys().filter_map(|k| k.to_string().ok()).collect())
         .unwrap_or_default();
     let has_default = |c: &str| host.item_default_component(item, c).is_some();
     f(&StackFacts {
@@ -648,7 +648,7 @@ impl Hooks for ShoulderSurfing {
         for (id, key) in KEYS {
             r.register_key_mapping(
                 KeyRegistration::new(id, key)
-                    .label(format!("key.shouldersurfing.{id}"))
+                    .label(&format!("key.shouldersurfing.{id}"))
                     .category("key.category.shouldersurfing.general")
                     .context(KeyConflictContext::InGame),
             );
@@ -730,7 +730,7 @@ impl Hooks for ShoulderSurfing {
         }
     }
 
-    fn compute_fov(&self, host: &dyn ClientHost, event: &mut ComputeFovEvent<'_>) {
+    fn compute_fov(&self, host: &dyn ClientHost, event: &mut ComputeFovEvent) {
         if !host.on(MOD_ID) {
             return;
         }
@@ -999,7 +999,8 @@ impl Hooks for ShoulderSurfing {
                 _ => None,
             };
             if let Some(p) = go {
-                rt.set_perspective(&*host, p.or_next_enabled(&rt.enabled()));
+                let enabled = rt.enabled();
+                rt.set_perspective(&*host, p.or_next_enabled(&enabled));
                 rt.remember(&*host, p);
                 continue;
             }
