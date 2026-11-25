@@ -158,7 +158,7 @@ fn find_safe(host: &mut dyn ServerHost, level: LevelRef, origin: [i32; 3]) -> Op
         }
         let host: &dyn Host = &*host;
         let mut heights = Vec::with_capacity(cols.len());
-        level
+        let _visited = level
             .visit_surface_heights(host, &cols, Heightmap::MotionBlocking, &mut |pos, h| {
                 heights.push((pos, h));
                 ControlFlow::Continue(())
