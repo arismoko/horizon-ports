@@ -162,10 +162,10 @@ fn build_catalog(host: &dyn Host) -> EnchantmentCatalog {
     let mut defs = HashMap::new();
     let files = host.list_resources(PackType::ServerData, "enchantment", ".json");
     for res_id in files {
-        let Some(bytes) = host.resource(PackType::ServerData, &res_id) else {
+        let Ok(Some(reader)) = host.open_resource(PackType::ServerData, &res_id) else {
             continue;
         };
-        let Ok(json) = serde_json::from_slice::<Value>(&bytes) else {
+        let Ok(json) = serde_json::from_reader::<_, Value>(reader) else {
             continue;
         };
         let Some(ench_id) = resource_to_enchantment_id(&res_id) else {

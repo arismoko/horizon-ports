@@ -268,7 +268,7 @@ impl Wind {
     }
 }
 
-/// Lock-free snapshot of live wind & rain state read by `ParticleProvider::tick`.
+/// Lock-free snapshot of live wind & rain state read by `CustomParticle::tick`.
 pub struct WindSnapshot {
     wind_x: AtomicU32,
     wind_z: AtomicU32,

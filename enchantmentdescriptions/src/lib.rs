@@ -12,7 +12,7 @@
 mod logic;
 
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{Mutex, MutexGuard, PoisonError};
+use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 
 use logic::{
     DEFAULT_TOML, FileConfig, description_key, full_name, is_enchanting_menu, looks_like_json,
@@ -20,13 +20,11 @@ use logic::{
 };
 use mod_api::text::{TextContent, TextStyle};
 use mod_api::{
-    ClientHost, ComponentId, Config, ConfigContext, ConfigFile, ConfigKind, ConfigLoadingEvent,
-    ConfigReloadingEvent, Hooks, Host, HostSide, ItemResource, ItemTooltipEvent,
-    RegisterConfigsEvent, Registrar, RegistrationContext, ScreenClosingEvent,
-    ScreenRenderPostEvent, SettingSpec, Tag, Text,
+    ClientHost, ComponentId, ConfigEvent, ConfigKind, ConfigSnapshot, ConfigSpec, Hooks, Host,
+    ItemResource, ItemTooltipEvent, Registrar, RegistrationContext, ScreenClosingEvent,
+    ScreenRenderPostEvent, SettingKey, SettingSpec, Tag, Text,
 };
 
-const MOD_ID: &str = "enchantmentdescriptions";
 const CONFIG_FILE: &str = "enchantmentdescriptions.toml";
 const ACTIVATE_KEY: &str = "enchdesc.activate.message";
 const ENCHANTED_BOOK: &str = "minecraft:enchanted_book";
@@ -61,14 +59,18 @@ fn file_config() -> FileConfig {
     guard.clone().unwrap_or_default()
 }
 
-fn set_file_config(config: &ConfigFile) {
-    if config.mod_id == MOD_ID && config.kind == ConfigKind::Client {
-        *FILE.lock().unwrap_or_else(PoisonError::into_inner) = Some(parse_config(&config.text));
-    }
+/// The owner-bound keys `register_setting` returned, by the setting's name.
+static KEYS: Mutex<Vec<(&'static str, SettingKey)>> = Mutex::new(Vec::new());
+
+fn setting_key(name: &str) -> Option<SettingKey> {
+    let keys = KEYS.lock().unwrap_or_else(PoisonError::into_inner);
+    keys.iter().find(|(n, _)| *n == name).map(|(_, key)| *key)
 }
 
-fn toggle(host: &dyn ClientHost, key: &str, default: bool) -> bool {
-    host.setting_bool(key).unwrap_or(default)
+fn toggle(host: &dyn Host, key: &str, default: bool) -> bool {
+    setting_key(key)
+        .and_then(|key| host.setting_bool(key).ok())
+        .unwrap_or(default)
 }
 
 /// Every enchantment on the stack, applied and stored, with its level
@@ -117,9 +119,12 @@ fn component(host: &dyn ClientHost, text: &str) -> Option<Text> {
     Some(Text::literal(text))
 }
 
-fn style(host: &dyn ClientHost, file: &FileConfig) -> TextStyle {
+fn style(host: &dyn Host, file: &FileConfig) -> TextStyle {
     let mut style = TextStyle::default();
-    let color = host.setting_color(COLOR).unwrap_or(DARK_GRAY) & 0xFF_FF_FF;
+    let color = setting_key(COLOR)
+        .and_then(|key| host.setting_color(key).ok())
+        .unwrap_or(DARK_GRAY)
+        & 0xFF_FF_FF;
     style.color = Some(format!("#{color:06x}"));
     style.bold = file.bold;
     style.italic = file.italic;
@@ -133,7 +138,7 @@ fn style(host: &dyn ClientHost, file: &FileConfig) -> TextStyle {
 }
 
 /// The original's `canDisplayDescription`, for a stack that has enchantments.
-fn can_display(host: &dyn ClientHost, item_id: Option<&str>) -> bool {
+fn can_display(host: &dyn Host, item_id: Option<&str>) -> bool {
     if !toggle(host, ENABLED, true) {
         return false;
     }
@@ -161,26 +166,30 @@ impl Hooks for EnchantmentDescriptions {
             let label = format!("enchdesc.config.{key}");
             let spec =
                 SettingSpec::toggle(key, &label, default).tooltip(format!("{label}.tooltip"));
-            let _ = r.register_setting(spec);
+            if let Ok(setting) = r.register_setting(spec) {
+                KEYS.lock()
+                    .unwrap_or_else(PoisonError::into_inner)
+                    .push((key, setting));
+            }
         }
-        let _ = r.register_setting(
+        if let Ok(setting) = r.register_setting(
             SettingSpec::color(COLOR, "enchdesc.config.color", DARK_GRAY)
                 .tooltip("enchdesc.config.color.tooltip"),
-        );
-    }
-
-    fn register_configs(&self, _ctx: &dyn ConfigContext, event: &mut RegisterConfigsEvent<'_>) {
-        event
-            .configs
-            .push(Config::new(MOD_ID, ConfigKind::Client, DEFAULT_TOML).file(CONFIG_FILE));
-    }
-
-    fn config_loading(&self, _ctx: &dyn ConfigContext, event: &mut ConfigLoadingEvent<'_>) {
-        set_file_config(event.config);
-    }
-
-    fn config_reloading(&self, _host: HostSide<'_>, event: &mut ConfigReloadingEvent<'_>) {
-        set_file_config(event.config);
+        ) {
+            KEYS.lock()
+                .unwrap_or_else(PoisonError::into_inner)
+                .push((COLOR, setting));
+        }
+        let listener = |event: ConfigEvent<'_>, snapshot: &ConfigSnapshot| -> Result<(), String> {
+            if let ConfigEvent::Loading(_) | ConfigEvent::Reloading(_) = event {
+                *FILE.lock().unwrap_or_else(PoisonError::into_inner) =
+                    Some(parse_config(&snapshot.text));
+            }
+            Ok(())
+        };
+        let spec = ConfigSpec::new(ConfigKind::Client, DEFAULT_TOML).file(CONFIG_FILE);
+        // A refused (duplicate) declaration leaves the defaults in use.
+        let _ = r.register_config(spec, Some(Arc::new(listener)));
     }
 
     fn screen_render_post(&self, _host: &dyn ClientHost, event: &mut ScreenRenderPostEvent<'_>) {
