@@ -1,0 +1,10 @@
+{
+  "setting.mousewheelie.scrolling": "Wheel Scrolling",
+  "setting.mousewheelie.scrolling.tooltip": "Scroll over a slot to move its items between the inventory and the container. Shift moves the stack, Ctrl every stack of the kind, Space the matching kinds.",
+  "setting.mousewheelie.click_shortcuts": "Click Shortcuts",
+  "setting.mousewheelie.click_shortcuts.tooltip": "Shift, Ctrl, Alt and Space clicks (and drags) move or drop whole stacks, every stack of a kind, or a whole part.",
+  "setting.mousewheelie.sorting": "Middle-Click Sorting",
+  "setting.mousewheelie.sorting.tooltip": "Middle-click a slot to sort its part: by item, Shift by quantity, Ctrl by name.",
+  "setting.mousewheelie.refill": "Hotbar Refill",
+  "setting.mousewheelie.refill.tooltip": "When the selected hotbar stack is used up or a tool breaks, swap in the same item from the main inventory."
+}

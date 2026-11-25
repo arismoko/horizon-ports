@@ -1,0 +1,13 @@
+Universal Graves for Sunrise
+
+A port of Universal Graves 3.0.3 by Patbox.
+Original source: https://github.com/Patbox/UniversalGraves
+Original licence: LGPL-3.0-only
+
+The rules are re-implemented in Rust on Sunrise's mod API; no Java code is included. This port is distributed
+under the same licence as the original (LGPL-3.0-only); the licence text is in LICENSE.
+
+LICENSE is the original jar's LICENSE_graves (GNU LGPL v3); COPYING is the GNU GPL v3 text the LGPL builds on.
+
+Ported to Sunrise by arismoko, on Sunrise's mod API, under the same licence. The grave model reuses vanilla's
+stone texture by reference; no Mojang file is shipped.

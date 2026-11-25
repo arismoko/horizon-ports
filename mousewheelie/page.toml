@@ -1,0 +1,28 @@
+summary = "Scroll items between slots and inventories with the mouse wheel, move and drop with modifier clicks, sort with the middle button."
+description = """
+Mouse Wheelie speeds up inventory handling with the wheel and a few modifier keys. It only sends ordinary container clicks, so it works on any server.
+
+## What it does
+
+- **Wheel scrolling**: the wheel over a slot moves its items toward where it turns, up from your inventory into the open container and down from the container into your inventory (on the inventory screen, hotbar and main inventory). One item per notch; Shift moves the whole stack, Ctrl every stack of that item, Space deposits the kinds the other side already has (or tops up partial stacks when moving down).
+- **Click shortcuts**: Shift-click moves a stack, Ctrl-click every stack of the item, Ctrl+Shift-click a whole part, Space-click deposits matching kinds. Alt turns any of these into a drop. Holding the modifiers and dragging acts on each slot crossed.
+- **Middle-click sorting**: merges partial stacks and sorts the part under the pointer (hotbar, main inventory or container) by item, Shift by quantity, Ctrl by name.
+- **Hotbar refill**: when the selected hotbar stack is used up or a tool breaks, the same item is swapped in from the main inventory (not after you drop it with the drop key).
+- Works on the inventory, chests, barrels, ender chests, shulker boxes, hoppers, dispensers and droppers, furnaces and crafting tables. Each feature has a switch under Options > Mods.
+
+## Differences from the original
+
+- Clicks are sent on the next client tick, because screen hooks cannot submit them directly.
+- "Creative order" sorting orders by item id: the creative tab order is not readable through the mod API.
+- Sorting by name uses item ids rather than translated names.
+- Tool picking on the pick-block key (choosing the best tool for the targeted block) is not ported: there is no client hook for the pick-block action.
+- Dragging with plain Shift held is handled by the mod's own click (vanilla's shift-drag is replaced by the same quick move on each slot).
+- The original's per-key remapping, hjson config and per-screen scope options are not ported; four on/off switches replace them.
+
+A port of Mouse Wheelie by Siphalor, under the Apache-2.0 licence.
+"""
+categories = ["utility", "game-mechanics"]
+
+[[screenshots]]
+path = "page/world.png"
+caption = "Container inventory managed with Mouse Wheelie"

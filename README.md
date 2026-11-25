@@ -63,3 +63,4 @@ Some arismoko ports live in their own repositories, such as the YUNG's and Macaw
 Mods on our radar that aren't being worked on now are in [RADAR.md](RADAR.md), with what each needs before it can be finished. Their earlier sources are on the [`parked`](https://github.com/arismoko/sunrise-ports/tree/parked) branch.
 
 Bugs and requests go in this repository's issues.
+| [mousewheelie](mousewheelie/) | Scroll items between inventories, sort with the middle button, refill the hotbar. | [Mouse Wheelie](https://github.com/Siphalor/mouse-wheelie) by Siphalor | Apache-2.0 | Being ported |
