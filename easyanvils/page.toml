@@ -21,3 +21,15 @@ Differences from the original:
 A port of Easy Anvils by Fuzs, under the MPL-2.0 licence.
 """
 categories = ["game-mechanics", "utility"]
+
+[[screenshots]]
+path = "page/formatted-rename.png"
+caption = "Free formatted renaming with § color/style codes and the interactive ? formatting guide tooltip."
+
+[[screenshots]]
+path = "page/enchant-cost.png"
+caption = "Combining a sword and enchanted book with persistent anvil slots and clear XP cost display."
+
+[[screenshots]]
+path = "page/iron-block-repair.png"
+caption = "Repairing a damaged anvil in place with a Block of Iron."
