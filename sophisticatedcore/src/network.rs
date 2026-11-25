@@ -295,7 +295,7 @@ fn role_by(
         let facing = level
             .block_property(host, pos, "facing")
             .unwrap_or_default();
-        let n = step(&facing);
+        let n = step(facing);
         return Role::Link {
             linked: node_controller(host, level, pos),
             behind: [pos[0] - n[0], pos[1] - n[1], pos[2] - n[2]],

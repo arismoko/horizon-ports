@@ -1507,9 +1507,9 @@ impl Shared {
             let facing = level
                 .block_property(&*host, pos, "facing")
                 .unwrap_or_default();
-            if click.hit.face == storage::dir_vec(&facing) {
+            if click.hit.face == storage::dir_vec(facing) {
                 let player = host.player(click.player)?;
-                let slot = storage::limited_slot(kind, &facing, pos, click.hit.point);
+                let slot = storage::limited_slot(kind, facing, pos, click.hit.point);
                 let now = self.tick();
                 let again = lock(&self.deposits)
                     .get(&click.player)
@@ -1789,12 +1789,12 @@ impl Hooks for Mod {
         }
         for (name, kind) in options::tier_specs() {
             let label = format!("sophisticatedcore.config.{name}");
-            if let options::Kind::Range(min, max, step, default) = kind {
-                if let Ok(key) = r.register_setting(mod_api::SettingSpec::range(
+            if let options::Kind::Range(min, max, step, default) = kind
+                && let Ok(key) = r.register_setting(mod_api::SettingSpec::range(
                     &name, &label, min, max, step, default,
-                )) {
-                    options::remember(&name, key);
-                }
+                ))
+            {
+                options::remember(&name, key);
             }
         }
         for (id, label, key, _) in ACTIONS.iter() {
@@ -2269,12 +2269,12 @@ impl Hooks for Mod {
         let facing = level
             .block_property(&*host, event.pos, "facing")
             .unwrap_or_default();
-        if event.face != storage::dir_vec(&facing) {
+        if event.face != storage::dir_vec(facing) {
             return Flow::Continue;
         }
-        let point = storage::look_point(&*host, player, event.pos, &facing)
+        let point = storage::look_point(&*host, player, event.pos, facing)
             .unwrap_or(event.pos.map(|v| f64::from(v) + 0.5));
-        let slot = storage::limited_slot(kind, &facing, event.pos, point);
+        let slot = storage::limited_slot(kind, facing, event.pos, point);
         let sneak = places::sneaking(&*host, player.uuid());
         storage::limited_take(host, player, level, event.pos, slot, sneak);
         if places::creative(&*host, player.uuid()) {
