@@ -1,0 +1,16 @@
+{
+  "type": "minecraft:crafting_shaped",
+  "pattern": [
+    " q ",
+    "pcp",
+    " q "
+  ],
+  "key": {
+    "q": "minecraft:quartz",
+    "p": "minecraft:paper",
+    "c": "toms_storage:ts.inventory_cable_connector"
+  },
+  "result": {
+    "id": "toms_storage:ts.inventory_cable_connector_filtered"
+  }
+}

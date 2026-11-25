@@ -1,0 +1,13 @@
+[package]
+name = "mod-toms_storage"
+version = "0.4.0"
+edition = "2024"
+license = "MIT"
+description = "Tom's Simple Storage for Sunrise: storage and crafting terminals over every connected inventory, cables, trims and wireless terminals"
+# Ported from: Tom's Simple Storage 1.7.1 (tom5454/Toms-Storage, MIT).
+# Cargo's name and version are not the mod's identity: sunrise-mod.toml is.
+publish = false
+
+[dependencies]
+# The pinned SDK's API crate, fetched into .sunrise/sdk/ by any `cargo sunrise-mod` command.
+sunrise-mod-api = { path = ".sunrise/sdk/api/crates/sunrise-mod-api" }

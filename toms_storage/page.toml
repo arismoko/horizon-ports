@@ -1,0 +1,23 @@
+summary = "Join chests into one network with an inventory connector and reach all of it from a storage or crafting terminal."
+description = """
+Put an inventory connector against chests, barrels and other containers: every inventory touching it, or touching those through trims, within 16 blocks becomes one network. Double chests count once. Inventory cable connectors on a cable run bring their faced inventory into the connector the cables reach (up to 2048 cables).
+
+- **Storage terminal**: place it against a connector or a cable connector and use it to see every item on the network by page, sort by amount, name or mod, and search by typing straight into the screen (`@mod` searches by mod). Click a stored item to take a stack (right click for half); click one of your own stacks to put it in (right click for one).
+- **Crafting terminal**: the same screen with a 3x3 grid. Right click a stored item to pick it, click an empty grid slot to put one there, and craft from the result slot (shift for as many as the grid makes). The grid is refilled from the network and returns to it when you close the screen.
+- **Connector, cable connectors and inventory proxy**: they answer the item capability for the network, so a hopper or pipe next to them feeds and drains every connected inventory. The proxy passes on the inventory it faces.
+- **Wireless terminal** (16 blocks, the terminal you look at) and **advanced wireless terminal** (sneak-use it on a terminal to bind it, then 64 blocks).
+- **Blocks and items**: trims, cables, framed cables, terminals, connectors, the proxy and the wireless terminals with their models, recipes, loot tables, advancements and translations.
+
+Differences from the original:
+
+- The terminal is a six-row chest screen the mod fills, not the original's own screen: no search history, no recipe viewer fill, no terminal size options, and no cursor stack (a click moves items straight between the network and your inventory).
+- The inventory hopper, level emitter, open crate, item filters and the filtered cable connector's rules, inventory link channels, the beacon range bonus and paint kits are in the game as items and blocks but do nothing yet.
+- A cable connector with no connector on its cables still offers an (empty) item capability instead of none.
+
+A port of Tom's Simple Storage by tom5454, under the MIT licence.
+"""
+categories = ["storage", "utility"]
+
+[[screenshots]]
+path = "page/world.png"
+caption = "Storage terminal listing items across connected chests and barrels"
