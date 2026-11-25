@@ -22,7 +22,7 @@ pub const DEFAULT_CLOUD_HEIGHT: i32 = 192;
 const DEFAULT_SEA_LEVEL: i32 = 63;
 
 /// Registered particle handles resolved during `Hooks::register`.
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy)]
 pub struct ParticleHandles {
     pub weather_translucent: ParticleType<WeatherParticleOptions>,
     pub weather_opaque: ParticleType<WeatherParticleOptions>,

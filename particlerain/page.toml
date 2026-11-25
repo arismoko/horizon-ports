@@ -14,12 +14,12 @@ Client-side only: works in single player and on any multiplayer server.
 
 Differences from the original:
 
-- Vanilla rain and snow weather columns cannot be suppressed yet, so they continue to render alongside Particle Rain's particles (gap: TBD-weather-render-hook).
-- Vanilla rain splash particles cannot be suppressed yet (gap: TBD-weather-tick-hook).
-- Biome water tinting applies to Particle Rain's own rain, ripple, and streak particles, but cannot recolor vanilla water/splash/drip particles on creation (gap: TBD-particle-create-tint).
-- Active shader packs cannot be detected automatically yet for `dontTintWithShaders` (gap: TBD-shader-pack-active-query).
-- Automatic `spawnHeightLimit = 0` uses vanilla Overworld's default cloud height (`192`) instead of querying custom dimensions' cloud height (gap: TBD-dimension-cloud-height).
-- `BLENDED` fog particles draw on Sunrise's translucent particle layer rather than a custom blended particle pipeline (gap: TBD-custom-particle-blend-layer).
+- Vanilla rain and snow weather columns cannot be suppressed yet, so they continue to render alongside Particle Rain's particles (gap: sunrise-org/sunrise#968).
+- Vanilla rain splash particles cannot be suppressed yet (gap: sunrise-org/sunrise#5614).
+- Biome water tinting applies to Particle Rain's own rain, ripple, and streak particles, but cannot recolor vanilla water/splash/drip particles on creation (gap: sunrise-org/sunrise#5615).
+- Active shader packs cannot be detected automatically yet for `dontTintWithShaders` (gap: sunrise-org/sunrise#5371).
+- Automatic `spawnHeightLimit = 0` uses vanilla Overworld's default cloud height (`192`) instead of querying custom dimensions' cloud height (gap: sunrise-org/sunrise#5385).
+- `BLENDED` fog particles draw on Sunrise's translucent particle layer rather than a custom blended particle pipeline (gap: sunrise-org/sunrise#5616).
 - In-game settings use Sunrise's flat **Options → Mods → Particle Rain** screen rather than a tabbed per-particle editor; per-preset options live in `config/particlerain.toml` (gap: [sunrise-org/sunrise#1217](https://github.com/sunrise-org/sunrise/issues/1217)).
 
 A port of Particle Rain by PigCart, under the MIT licence.

@@ -17,12 +17,12 @@ Client-side only: works in single player and on any multiplayer server.
 
 ## Differences from the original
 
-- Vanilla rain and snow weather columns cannot be suppressed yet, so they continue to render alongside Particle Rain's custom particles (`renderDefaultRain` / `renderDefaultSnow` are preserved in config) (gap: TBD-weather-render-hook).
-- Vanilla rain splash particles cannot be suppressed yet (`doDefaultSplashing` is preserved in config) (gap: TBD-weather-tick-hook).
-- Biome water tinting applies to Particle Rain's own rain, ripple, and streak particles, but cannot recolor vanilla `minecraft:rain`, `minecraft:splash`, or water-drip particles on creation (gap: TBD-particle-create-tint).
-- Active shader packs cannot be detected from `ClientHost` yet, so `dontTintWithShaders` does not automatically disable water tinting while a shader pack is active; toggle **Tint water particles with biome colors** manually if needed (gap: TBD-shader-pack-active-query).
-- When **Limit spawn height** is enabled with **Spawn height limit** set to `0` (Automatic), the Overworld default cloud height (`192`) is used instead of querying a custom dimension's cloud height (gap: TBD-dimension-cloud-height).
-- Fog particles configured with the `BLENDED` render type draw on Sunrise's standard translucent particle layer rather than a custom blended particle pipeline (gap: TBD-custom-particle-blend-layer).
+- Vanilla rain and snow weather columns cannot be suppressed yet, so they continue to render alongside Particle Rain's custom particles (`renderDefaultRain` / `renderDefaultSnow` are preserved in config) (gap: sunrise-org/sunrise#968).
+- Vanilla rain splash particles cannot be suppressed yet (`doDefaultSplashing` is preserved in config) (gap: sunrise-org/sunrise#5614).
+- Biome water tinting applies to Particle Rain's own rain, ripple, and streak particles, but cannot recolor vanilla `minecraft:rain`, `minecraft:splash`, or water-drip particles on creation (gap: sunrise-org/sunrise#5615).
+- Active shader packs cannot be detected from `ClientHost` yet, so `dontTintWithShaders` does not automatically disable water tinting while a shader pack is active; toggle **Tint water particles with biome colors** manually if needed (gap: sunrise-org/sunrise#5371).
+- When **Limit spawn height** is enabled with **Spawn height limit** set to `0` (Automatic), the Overworld default cloud height (`192`) is used instead of querying a custom dimension's cloud height (gap: sunrise-org/sunrise#5385).
+- Fog particles configured with the `BLENDED` render type draw on Sunrise's standard translucent particle layer rather than a custom blended particle pipeline (gap: sunrise-org/sunrise#5616).
 - In-game configuration uses Sunrise's flat **Options → Mods → Particle Rain** page rather than a tabbed per-particle GUI editor; individual particle presets and whitelists/blacklists are edited in `config/particlerain.toml` (gap: [sunrise-org/sunrise#1217](https://github.com/sunrise-org/sunrise/issues/1217)).
 
 ## Configuration

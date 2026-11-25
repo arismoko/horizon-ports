@@ -2,8 +2,7 @@
 //! and `particlerain:streak`) implementing Sunrise's `ParticleProvider` trait.
 
 use crate::config::{
-    FadeType, ParticlePreset, ParticleRainConfig, ParticleRenderType, RotationType, SpawnPos,
-    WeatherCondition,
+    FadeType, ParticlePreset, ParticleRainConfig, RotationType, SpawnPos, WeatherCondition,
 };
 use crate::wind::{
     WindOptions, get_wind, horizontal_quad_rotation, pack_argb, pitch_angle_to_camera,
@@ -161,7 +160,6 @@ pub struct PresetSnapshot {
     pub fade_type: FadeType,
     pub size: f32,
     pub distance_scaling: f32,
-    pub render_type: ParticleRenderType,
     pub animate_sprites: bool,
     pub sprite_frames: Vec<u32>,
     pub rotation_type: RotationType,
@@ -189,7 +187,6 @@ impl PresetSnapshot {
             fade_type: p.fade_type,
             size: p.size,
             distance_scaling: p.distance_scaling,
-            render_type: p.render_type,
             animate_sprites: p.animate_sprites,
             sprite_frames,
             rotation_type: p.rotation_type,

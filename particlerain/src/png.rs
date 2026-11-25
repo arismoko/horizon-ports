@@ -22,7 +22,6 @@ pub fn decode_png(data: &[u8]) -> Result<RgbaImage, String> {
     let mut pos = 8usize;
     let mut width = 0u32;
     let mut height = 0u32;
-    let mut bit_depth = 0u8;
     let mut color_type = 0u8;
     let mut saw_ihdr = false;
     let mut palette: Vec<[u8; 3]> = Vec::new();
@@ -53,7 +52,7 @@ pub fn decode_png(data: &[u8]) -> Result<RgbaImage, String> {
                 }
                 width = u32::from_be_bytes([payload[0], payload[1], payload[2], payload[3]]);
                 height = u32::from_be_bytes([payload[4], payload[5], payload[6], payload[7]]);
-                bit_depth = payload[8];
+                let bit_depth = payload[8];
                 color_type = payload[9];
                 let compression = payload[10];
                 let filter = payload[11];
@@ -70,7 +69,7 @@ pub fn decode_png(data: &[u8]) -> Result<RgbaImage, String> {
                 saw_ihdr = true;
             }
             b"PLTE" => {
-                if payload.len() % 3 != 0 {
+                if !payload.len().is_multiple_of(3) {
                     return Err("invalid PLTE length".into());
                 }
                 palette = payload
@@ -185,8 +184,8 @@ fn unfilter_row(
             }
         }
         2 => {
-            for i in 0..src.len() {
-                out[i] = src[i].wrapping_add(prev[i]);
+            for ((o, &s), &p) in out.iter_mut().zip(src).zip(prev) {
+                *o = s.wrapping_add(p);
             }
         }
         3 => {
@@ -236,7 +235,7 @@ fn zlib_decompress(input: &[u8], max_out: usize) -> Result<Vec<u8>, String> {
     if (cmf & 0x0F) != 8 {
         return Err("unsupported zlib compression method".into());
     }
-    if ((cmf as u16) * 256 + (flg as u16)) % 31 != 0 {
+    if !((cmf as u16) * 256 + (flg as u16)).is_multiple_of(31) {
         return Err("invalid zlib header check".into());
     }
     let mut start = 2usize;
@@ -321,9 +320,9 @@ impl HuffmanTree {
         }
         let mut offsets = [0u16; 16];
         let mut total = 0u16;
-        for bits in 1..16 {
-            offsets[bits] = total;
-            total = total.saturating_add(counts[bits]);
+        for (off, &cnt) in offsets[1..].iter_mut().zip(&counts[1..]) {
+            *off = total;
+            total = total.saturating_add(cnt);
         }
         let mut symbols = vec![0u16; total as usize];
         for (sym, &len) in lengths.iter().enumerate() {
@@ -340,9 +339,9 @@ impl HuffmanTree {
         let mut code = 0i32;
         let mut first = 0i32;
         let mut index = 0i32;
-        for len in 1..16 {
+        for &count_u16 in &self.counts[1..] {
             code |= reader.read_bits(1)? as i32;
-            let count = self.counts[len] as i32;
+            let count = count_u16 as i32;
             if code - count < first {
                 return self
                     .symbols

@@ -147,13 +147,6 @@ impl SpawnPos {
             _ => None,
         }
     }
-
-    pub fn render_distance(self, perf: &PerformanceOptions) -> i32 {
-        match self {
-            Self::WorldSurface => perf.surface_range,
-            _ => perf.particle_distance,
-        }
-    }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -299,19 +292,10 @@ impl FadeType {
 }
 
 /// Tag-and-ID whitelist or blacklist matching `Whitelist.java`.
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct EntryFilter {
     pub is_whitelist: bool,
     pub entries: Vec<String>,
-}
-
-impl Default for EntryFilter {
-    fn default() -> Self {
-        Self {
-            is_whitelist: false,
-            entries: Vec::new(),
-        }
-    }
 }
 
 impl EntryFilter {
