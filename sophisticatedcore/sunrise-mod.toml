@@ -1,7 +1,7 @@
 # Sophisticated Backpacks and Storage for Sunrise: native code in src/ with its data/ and assets/.
 id = "sophisticatedcore"
 name = "Sophisticated Backpacks and Storage"
-version = "0.5.1"
+version = "0.5.2"
 description = "Tiered backpacks, chests, barrels and shulker boxes whose contents travel with them, with upgrades that work while you carry them."
 authors = ["P3pp3rF1y", "Ridanisaurus", "Salandora", "arismoko"]
 license = "GPL-3.0-only"
