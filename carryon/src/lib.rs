@@ -886,7 +886,7 @@ impl Mod {
         }
         // DoorBlock.HALF: the halves of tall blocks stay (a trapdoor's `half` is another property).
         if matches!(
-            level.block_property(reader, pos, "half").as_deref(),
+            level.block_property(reader, pos, "half"),
             Some("upper" | "lower")
         ) {
             return None;
@@ -1199,7 +1199,7 @@ impl Mod {
                 let [yaw, pitch] = player.entity().rotation(reader).unwrap_or([0.0, 0.0]);
                 let in_water = level.block(reader, pos).and_then(|k| k.id(reader))
                     == Some("minecraft:water")
-                    && level.block_property(reader, pos, "level").as_deref() == Some("0");
+                    && level.block_property(reader, pos, "level") == Some("0");
                 let carried = get_str(&carry, "block").unwrap_or_default();
                 let lists = Lists::get(reader);
                 let (carried_id, _) = parse_state(&carried);
@@ -1442,10 +1442,10 @@ impl Mod {
             }
             Some("entity") => {
                 let kind = get_str(carry, "kind").unwrap_or_default();
-                if let Some(Tag::Compound(data)) = carry.get(&"entity".into()) {
-                    if let Some(level) = host.level(dim) {
-                        let _ = level.summon(host, &kind, at, data.clone());
-                    }
+                if let Some(Tag::Compound(data)) = carry.get(&"entity".into())
+                    && let Some(level) = host.level(dim)
+                {
+                    let _ = level.summon(host, &kind, at, data.clone());
                 }
             }
             _ => {}
