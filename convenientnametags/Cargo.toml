@@ -1,0 +1,13 @@
+[package]
+name = "mod-convenientnametags"
+version = "1.1.0"
+edition = "2024"
+license = "Apache-2.0"
+description = "Convenient Name Tags for Sunrise: name tags drop on death, can be sheared off and are not wasted"
+# Ported from: Convenient Name Tags 1.1.0 (Mim1q, Apache-2.0).
+# Cargo's name and version are not the mod's identity: sunrise-mod.toml is.
+publish = false
+
+[dependencies]
+# The pinned SDK's API crate, fetched into .sunrise/sdk/ by any `cargo sunrise-mod` command.
+sunrise-mod-api = { path = ".sunrise/sdk/api/crates/sunrise-mod-api" }
