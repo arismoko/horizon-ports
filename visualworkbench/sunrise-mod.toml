@@ -1,0 +1,36 @@
+# Visual Workbench for Sunrise: native code in src/ using the typed mod API, with the menu and a tag in data/.
+id = "visualworkbench"
+name = "Visual Workbench"
+version = "0.5.0"
+description = "Crafting tables keep their items when you close them, and hoppers and comparators work with them."
+authors = ["Fuzs", "arismoko"]
+license = "MPL-2.0"
+credits = "Original mod by Fuzs (MPL-2.0); ported to Sunrise by arismoko."
+homepage = "https://github.com/arismoko/sunrise-ports"
+side = "both"
+
+[native]
+game = "26.3"
+sunrise = "3d34bbe63d71bb24c098c1e4021ef866be12fe2d"
+summary = "Items placed in a crafting table stay inside when you close it, are saved with the world and drop when the table is broken."
+description = """
+Visual Workbench gives crafting tables a memory:
+
+- **Items stay put**: whatever you lay out in a crafting table stays in its grid when you close it, is saved per block position, and drops when the table is broken or replaced.
+- **Hoppers and comparators**: hoppers fill the grid, spreading items evenly as a crafter does (they never take items out), and a redstone comparator reads how many cells are filled.
+- **Shift-click crafting** crafts as many as fit, and items a recipe leaves behind (buckets, bottles) go back into the grid.
+- **Server option**: `convert_vanilla_workbench_when_interacting` in `config/visualworkbench-server.toml` (on by default) turns on all of the above; with it off, crafting tables are vanilla. Blocks in `#visualworkbench:unaltered_workbenches` stay vanilla too.
+- **Client options** (Options → Mods → Visual Workbench): ingredient rendering (`None`, `Flat`, `Floating`), result rendering and ingredient rotation, kept for when the table can be drawn on (see below).
+
+Needed on both the server and the client.
+
+Differences from the original:
+
+- Items on a crafting table are not drawn on the table in the world, neither the ingredients (flat or floating, turning to the closest player) nor the floating result, so the three client options do nothing yet (gap: TBD-world-render).
+- The recipe book is not shown in the crafting screen and recipes cannot be placed into the grid from it (gap: TBD-recipe-book).
+- A crafting table keeps its items per position instead of in a block entity, so other mods' crafting tables are not converted (gap: TBD-table-block-entity).
+- Taking a result does not trigger the advancements a vanilla craft does (gap: TBD-recipe-crafted-trigger).
+
+A port of Visual Workbench by Fuzs, under the MPL-2.0 licence.
+"""
+categories = ["game-mechanics", "utility"]

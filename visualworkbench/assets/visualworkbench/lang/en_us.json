@@ -1,0 +1,15 @@
+{
+  "tag.block.visualworkbench.unaltered_workbenches": "Unaltered Workbenches",
+  "visualworkbench.setting.ingredient_rendering": "Ingredient Rendering",
+  "visualworkbench.setting.ingredient_rendering.tooltip": "Makes crafting table contents lay flat on the table instead of floating above. Not drawn yet: the mod API can't draw on a vanilla block.",
+  "visualworkbench.setting.ingredient_rendering.none": "None",
+  "visualworkbench.setting.ingredient_rendering.flat": "Flat",
+  "visualworkbench.setting.ingredient_rendering.floating": "Floating",
+  "visualworkbench.setting.result_rendering": "Result Rendering",
+  "visualworkbench.setting.result_rendering.tooltip": "Render the result of the crafting operation in addition to crafting table contents. Not drawn yet: the mod API can't draw on a vanilla block.",
+  "visualworkbench.setting.rotate_ingredients": "Rotate Ingredients",
+  "visualworkbench.setting.rotate_ingredients.tooltip": "Rotate crafting table contents so they always face the closest player. Not drawn yet: the mod API can't draw on a vanilla block.",
+  "visualworkbench.setting.rotate_ingredients.closest_player": "Closest Player",
+  "visualworkbench.setting.rotate_ingredients.crafting_player": "Crafting Player",
+  "visualworkbench.setting.rotate_ingredients.never": "Never"
+}
