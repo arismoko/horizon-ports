@@ -20,3 +20,7 @@ Differences from the original:
 A port of Tokimi's Toolshed by Tokimi and CozyStudios, under the CC0-1.0 licence.
 """
 categories = ["equipment"]
+
+[[screenshots]]
+path = "page/world.png"
+caption = "3x3 stone wall mined with Tokimi's Toolshed diamond hammer"

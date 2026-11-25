@@ -24,3 +24,7 @@ Differences from the original:
 Ported to Sunrise under the original's licence, LGPL-3.0-only.
 """
 categories = ["worldgen", "decoration"]
+
+[[screenshots]]
+path = "page/world.png"
+caption = "Spelunkery ores and rough gems mined in game"
