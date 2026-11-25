@@ -1,0 +1,14 @@
+Bridging Mod for Sunrise 26.3 (version 0.5.0)
+
+A port of Bridging Mod (2.7.0+26.3) by CG360 (Will Scully).
+Original source: https://github.com/CloudG360/BridgingMod
+Original licence: MIT
+
+Ported to Sunrise by arismoko: the reach-around path traversal, slab/trapdoor alignment,
+outline rendering, crosshair indicator, and client configuration are implemented in Rust
+on Sunrise's typed mod API (no Java code is included). This port is distributed under the
+same licence as the original (MIT); the licence text is in LICENSE.
+
+The mod icon, crosshair indicator sprites (assets/bridgingmod/textures/gui/sprites/indicator/),
+and translations (assets/bridgingmod/lang/) are carried over from the original project under
+its MIT licence.

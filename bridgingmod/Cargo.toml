@@ -1,0 +1,13 @@
+[package]
+name = "mod-bridgingmod"
+version = "0.5.0"
+edition = "2024"
+license = "MIT"
+description = "Bridging Mod for Sunrise: Bedrock-style reach-around block placement with crosshair indicator and block outline"
+# Ported from: Bridging Mod 2.7.0 (CloudG360/BridgingMod, MIT).
+# Cargo's name and version are not the mod's identity: sunrise-mod.toml is.
+publish = false
+
+[dependencies]
+# The pinned SDK's API crate, fetched into .sunrise/sdk/ by any `cargo sunrise-mod` command.
+sunrise-mod-api = { path = ".sunrise/sdk/api/crates/sunrise-mod-api" }
