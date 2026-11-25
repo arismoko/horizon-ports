@@ -1,0 +1,4 @@
+{
+  "config.cutthrough.target_alive_only": "Target Alive Only",
+  "config.cutthrough.target_alive_only_tooltip": "Only allow targeting alive entities, as opposed to entities that have already died and only remain to render a death animation. Greatly helps in combat as dead entities will no longer absorb hits."
+}
