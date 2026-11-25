@@ -236,7 +236,7 @@ fn update_player_channel(player_uuid: u128, channel: &str) {
 
 fn player_team_name(host: &dyn ServerHost, player: PlayerRef) -> Option<String> {
     let team = host.holder_team(ScoreHolder::Player(player))?;
-    team.name(host)
+    team.name(host).map(str::to_owned)
 }
 
 fn player_team_color(host: &dyn ServerHost, player: PlayerRef) -> Option<u32> {
