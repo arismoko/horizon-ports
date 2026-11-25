@@ -1,0 +1,18 @@
+{
+  "type": "minecraft:crafting_shaped",
+  "pattern": [
+    "SPS",
+    "TcT",
+    "SPS"
+  ],
+  "key": {
+    "P": "#minecraft:planks",
+    "S": "minecraft:stick",
+    "c": "minecraft:chest",
+    "T": "#minecraft:trapdoors"
+  },
+  "result": {
+    "id": "toms_storage:ts.inventory_cable",
+    "count": 6
+  }
+}

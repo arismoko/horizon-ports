@@ -1,0 +1,15 @@
+# Tom's Simple Storage for Sunrise: native code in src/ (typed mod API only, no [[native.mixin]] rows), blocks,
+# items, recipes and loot tables in data/, models, textures and translations in assets/.
+id = "toms_storage"
+name = "Tom's Simple Storage"
+version = "0.4.0"
+description = "Join chests into one network and reach all of it from a storage or crafting terminal, over cables, trims and wireless terminals."
+authors = ["tom5454", "lavoide", "arismoko"]
+license = "MIT"
+credits = "Original mod by tom5454 (MIT); first ported to Minecraft 26.3 by lavoide, and to Sunrise by arismoko."
+homepage = "https://github.com/arismoko/sunrise-ports"
+side = "both"
+
+[native]
+game = "26.3"
+sunrise = "bdad86d2d398ff9293002d2dc08702822aea7265"

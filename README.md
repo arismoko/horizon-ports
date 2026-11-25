@@ -39,6 +39,7 @@ Releases are tagged `<folder>/v<version>`; the shared Sunrise release workflow b
 | [rightclickharvest](rightclickharvest/) | Right-click a grown crop to harvest and replant it. | [Right Click Harvest](https://github.com/JamCoreModding/right-click-harvest) by Jamalam | MIT | Listed |
 | [safespawn](safespawn/) | New players spawn somewhere safe. | SafeSpawn by Tokimi, CozyStudios | CC0-1.0 | Listed |
 | [securecrops](securecrops/) | Farmland isn't trampled by players who land softly. | [Secure Crops](https://github.com/zekk051/secure-crops) by zekk051 | MIT | Listed |
+| [toms_storage](toms_storage/) | Join chests into one network and reach it all from a storage or crafting terminal. | [Tom's Simple Storage](https://github.com/tom5454/Toms-Storage) by tom5454 | MIT | Being ported |
 | [universalbonemeal](universalbonemeal/) | Bone meal grows cactus, sugar cane, vines, flowers, coral, chorus and more. | [Universal Bone Meal](https://github.com/Fuzss/universalbonemeal-forge) by Fuzs | MPL-2.0 | Listed |
 | [yungsbridges](yungsbridges/) | Bridges over rivers. | [YUNG's Bridges](https://github.com/yungnickyoung/YUNGs-Bridges) by YUNGNICKYOUNG | LGPL-3.0-only | Listed |
 | [invisibleframes](invisibleframes/) | Sneak-use an item frame to make it invisible. | [Invisible Frames](https://github.com/Roundaround/mc-fabric-invisible-frames) by Roundaround | MIT | Ported, not listed: waits on [#5357](https://github.com/sunrise-org/sunrise/issues/5357), [#5358](https://github.com/sunrise-org/sunrise/issues/5358) (fixed on main, in the next Dev build) |

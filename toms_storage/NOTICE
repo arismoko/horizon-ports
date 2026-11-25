@@ -1,0 +1,11 @@
+Tom's Simple Storage for Horizon 26.3 (version 0.3.0)
+
+A port of Tom's Simple Storage 1.7.1 by tom5454.
+Original source: https://github.com/tom5454/Toms-Storage
+Original licence: MIT
+
+Ported to Horizon by lavoide: the rules are re-implemented in Rust on Horizon's mod API, and the
+content (items, blocks, textures, models, data) is carried over from the original jar. This port is distributed under the same licence as the original (MIT); the licence text is in LICENSE. Built
+against Horizon's exact-build SDK dd67b76ff23e28c6d8e21859df600d31572f81a0.
+
+LICENSE is the original repository's file (the jar has none).
