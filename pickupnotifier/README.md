@@ -16,9 +16,8 @@ Client-side only (`side = "client"`): joins any vanilla or modded multiplayer se
 
 ## Differences from the original
 
-- Item sprites cannot be rendered with partial alpha transparency or non-uniform squash/stretch pop scaling on the current mod API: text, backgrounds, sprite count overlays, and experience orbs fade smoothly, while item icons stay opaque until the entry fades out (gap: sunrise-org/sunrise#5594).
+- Item sprites cannot be drawn with partial alpha transparency on the current mod API: text, backgrounds, sprite count overlays, and experience orbs fade smoothly, while item icons stay opaque until the entry fades out. The pop-in squash/stretch animation matches the vanilla hotbar (gap: sunrise-org/sunrise#5594).
 - On remote servers without Pick Up Notifier installed (or with `client_only = true`), the mod API exposes the `minecraft:take_item_entity` packet id without its decoded entity/amount fields or client-level entity lookup, so client-only mode falls back to local inventory and experience diffing; this cannot distinguish individual XP orb counts when `experience_value = false`, XP fully absorbed by Mending, or creative-mode pick-ups (gap: sunrise-org/sunrise#5595).
-- Experience orb icons use an original procedurally generated 11-tier orb sprite sheet tinted with vanilla's oscillating orb colors rather than blitting `textures/entity/experience/experience_orb.png` directly, so resource-pack overrides of the entity orb texture are not reflected on the HUD (gap: sunrise-org/sunrise#4633).
 
 ## Configuration
 

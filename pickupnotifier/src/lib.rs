@@ -16,20 +16,19 @@ use crate::entries::{
     ClientFallbackTracker, DisplayEntry, EntryCollector, ItemPickup, count_in_local_inventory,
     is_arrow_item_id, is_stack_enchanted, max_entries_for_height, resolve_stack_rarity,
 };
-use crate::hud::{ensure_xp_orb_texture, render_entries};
+use crate::hud::render_entries;
 use crate::payloads::{
     Channels, TakeItemPayload, TakeXpPayload, channels, id_take_item, id_take_xp, init_channels,
 };
 use mod_api::{
-    ClientDisconnectingEvent, ClientHost, ClientPacketEvent, ClientPlayerCloneEvent,
-    ClientPlayerLoggingOutEvent, ClientTickPostEvent, ConfigContext, ConfigKind,
-    ConfigLoadingEvent, ConfigPath, ConfigReloadingEvent, Flow, GuiLayerPlacement, Hooks, HostSide,
-    Identifier, ItemPickedUpEvent, ItemPickedUpPostEvent, ItemStack, PickupXpEvent,
-    PlayerPickupArrowEvent, RegisterConfigsEvent, RegisterGuiLayersEvent, Registrar,
-    RegistrationContext, RenderFramePreEvent, ServerHost, SettingChangedEvent, Text, TriState,
+    ClientHost, ClientPacketEvent, ClientPlayerCloneEvent, ClientPlayerLoggingOutEvent,
+    ClientTickPostEvent, ConfigEvent, ConfigKind, ConfigSnapshot, Flow, GuiLayerPlacement, Hooks,
+    Host, Identifier, ItemPickedUpEvent, ItemPickedUpPostEvent, ItemStack, PickupXpEvent,
+    PlayerPickupArrowEvent, RegisterGuiLayersEvent, Registrar, RegistrationContext,
+    RenderFramePreEvent, ServerHost, SettingChangedEvent, Text, TriState,
 };
 use std::collections::VecDeque;
-use std::sync::{LazyLock, Mutex, MutexGuard, PoisonError, RwLock};
+use std::sync::{Arc, LazyLock, Mutex, MutexGuard, PoisonError, RwLock};
 
 const HUD_LAYER_ID: &str = "pickupnotifier:pick_up_entries";
 const VANILLA_STATUS_EFFECTS_LAYER: &str = "minecraft:effects";
@@ -100,7 +99,9 @@ struct ClientState {
     pending_items: PendingQueue<TakeItemPayload>,
     pending_xp: PendingQueue<TakeXpPayload>,
     partial_tick: f32,
-    xp_texture_ready: bool,
+    /// True while this mod writes its own settings to the host, so the resulting
+    /// `setting_changed` notices neither re-apply nor re-persist the file.
+    syncing_settings: bool,
 }
 
 impl Default for ClientState {
@@ -114,7 +115,7 @@ impl Default for ClientState {
             pending_items: PendingQueue::new(MAX_PENDING_ITEMS),
             pending_xp: PendingQueue::new(MAX_PENDING_XP),
             partial_tick: 0.0,
-            xp_texture_ready: false,
+            syncing_settings: false,
         }
     }
 }
@@ -267,12 +268,31 @@ fn drain_pending_payloads(state: &mut ClientState, host: &dyn ClientHost) {
     }
 }
 
-fn persist_client_config(host: &dyn ClientHost, config: &ClientConfig) {
-    if let Ok(path) = ConfigPath::new(CLIENT_CONFIG_FILE) {
-        let _ = host
-            .config_files()
-            .write(&path, config.to_toml().as_bytes());
+fn persist_client_config(host: &dyn Host, config: &ClientConfig) {
+    let path = host.config_dir().join(CLIENT_CONFIG_FILE);
+    if let Some(parent) = path.parent()
+        && std::fs::create_dir_all(parent).is_err()
+    {
+        return;
     }
+    let _ = std::fs::write(&path, config.to_toml());
+}
+
+/// Applies a loaded or reloaded config file to this mod's state.
+fn on_config_event(event: ConfigEvent<'_>, snapshot: &ConfigSnapshot) -> Result<(), String> {
+    if !matches!(event, ConfigEvent::Loading(_) | ConfigEvent::Reloading(_)) {
+        return Ok(());
+    }
+    match snapshot.kind {
+        ConfigKind::Client => {
+            let mut state = lock_client();
+            state.config = ClientConfig::parse_toml(&snapshot.text);
+            state.settings_synced = false;
+        }
+        ConfigKind::Server => set_server_config(ServerConfig::parse_toml(&snapshot.text)),
+        _ => {}
+    }
+    Ok(())
 }
 
 #[derive(Default)]
@@ -282,6 +302,7 @@ struct PickUpNotifier;
 impl Hooks for PickUpNotifier {
     fn register(&self, r: &mut dyn Registrar, _cx: &RegistrationContext) {
         register_settings(r);
+        register_mod_configs(r, Arc::new(on_config_event));
 
         let mut payloads = r.payload_handlers();
         let mut net = payloads.registrar("1").optional();
@@ -322,50 +343,15 @@ impl Hooks for PickUpNotifier {
         init_channels(Channels { take_item, take_xp });
     }
 
-    fn register_configs(&self, _ctx: &dyn ConfigContext, event: &mut RegisterConfigsEvent<'_>) {
-        register_mod_configs(event.configs);
-    }
-
-    fn config_loading(&self, _ctx: &dyn ConfigContext, event: &mut ConfigLoadingEvent<'_>) {
-        if event.config.mod_id != MOD_ID {
-            return;
-        }
-        match event.config.kind {
-            ConfigKind::Client => {
-                let mut state = lock_client();
-                state.config = ClientConfig::parse_toml(&event.config.text);
-                state.settings_synced = false;
-            }
-            ConfigKind::Server => {
-                set_server_config(ServerConfig::parse_toml(&event.config.text));
-            }
-            _ => {}
-        }
-    }
-
-    fn config_reloading(&self, _host: HostSide<'_>, event: &mut ConfigReloadingEvent<'_>) {
-        if event.config.mod_id != MOD_ID {
-            return;
-        }
-        match event.config.kind {
-            ConfigKind::Client => {
-                let mut state = lock_client();
-                state.config = ClientConfig::parse_toml(&event.config.text);
-                state.settings_synced = false;
-            }
-            ConfigKind::Server => {
-                set_server_config(ServerConfig::parse_toml(&event.config.text));
-            }
-            _ => {}
-        }
-    }
-
-    fn setting_changed(&self, host: &mut dyn ClientHost, event: &mut SettingChangedEvent<'_>) {
+    fn setting_changed(&self, host: &dyn Host, event: &mut SettingChangedEvent<'_>) {
         if event.mod_id != MOD_ID {
             return;
         }
         let mut state = lock_client();
-        if state.config.apply_setting(host, event.key) {
+        if state.syncing_settings {
+            return;
+        }
+        if state.config.apply_setting(event.key, event.value) {
             persist_client_config(host, &state.config);
         }
     }
@@ -389,7 +375,6 @@ impl Hooks for PickUpNotifier {
                     &state.collector.entries,
                     &state.config,
                     state.partial_tick,
-                    state.xp_texture_ready,
                 );
             }),
         );
@@ -401,9 +386,6 @@ impl Hooks for PickUpNotifier {
         }
         let mut state = lock_client();
         state.partial_tick = event.world_partial_tick;
-        if !state.xp_texture_ready {
-            state.xp_texture_ready = ensure_xp_orb_texture(host);
-        }
         drain_pending_payloads(&mut state, host);
     }
 
@@ -422,11 +404,23 @@ impl Hooks for PickUpNotifier {
         if !host.on(MOD_ID) {
             return;
         }
-        let mut state = lock_client();
-        if !state.settings_synced {
-            state.settings_synced = true;
-            state.config.write_to_host_settings(host);
+        // Writing settings notifies `setting_changed` synchronously, so the state lock is
+        // released around the writes.
+        let pending_sync = {
+            let mut state = lock_client();
+            if state.settings_synced {
+                None
+            } else {
+                state.settings_synced = true;
+                state.syncing_settings = true;
+                Some(state.config.clone())
+            }
+        };
+        if let Some(config) = pending_sync {
+            config.write_to_host_settings(host);
+            lock_client().syncing_settings = false;
         }
+        let mut state = lock_client();
 
         drain_pending_payloads(&mut state, host);
 
@@ -453,15 +447,6 @@ impl Hooks for PickUpNotifier {
         _host: &mut dyn ClientHost,
         _event: &mut ClientPlayerLoggingOutEvent,
     ) {
-        let mut state = lock_client();
-        state.collector.clear();
-        state.fallback.reset();
-        state.pending_items.clear();
-        state.pending_xp.clear();
-        state.server_payloads_seen = false;
-    }
-
-    fn client_disconnecting(&self, _host: &dyn ClientHost, _event: &mut ClientDisconnectingEvent) {
         let mut state = lock_client();
         state.collector.clear();
         state.fallback.reset();
@@ -558,8 +543,10 @@ impl Hooks for PickUpNotifier {
         if !host.on(MOD_ID) {
             return Flow::Continue;
         }
-        let value = event.value.max(0) as u32;
-        let count = event.count;
+        let (Ok(value), Ok(count)) = (event.orb.value(&*host), event.orb.count(&*host)) else {
+            return Flow::Continue;
+        };
+        let value = value.max(0) as u32;
         if value > 0
             && count > 0
             && let (Some(ch), Some(player)) = (channels(), host.player(event.player))
