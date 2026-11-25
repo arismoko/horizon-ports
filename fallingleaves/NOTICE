@@ -1,0 +1,12 @@
+Falling Leaves for Sunrise 26.3 (version 0.5.0)
+
+A port of Falling Leaves (2.0.8) by Fourmisain, BrekiTomasson, and RandomMcSomethin.
+Original source: https://github.com/Fourmisain/fallingleaves
+Original licence: MIT
+
+Ported to Sunrise by arismoko: the wind simulation, particle physics, spawning rules,
+and configuration are implemented in Rust on Sunrise's typed mod API (no Java code is
+included). The leaf, conifer, and snowflake particle textures, mod icon, and translation
+files under assets/fallingleaves/ are carried from the original MIT-licensed repository.
+This port is distributed under the same licence as the original (MIT); the licence text
+is in LICENSE.
