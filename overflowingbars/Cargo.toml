@@ -1,6 +1,6 @@
 [package]
 name = "mod-overflowingbars"
-version = "0.5.1"
+version = "0.5.2"
 edition = "2024"
 license = "MPL-2.0"
 description = "Overflowing Bars for Sunrise: stacks health, armor and armor toughness into coloured rows with row counts"
