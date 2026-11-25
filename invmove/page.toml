@@ -1,0 +1,29 @@
+summary = "Keep walking, jumping, sneaking and sprinting while an inventory, chest or other screen is open."
+description = """
+InvMove lets you move with your normal movement keys while a screen is open, so you can sort a chest, trade or craft while walking, and optionally hides the dark tint behind those screens.
+
+## What it does
+
+- Walk, jump and sprint inside inventories, containers, the creative menu, villager trades, the book and advancements screens, and any other screen you allow.
+- Four sneak modes (Off, Maintain, Pressed, Maintain While Pressed), set separately for allowed screens, disallowed screens and creative flight, plus an option to allow dismounting by sneaking.
+- Toggle-sneak and toggle-sprint from Controls are honoured.
+- Typing in a text box (creative search, anvil name) stops movement, and the recipe book can do the same.
+- Each of the 23 listed vanilla screens has its own movement and background switch; screens the mod has not seen are recorded in `config/invmove.toml` with a default you choose.
+- A key to toggle movement in screens, a switch for each movement key, and extra keys listed in the config file.
+- Hides the dark background tint behind screens, with its own per-screen choices and a Show / Show in Singleplayer / Allow Hide mode for pause screens.
+- Space or Enter bound to jump no longer also clicks the focused button.
+
+## Differences from the original
+
+- The focused text box can't be queried, so movement stops once you type a character in a box and resumes when you click (gap: TBD-text-field-focus).
+- Other gameplay keys (attack, use, ...) only update their key state inside screens, because the game does not poll them there (gap: TBD-screen-keybinds).
+- Screens are identified by id and menu type, not by class or owning mod, so unrecognized screens are grouped by id, menu or mod (gap: TBD-screen-identity).
+- The settings page is a flat list: no subcategories, no dynamic lists of unrecognized screens or allowed keys; `config/invmove.toml` carries those (gap: TBD-flat-settings).
+- The focused button can't be seen, so space/Enter bound to jump is not delivered to buttons whenever jumping is allowed (gap: TBD-button-key-focus).
+- The background tint can be hidden only on the inventory, container, creative, villager, beacon, book and sign screens, and the pause-screen blur only by radius (gap: TBD-screen-background).
+- The addon module API used by InvMoveCompats is not ported (gap: TBD-addon-modules).
+- The original's Debug Display is left out: it does nothing on 26.x in the original either.
+
+A port of InvMove by PieKing1215, under the LGPL-3.0-only licence.
+"""
+categories = ["utility", "game-mechanics"]

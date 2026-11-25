@@ -1,0 +1,8 @@
+InvMove for Sunrise is a port of InvMove 0.9.6 by PieKing1215
+(https://github.com/PieKing1215/InvMove), licensed LGPL-3.0-only.
+
+The language strings in assets/invmove/lang/en_us.json and icon.png are carried from the
+original under its licence. No Java source was copied; the code is a new implementation
+against Sunrise's mod API.
+
+Ported by arismoko.
