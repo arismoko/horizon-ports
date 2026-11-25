@@ -1,6 +1,6 @@
 [package]
 name = "mod-pingwheel"
-version = "0.5.0"
+version = "0.5.1"
 edition = "2024"
 license = "MIT"
 description = "Ping Wheel for Sunrise: mark world locations and entities with HUD markers and directional audio alerts"
