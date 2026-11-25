@@ -13,15 +13,14 @@ use std::sync::{Mutex, OnceLock, PoisonError};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use mod_api::{
-    BlockKey, BlockShapeKind, BlockState, BlockUpdateFlags, BonemealEvent, Flow, Hooks, Host,
-    HostBlockStates, HostSide, IPayloadContext, ItemResource, ItemStack, LegacyRandomSource,
+    BlockClass, BlockKey, BlockShapeKind, BlockState, BlockUpdateFlags, BonemealEvent, Flow, Hooks,
+    Host, HostBlockStates, HostSide, IPayloadContext, ItemResource, ItemStack, LegacyRandomSource,
     LevelRef, LightLayer, ParticleKey, ParticleOptions, PayloadId, RandomSource, Registrar,
     RegistrationContext, ServerHost, ToClient,
 };
 
 /// Blocks bone meal never works on, whatever another mod says (`DENY`).
 const RESISTANT: &str = "universalbonemeal:fertilizer_resistant_plants";
-const AIR: &str = "minecraft:air";
 /// `BlockFlags`: `UPDATE_CLIENTS`.
 const CLIENTS: i32 = 2;
 /// `setBlockAndUpdate`: `UPDATE_NEIGHBORS | UPDATE_CLIENTS`.
@@ -295,10 +294,15 @@ impl<'a> Reads<'a> {
         self.host.block_in_tag(state.block(), tag) == Some(true)
     }
 
-    /// `BlockState.isAir`, read as `#minecraft:air`, which holds the air blocks
-    /// (sunrise-org/sunrise#5364).
+    /// `BlockState.isAir` of a state: air, cave air and void air.
+    fn state_is_air(self, state: BlockState) -> bool {
+        self.host.block_states().is_air(state) == Some(true)
+    }
+
+    /// `BlockState.isAir` of the block at `pos`.
     fn is_air(self, pos: [i32; 3]) -> bool {
-        self.state(pos).is_some_and(|state| self.tagged(state, AIR))
+        self.state(pos)
+            .is_some_and(|state| self.state_is_air(state))
     }
 
     fn property(self, state: BlockState, name: &str) -> Option<String> {
@@ -351,13 +355,11 @@ impl<'a> Reads<'a> {
             .is_some_and(|id| self.host.fluid_in_tag(id, tag) == Some(true))
     }
 
-    /// `BlockState.propagatesSkylightDown` as `BlockBehaviour` answers it for a block that keeps
-    /// the default: no full outline and no fluid (sunrise-org/sunrise#5364).
+    /// `BlockState.propagatesSkylightDown`, the block's own answer.
     fn propagates_skylight_down(self, pos: [i32; 3]) -> bool {
-        !self
-            .shape(pos, BlockShapeKind::Outline)
-            .is_some_and(|boxes| is_full_block(&boxes))
-            && self.fluid_empty(pos)
+        self.state(pos).is_some_and(|state| {
+            self.host.block_states().propagates_skylight_down(state) == Some(true)
+        })
     }
 
     /// `GrowingPlantTraverser.getTopConnectedBlock`: the last block of `block` going `dy` from
@@ -541,7 +543,7 @@ fn decide(w: Reads<'_>, event: &BonemealEvent<'_>, pos: [i32; 3]) -> Decision {
     let Some(entry) = behavior(id, |tag| w.tagged(state, tag)) else {
         return Decision::Pass;
     };
-    if bonemealable(event, id) && !entry.replaces() {
+    if bonemealable(w.host, event) && !entry.replaces() {
         return Decision::Pass;
     }
     if valid(w, entry, pos, state) {
@@ -551,13 +553,14 @@ fn decide(w: Reads<'_>, event: &BonemealEvent<'_>, pos: [i32; 3]) -> Decision {
     }
 }
 
-/// `state.getBlock() instanceof BonemealableBlock`, from the block's own answer and the blocks of
-/// the map that can answer no (sunrise-org/sunrise#5364).
-fn bonemealable(event: &BonemealEvent<'_>, id: &str) -> bool {
+/// `state.getBlock() instanceof BonemealableBlock`: the block's class, or its own answer that it
+/// is a valid target here.
+fn bonemealable(host: &dyn Host, event: &BonemealEvent<'_>) -> bool {
     event.valid_bonemeal_target
         || matches!(
-            id,
-            "minecraft:rooted_dirt" | "minecraft:melon_stem" | "minecraft:pumpkin_stem"
+            host.block_states()
+                .block_class(event.state, BlockClass::Bonemealable),
+            Ok(Some(true))
         )
 }
 
@@ -742,7 +745,7 @@ fn perform(
                         set(host, level, above(at, 1), upper, CLIENTS);
                     }
                 }
-                if Reads::server(&*host, level).tagged(found, AIR)
+                if Reads::server(&*host, level).state_is_air(found)
                     && level.with_random(host, |r| r.next_int_bound(5) == 0) == Some(true)
                     && Reads::server(&*host, level).is_air(at)
                     && at[1] > min_y
@@ -853,23 +856,18 @@ fn podzol_walk(
     Some(at)
 }
 
-/// `UseBoneMealHandler.shrinkOrHurtItem`: a damageable item takes one damage and breaks at its
-/// most, without Unbreaking (sunrise-org/sunrise#5369); anything else is used up one at a time.
-fn use_meal(host: &dyn Host, stack: &mut Option<ItemStack>) {
-    let Some(mut meal) = stack.take() else {
+/// `UseBoneMealHandler.shrinkOrHurtItem`: a damageable item is worn by one as
+/// `ItemStack.hurtAndBreak(1, level, null)` does, Unbreaking included; anything else is used up
+/// one at a time.
+fn use_meal(host: &mut dyn ServerHost, level: LevelRef, stack: &mut Option<ItemStack>) {
+    let Some(meal) = stack.take() else {
         return;
     };
-    if ItemResource::of(&meal).damageable(host) {
-        let damage = meal.damage().saturating_add(1);
-        if host
-            .max_damage(meal.item())
-            .is_some_and(|max| damage >= max)
-        {
-            *stack = meal.shrink(1);
-        } else {
-            meal.set_damage(damage);
-            *stack = Some(meal);
-        }
+    if ItemResource::of(&meal).damageable(&*host) {
+        *stack = match meal.hurt_and_break(host, level, 1, None) {
+            Ok(worn) => worn,
+            Err(_) => Some(meal),
+        };
     } else {
         *stack = meal.shrink(1);
     }
@@ -888,14 +886,12 @@ fn serve(host: &mut dyn ServerHost, event: &mut BonemealEvent<'_>, pos: [i32; 3]
             Flow::Cancel
         }
         Decision::Grow(entry) => {
-            let id = event.state.block().id(&*host).unwrap_or("").to_owned();
+            let bonemealable_block = bonemealable(&*host, event);
             if succeeds(host, level, entry) {
                 perform(host, level, entry, pos, event.state);
             }
-            use_meal(&*host, event.stack);
-            if !bonemealable(event, &id)
-                && let Some(growth) = GROWTH.get()
-            {
+            use_meal(host, level, event.stack);
+            if !bonemealable_block && let Some(growth) = GROWTH.get() {
                 let at = [f64::from(pos[0]), f64::from(pos[1]), f64::from(pos[2])];
                 let _ = growth.send_near(host, level, at, PARTICLE_RANGE, None, &Growth { pos });
             }
@@ -964,7 +960,7 @@ fn on_growth(growth: Growth, cx: &mut dyn IPayloadContext) -> Result<(), String>
     let (origin, count, width, height, floating) =
         if host.block_states().is_solid_render(state) == Some(true) {
             (above(pos, 1), 45, 3.0, 1.0, false)
-        } else if w.tagged(state, AIR) {
+        } else if w.state_is_air(state) {
             (pos, 15, 0.5, 1.0, true)
         } else {
             let Some(top) = w
