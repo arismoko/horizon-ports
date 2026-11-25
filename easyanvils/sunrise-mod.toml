@@ -1,7 +1,7 @@
 # Easy Anvils for Sunrise: native code in src/ using the typed mod API, with menu and tags in data/.
 id = "easyanvils"
 name = "Easy Anvils"
-version = "0.5.1"
+version = "0.5.2"
 description = "Anvils keep their items, allow repairing with iron blocks, support formatting codes in item names, and let you tune repair costs and prior work penalties."
 authors = ["Fuzs", "arismoko"]
 license = "MPL-2.0"
