@@ -6,6 +6,7 @@ use mod_api::{
 };
 use serde_json::Value;
 use std::collections::HashMap;
+use std::ops::ControlFlow;
 use std::sync::{PoisonError, RwLock};
 
 pub const ENCHANTING_CATALYSTS_TAG: &str = "easymagic:enchanting_catalysts";
@@ -402,6 +403,18 @@ fn load_tooltip_order(host: &dyn Host) -> HashMap<String, usize> {
         .collect()
 }
 
+/// Whether `block` is in the tag named `tag`; an unknown or unavailable tag is `false`.
+pub fn block_in_tag(host: &dyn Host, block: BlockKey, tag: &str) -> bool {
+    let Ok(id) = Identifier::parse(tag) else {
+        return false;
+    };
+    let tags = host.tags();
+    let Some(key) = tags.key(&id) else {
+        return false;
+    };
+    block.is_in_tag(tags, key).unwrap_or(false)
+}
+
 pub fn item_in_tag_id(host: &dyn Host, item_id: &str, tag: &str) -> bool {
     let (Ok(reg), Ok(id)) = (
         Identifier::parse("minecraft:item"),
@@ -736,16 +749,24 @@ pub fn is_valid_transmitter(
     let Some(mid_state) = level.block_state(host, mid) else {
         return false;
     };
-    if host
-        .block_in_tag(mid_state.block(), ENCHANTMENT_POWER_TRANSMITTER_TAG)
-        .unwrap_or(false)
-    {
+    if block_in_tag(host, mid_state.block(), ENCHANTMENT_POWER_TRANSMITTER_TAG) {
         return true;
     }
     if lenient {
-        let Some(boxes) = level.block_shape(host, mid_state, mid, BlockShapeKind::Collision) else {
+        let mut boxes = Vec::new();
+        let visited = level.visit_block_shape(
+            host,
+            mid_state,
+            mid,
+            BlockShapeKind::Collision,
+            &mut |shape_box| {
+                boxes.push(shape_box);
+                ControlFlow::Continue(())
+            },
+        );
+        if visited.is_none() {
             return false;
-        };
+        }
         return !is_full_collision_block(&boxes);
     }
     false
@@ -880,8 +901,7 @@ pub fn chiseled_bookshelf_hit_slot(
 
 /// Checks whether a block is marked in `#easymagic:unaltered_enchanting_tables`.
 pub fn is_unaltered_enchanting_table(host: &dyn Host, block: BlockKey) -> bool {
-    host.block_in_tag(block, UNALTERED_ENCHANTING_TABLES_TAG)
-        .unwrap_or(false)
+    block_in_tag(host, block, UNALTERED_ENCHANTING_TABLES_TAG)
 }
 
 /// Vanilla `EnchantmentNames` word list for Standard Galactic Alphabet enchanting runes.

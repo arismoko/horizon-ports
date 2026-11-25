@@ -1,13 +1,62 @@
-use crate::config::{MOD_ID, server_config};
+use crate::config::server_config;
 use crate::enchant::{is_enchanting_catalyst, is_reroll_catalyst, is_stack_enchanted_or_book};
 use mod_api::{
-    AttachmentCodec, AttachmentError, AttachmentStore, AttachmentType, BlockSide, Compound,
-    Direction, Holder, Host, ItemResource, ItemStack, JavaString, LevelRef, Overanswered,
-    ResourceHandler, ServerHost, Tag, TransactionContext, TransactionError,
+    AttachmentCodec, AttachmentDescriptor, AttachmentError, AttachmentKey, BlockSide, Compound,
+    Direction, Holder, Host, ItemResource, ItemStack, JavaString, LevelRandomHost, LevelRef,
+    Overanswered, Registrar, ResourceHandler, ServerHost, Tag, TransactionContext,
+    TransactionError,
 };
+use std::sync::{PoisonError, RwLock};
 
 pub const ATTACH_TABLE_CONTENTS: &str = "easymagic:table_contents";
 pub const ATTACH_PLAYER_SEED: &str = "easymagic:enchantment_seed";
+
+// Keys are issued per registration pass; each install replaces the stored key.
+static TABLE_CONTENTS_KEY: RwLock<Option<AttachmentKey<TableContents>>> = RwLock::new(None);
+static PLAYER_SEED_KEY: RwLock<Option<AttachmentKey<i32>>> = RwLock::new(None);
+
+fn table_contents_key() -> Option<AttachmentKey<TableContents>> {
+    TABLE_CONTENTS_KEY
+        .read()
+        .unwrap_or_else(PoisonError::into_inner)
+        .clone()
+}
+
+fn player_seed_key() -> Option<AttachmentKey<i32>> {
+    PLAYER_SEED_KEY
+        .read()
+        .unwrap_or_else(PoisonError::into_inner)
+        .clone()
+}
+
+/// Declares both attachments and keeps their issued keys for this load.
+pub fn register_attachments(r: &mut dyn Registrar) {
+    // The registrar records any refusal on the load, so only the issued key is kept.
+    if let Ok(key) = r.register_attachment_type(
+        AttachmentDescriptor::new(ATTACH_TABLE_CONTENTS, TableContents::default).serialize(
+            AttachmentCodec {
+                encode: encode_contents,
+                decode: decode_contents,
+            },
+        ),
+    ) {
+        *TABLE_CONTENTS_KEY
+            .write()
+            .unwrap_or_else(PoisonError::into_inner) = Some(key);
+    }
+    if let Ok(key) = r.register_attachment_type(
+        AttachmentDescriptor::new(ATTACH_PLAYER_SEED, || 0)
+            .serialize(AttachmentCodec {
+                encode: encode_seed,
+                decode: decode_seed,
+            })
+            .copy_on_death(),
+    ) {
+        *PLAYER_SEED_KEY
+            .write()
+            .unwrap_or_else(PoisonError::into_inner) = Some(key);
+    }
+}
 
 /// Serialized contents of an enchanting table's 3 slots (`ItemStack::to_nbt` compounds).
 #[derive(Clone, Debug, Default, PartialEq)]
@@ -79,18 +128,6 @@ fn decode_contents(saved: &Compound) -> Result<TableContents, AttachmentError> {
     Ok(TableContents { slots })
 }
 
-pub const TABLE_CONTENTS: AttachmentType<TableContents> = AttachmentType {
-    namespace: MOD_ID,
-    name: "table_contents",
-    default: TableContents::default,
-    codec: Some(AttachmentCodec {
-        encode: encode_contents,
-        decode: decode_contents,
-    }),
-    copy_on_death: false,
-    sync: false,
-};
-
 fn encode_seed(seed: &i32) -> Result<Compound, AttachmentError> {
     let mut out = Compound::new();
     out.insert(JavaString::from("seed"), Tag::Int(*seed));
@@ -104,18 +141,6 @@ fn decode_seed(saved: &Compound) -> Result<i32, AttachmentError> {
     }
 }
 
-pub const PLAYER_SEED: AttachmentType<i32> = AttachmentType {
-    namespace: MOD_ID,
-    name: "enchantment_seed",
-    default: || 0,
-    codec: Some(AttachmentCodec {
-        encode: encode_seed,
-        decode: decode_seed,
-    }),
-    copy_on_death: true,
-    sync: false,
-};
-
 /// Reads stored table contents from the transactional block entity attachment.
 pub fn read_table_contents(
     host: &mut dyn ServerHost,
@@ -125,20 +150,21 @@ pub fn read_table_contents(
     if host.dimension() != dimension {
         return TableContents::default();
     }
-    TABLE_CONTENTS
-        .get_existing(host, Holder::BlockEntity(pos))
+    let Some(key) = table_contents_key() else {
+        return TableContents::default();
+    };
+    key.get_existing(host, Holder::BlockEntity(pos), |value| value.cloned())
         .ok()
         .flatten()
         .unwrap_or_default()
 }
 
-/// Reads stored table contents from a `LevelRandomHost` (used by `analog_output`).
-pub fn read_table_contents_level<S: AttachmentStore + ?Sized>(
-    store: &mut S,
-    pos: [i32; 3],
-) -> TableContents {
-    TABLE_CONTENTS
-        .get_existing(store, Holder::BlockEntity(pos))
+/// Reads stored table contents through a `LevelRandomHost` (used by `analog_output`).
+pub fn read_table_contents_level(level: &mut dyn LevelRandomHost, pos: [i32; 3]) -> TableContents {
+    let Some(key) = table_contents_key() else {
+        return TableContents::default();
+    };
+    key.get_existing_in(level, Holder::BlockEntity(pos), |value| value.cloned())
         .ok()
         .flatten()
         .unwrap_or_default()
@@ -154,10 +180,13 @@ pub fn write_table_contents(
     if host.dimension() != dimension {
         return;
     }
+    let Some(key) = table_contents_key() else {
+        return;
+    };
     if contents.is_empty() {
-        let _ = TABLE_CONTENTS.remove(host, Holder::BlockEntity(pos));
+        let _ = key.remove(host, Holder::BlockEntity(pos));
     } else {
-        let _ = TABLE_CONTENTS.set(host, Holder::BlockEntity(pos), contents.clone());
+        let _ = key.set(host, Holder::BlockEntity(pos), contents.clone());
     }
 }
 
@@ -171,12 +200,15 @@ pub fn drop_and_clear_table_contents(
     if host.dimension() != dimension {
         return;
     }
-    let contents = TABLE_CONTENTS
-        .get_existing(host, Holder::BlockEntity(pos))
+    let Some(key) = table_contents_key() else {
+        return;
+    };
+    let contents = key
+        .get_existing(host, Holder::BlockEntity(pos), |value| value.cloned())
         .ok()
         .flatten()
         .unwrap_or_default();
-    let _ = TABLE_CONTENTS.remove(host, Holder::BlockEntity(pos));
+    let _ = key.remove(host, Holder::BlockEntity(pos));
     if contents.is_empty() {
         return;
     }
@@ -188,19 +220,24 @@ pub fn drop_and_clear_table_contents(
 
 /// Reads (or initializes with a deterministic non-zero hash) a player's enchantment seed.
 pub fn get_or_init_player_seed(host: &mut dyn ServerHost, player: u128) -> i32 {
-    if let Ok(Some(seed)) = PLAYER_SEED.get_existing(host, Holder::Player(player))
+    let Some(key) = player_seed_key() else {
+        return next_random_seed(player, 0);
+    };
+    if let Ok(Some(seed)) = key.get_existing(host, Holder::Player(player), |value| value.copied())
         && seed != 0
     {
         return seed;
     }
     let seed = next_random_seed(player, 0);
-    let _ = PLAYER_SEED.set(host, Holder::Player(player), seed);
+    let _ = key.set(host, Holder::Player(player), seed);
     seed
 }
 
 pub fn advance_player_seed(host: &mut dyn ServerHost, player: u128, prev: i32) -> i32 {
     let next = next_random_seed(player, prev);
-    let _ = PLAYER_SEED.set(host, Holder::Player(player), next);
+    if let Some(key) = player_seed_key() {
+        let _ = key.set(host, Holder::Player(player), next);
+    }
     next
 }
 

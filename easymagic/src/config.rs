@@ -1,12 +1,13 @@
-use mod_api::{ClientHost, Config, ConfigKind, Registrar, SettingSpec, Wire};
-use std::sync::{PoisonError, RwLock};
+use mod_api::{
+    ClientHost, ConfigEvent, ConfigKind, ConfigSnapshot, ConfigSpec, HostSide, Registrar,
+    SettingKey, SettingSpec, Wire,
+};
+use std::sync::{Arc, PoisonError, RwLock};
 
-pub const MOD_ID: &str = "easymagic";
-
-pub const SETTING_KEEP_BOOK: &str = "keep_enchantment_screen_book";
-pub const SETTING_CHISELED_TOOLTIP: &str = "chiseled_bookshelf_tooltip";
-pub const SETTING_CHISELED_TOOLTIP_X: &str = "chiseled_bookshelf_tooltip_offset_x";
-pub const SETTING_CHISELED_TOOLTIP_Y: &str = "chiseled_bookshelf_tooltip_offset_y";
+const SETTING_KEEP_BOOK: &str = "keep_enchantment_screen_book";
+const SETTING_CHISELED_TOOLTIP: &str = "chiseled_bookshelf_tooltip";
+const SETTING_CHISELED_TOOLTIP_X: &str = "chiseled_bookshelf_tooltip_offset_x";
+const SETTING_CHISELED_TOOLTIP_Y: &str = "chiseled_bookshelf_tooltip_offset_y";
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Wire)]
 pub enum EnchantmentHint {
@@ -258,19 +259,33 @@ pub fn set_synced_server_config(cfg: ServerConfig) {
         .unwrap_or_else(PoisonError::into_inner) = cfg;
 }
 
+/// Setting keys issued by the registrar for this load.
+#[derive(Clone, Copy)]
+struct SettingKeys {
+    keep_book: SettingKey,
+    chiseled_tooltip: SettingKey,
+    chiseled_tooltip_x: SettingKey,
+    chiseled_tooltip_y: SettingKey,
+}
+
+static SETTING_KEYS: RwLock<Option<SettingKeys>> = RwLock::new(None);
+
 /// Effective client config read from Options -> Mods -> Easy Magic settings.
 pub fn effective_client_config(host: &dyn ClientHost) -> ClientConfig {
     let mut cfg = ClientConfig::default();
-    if let Some(v) = host.setting_bool(SETTING_KEEP_BOOK) {
+    let Some(keys) = *SETTING_KEYS.read().unwrap_or_else(PoisonError::into_inner) else {
+        return cfg;
+    };
+    if let Ok(v) = host.setting_bool(keys.keep_book) {
         cfg.keep_enchantment_screen_book = v;
     }
-    if let Some(v) = host.setting_choice(SETTING_CHISELED_TOOLTIP) {
+    if let Ok(v) = host.setting_choice(keys.chiseled_tooltip) {
         cfg.chiseled_bookshelf_tooltip = ChiseledBookshelfTooltip::from_choice(v);
     }
-    if let Some(v) = host.setting_f64(SETTING_CHISELED_TOOLTIP_X) {
+    if let Ok(v) = host.setting_f64(keys.chiseled_tooltip_x) {
         cfg.chiseled_bookshelf_tooltip_offset_x = v.round() as i32;
     }
-    if let Some(v) = host.setting_f64(SETTING_CHISELED_TOOLTIP_Y) {
+    if let Ok(v) = host.setting_f64(keys.chiseled_tooltip_y) {
         cfg.chiseled_bookshelf_tooltip_offset_y = v.round() as i32;
     }
     cfg
@@ -280,20 +295,39 @@ pub fn keep_enchantment_screen_book(client: &ClientConfig, server: &ServerConfig
     client.keep_enchantment_screen_book || !server.reroll_enchantments
 }
 
-pub fn register_mod_configs(configs: &mut Vec<Config>) {
-    configs.push(Config::new(
-        MOD_ID,
-        ConfigKind::Server,
-        ServerConfig::default_toml(),
-    ));
+/// Declares `easymagic-server.toml`; its listener loads the text and, on a live reload,
+/// tells connected clients.
+pub fn register_server_config(r: &mut dyn Registrar) {
+    let listener = |event: ConfigEvent<'_>, snapshot: &ConfigSnapshot| -> Result<(), String> {
+        match event {
+            ConfigEvent::Loading(_) => {
+                let parsed = ServerConfig::parse_toml(&snapshot.text);
+                set_server_config(parsed.clone());
+                set_synced_server_config(parsed);
+            }
+            ConfigEvent::Reloading(host) => {
+                let parsed = ServerConfig::parse_toml(&snapshot.text);
+                set_server_config(parsed.clone());
+                set_synced_server_config(parsed);
+                if let HostSide::Server(server) = host {
+                    crate::server::broadcast_server_config(server);
+                }
+            }
+            _ => {}
+        }
+        Ok(())
+    };
+    let spec = ConfigSpec::new(ConfigKind::Server, ServerConfig::default_toml());
+    // A duplicate filename is refused and leaves the first registration active.
+    let _ = r.register_config(spec, Some(Arc::new(listener)));
 }
 
 pub fn register_settings(r: &mut dyn Registrar) {
-    let _ = r.register_setting(
+    let keep_book = r.register_setting(
         SettingSpec::toggle(SETTING_KEEP_BOOK, "easymagic.setting.keep_book", false)
             .tooltip("easymagic.setting.keep_book.tooltip"),
     );
-    let _ = r.register_setting(
+    let chiseled_tooltip = r.register_setting(
         SettingSpec::choice(
             SETTING_CHISELED_TOOLTIP,
             "easymagic.setting.chiseled_tooltip",
@@ -306,7 +340,7 @@ pub fn register_settings(r: &mut dyn Registrar) {
         )
         .tooltip("easymagic.setting.chiseled_tooltip.tooltip"),
     );
-    let _ = r.register_setting(
+    let chiseled_tooltip_x = r.register_setting(
         SettingSpec::range(
             SETTING_CHISELED_TOOLTIP_X,
             "easymagic.setting.chiseled_tooltip_x",
@@ -317,7 +351,7 @@ pub fn register_settings(r: &mut dyn Registrar) {
         )
         .tooltip("easymagic.setting.chiseled_tooltip_x.tooltip"),
     );
-    let _ = r.register_setting(
+    let chiseled_tooltip_y = r.register_setting(
         SettingSpec::range(
             SETTING_CHISELED_TOOLTIP_Y,
             "easymagic.setting.chiseled_tooltip_y",
@@ -328,6 +362,19 @@ pub fn register_settings(r: &mut dyn Registrar) {
         )
         .tooltip("easymagic.setting.chiseled_tooltip_y.tooltip"),
     );
+    if let (Ok(keep_book), Ok(chiseled_tooltip), Ok(chiseled_tooltip_x), Ok(chiseled_tooltip_y)) = (
+        keep_book,
+        chiseled_tooltip,
+        chiseled_tooltip_x,
+        chiseled_tooltip_y,
+    ) {
+        *SETTING_KEYS.write().unwrap_or_else(PoisonError::into_inner) = Some(SettingKeys {
+            keep_book,
+            chiseled_tooltip,
+            chiseled_tooltip_x,
+            chiseled_tooltip_y,
+        });
+    }
 }
 
 fn parse_flat_toml(source: &str) -> Vec<(&str, &str)> {

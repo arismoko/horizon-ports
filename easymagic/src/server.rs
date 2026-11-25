@@ -13,13 +13,13 @@ use crate::storage::{
 use mod_api::wire::Writer;
 use mod_api::{
     AnalogOutputEvent, AnimateTickEvent, BlockPart, Flow, GameMode, HasAnalogOutputEvent, Host,
-    HostTransaction, IPayloadContext, ITEMS, InteractionResult, ItemPlace, ItemResource, ItemStack,
-    LevelHost, LevelRandomHost, LevelRef, LevelSide, LoopContext, MenuButtonEvent,
-    MenuButtonValidEvent, MenuClickedEvent, MenuClosedEvent, MenuContainer, MenuKey, MenuPart,
-    MenuRef, MenuReplace, MenuSlotChangedEvent, MenuSlotRulesEvent, MenuStillValidEvent,
+    HostSide, HostTransaction, IPayloadContext, ITEMS, InteractionResult, ItemPlace, ItemResource,
+    ItemStack, LevelHost, LevelRandomHost, LevelRef, LevelSide, LoopContext, MenuButtonEvent,
+    MenuButtonValidEvent, MenuClickedEvent, MenuContainer, MenuKey, MenuPart, MenuRef,
+    MenuRemovedEvent, MenuReplace, MenuSlotChangedEvent, MenuSlotRulesEvent, MenuStillValidEvent,
     ModMenuOpen, NeighbourUpdate, OnBlockExplodedEvent, OnBlockStateChangeEvent,
-    OnDestroyedByPlayerEvent, PlayerRef, ServerHost, SoundSource, StatType, Text,
-    UseWithoutItemEvent,
+    OnDestroyedByPlayerEvent, PlayerContainerOpenEvent, PlayerRef, ServerHost, SoundSource,
+    StatType, Text, UseWithoutItemEvent,
 };
 use std::collections::HashMap;
 use std::sync::{LazyLock, Mutex, PoisonError};
@@ -31,6 +31,12 @@ fn find_menu_key(host: &dyn Host) -> Option<MenuKey> {
     host.menu_keys()
         .into_iter()
         .find(|k| k.id(host).is_some_and(|n| n.as_str() == MENU_ID))
+}
+
+/// The player's current menu when it is the open window `window`.
+fn find_menu(host: &dyn ServerHost, uuid: u128, window: i32) -> Option<MenuRef> {
+    let menu = host.player(uuid)?.container_menu(host)?;
+    (menu.container_id(host) == Some(window)).then_some(menu)
 }
 
 fn notify_comparator(host: &mut dyn ServerHost, level: LevelRef, pos: [i32; 3]) {
@@ -48,6 +54,17 @@ struct ViewerEntry {
     still_valid: bool,
 }
 
+/// An enchanting menu requested by a table click, completed once the engine installs it.
+struct PendingOpen {
+    dimension: String,
+    pos: [i32; 3],
+    stacks: [Option<ItemStack>; 3],
+    scaled_power: i32,
+    clues: CluesPayload,
+}
+
+static PENDING_OPENS: LazyLock<Mutex<HashMap<u128, PendingOpen>>> = LazyLock::new(Mutex::default);
+
 type TableKey = (String, [i32; 3]);
 
 static VIEWERS: LazyLock<Mutex<HashMap<u128, ViewerEntry>>> = LazyLock::new(Mutex::default);
@@ -57,6 +74,10 @@ static DIRTY_TABLES: LazyLock<Mutex<HashMap<TableKey, i32>>> = LazyLock::new(Mut
 static PENDING_DROPS: LazyLock<Mutex<Vec<TableKey>>> = LazyLock::new(Mutex::default);
 
 pub fn reset_server_state() {
+    PENDING_OPENS
+        .lock()
+        .unwrap_or_else(PoisonError::into_inner)
+        .clear();
     VIEWERS
         .lock()
         .unwrap_or_else(PoisonError::into_inner)
@@ -190,7 +211,7 @@ fn sync_viewers_for_table(
         let Some(player) = host.player(viewer_uuid) else {
             continue;
         };
-        let Some(menu) = host.menu(viewer_uuid, window) else {
+        let Some(menu) = find_menu(&*host, viewer_uuid, window) else {
             continue;
         };
         if exclude_player != Some(viewer_uuid) {
@@ -218,6 +239,46 @@ fn sync_viewers_for_table(
     }
 }
 
+/// Fills a freshly installed `easymagic:enchanting` menu with the table's contents and
+/// registers its viewer (`player_container_open`).
+pub fn finish_menu_open(host: &mut dyn ServerHost, event: &PlayerContainerOpenEvent<'_>) {
+    if event.menu_type != MENU_ID {
+        return;
+    }
+    let Some(pending) = PENDING_OPENS
+        .lock()
+        .unwrap_or_else(PoisonError::into_inner)
+        .remove(&event.player)
+    else {
+        return;
+    };
+    let (Some(menu), Some(player)) = (event.menu, host.player(event.player)) else {
+        return;
+    };
+    let Some(window) = menu.container_id(&*host) else {
+        return;
+    };
+    set_menu_owned_slots(host, menu, &pending.stacks);
+    VIEWERS
+        .lock()
+        .unwrap_or_else(PoisonError::into_inner)
+        .insert(
+            event.player,
+            ViewerEntry {
+                window,
+                dimension: pending.dimension,
+                pos: pending.pos,
+                last_power: pending.scaled_power,
+                still_valid: true,
+            },
+        );
+    if let Some(ch) = channels() {
+        let mut payload = pending.clues;
+        payload.window = window;
+        let _ = ch.clues.send(host, player, &payload);
+    }
+}
+
 pub fn send_server_config_to(host: &mut dyn ServerHost, player: PlayerRef) {
     if let Some(ch) = channels() {
         let _ = ch.server_config.send(host, player, &server_config());
@@ -237,9 +298,13 @@ pub struct EnchantingTablePart;
 impl BlockPart for EnchantingTablePart {
     fn use_without_item(
         &self,
-        host: &mut dyn ServerHost,
+        side: HostSide<'_>,
         event: &mut UseWithoutItemEvent<'_>,
     ) -> Option<InteractionResult> {
+        // The menu opens on the server; a client defers to the template's prediction.
+        let HostSide::Server(host) = side else {
+            return None;
+        };
         let cfg = server_config();
         if !cfg.convert_vanilla_enchanting_table_when_interacting {
             return None;
@@ -288,32 +353,27 @@ impl BlockPart for EnchantingTablePart {
         open.pos = Some(pos);
         open.replace = MenuReplace::CloseFirst;
 
-        let Ok(Some(window)) = player.open_mod_menu(host, open) else {
-            return None;
-        };
-
-        if let Some(menu) = host.menu(player_uuid, window) {
-            set_menu_owned_slots(host, menu, &stacks);
-        }
-
-        VIEWERS
+        // The open can be staged until commit, so the live menu is filled in
+        // `finish_menu_open` when the engine announces it.
+        PENDING_OPENS
             .lock()
             .unwrap_or_else(PoisonError::into_inner)
             .insert(
                 player_uuid,
-                ViewerEntry {
-                    window,
+                PendingOpen {
                     dimension: dim,
                     pos,
-                    last_power: scaled_power,
-                    still_valid: true,
+                    stacks,
+                    scaled_power,
+                    clues: initial_clues,
                 },
             );
-
-        if let Some(ch) = channels() {
-            let mut payload = initial_clues;
-            payload.window = window;
-            let _ = ch.clues.send(host, player, &payload);
+        if !matches!(player.open_mod_menu(host, open), Ok(Some(_))) {
+            PENDING_OPENS
+                .lock()
+                .unwrap_or_else(PoisonError::into_inner)
+                .remove(&player_uuid);
+            return None;
         }
 
         Some(InteractionResult::Success)
@@ -381,13 +441,22 @@ pub struct EnchantingMenuPart;
 
 #[mod_api::sunrise_part]
 impl MenuPart for EnchantingMenuPart {
+    fn menu_removed(&self, _host: &mut dyn ServerHost, event: &mut MenuRemovedEvent<'_>) {
+        let mut map = VIEWERS.lock().unwrap_or_else(PoisonError::into_inner);
+        if let Some(entry) = map.get(&event.uuid)
+            && entry.window == event.window
+        {
+            map.remove(&event.uuid);
+        }
+    }
+
     fn menu_clicked(&self, host: &mut dyn ServerHost, event: &mut MenuClickedEvent<'_>) -> Flow {
         // Shift-click (ClickType::QUICK_MOVE == 1) from player inventory: route catalysts directly
         // to slots 1/2 instead of letting slot 0 capture a single catalyst item.
         if event.mode != 1 || event.slot < 3 {
             return Flow::Continue;
         }
-        let Some(menu) = host.menu(event.uuid, event.window) else {
+        let Some(menu) = find_menu(&*host, event.uuid, event.window) else {
             return Flow::Continue;
         };
         let src_slot = event.slot as usize;
@@ -483,7 +552,7 @@ impl MenuPart for EnchantingMenuPart {
         let Some(level) = host.level(&viewer.dimension) else {
             return;
         };
-        let Some(menu) = host.menu(player_uuid, viewer.window) else {
+        let Some(menu) = find_menu(&*host, player_uuid, viewer.window) else {
             return;
         };
 
@@ -695,15 +764,6 @@ impl MenuPart for EnchantingMenuPart {
     }
 }
 
-pub fn on_menu_closed(_host: &mut dyn ServerHost, event: &mut MenuClosedEvent<'_>) {
-    let mut map = VIEWERS.lock().unwrap_or_else(PoisonError::into_inner);
-    if let Some(entry) = map.get(&event.uuid)
-        && entry.window == event.window
-    {
-        map.remove(&event.uuid);
-    }
-}
-
 pub fn on_server_tick_post(host: &mut dyn ServerHost, level: LevelRef) {
     let active_dim = level
         .dimension()
@@ -765,7 +825,7 @@ pub fn on_server_tick_post(host: &mut dyn ServerHost, level: LevelRef) {
         let table_viewers = viewers_at(&active_dim, pos);
         if !table_viewers.is_empty() {
             let needs_sync = table_viewers.iter().any(|&(uuid, window)| {
-                host.menu(uuid, window).is_some_and(|menu| {
+                find_menu(&*host, uuid, window).is_some_and(|menu| {
                     let cur = read_menu_owned_slots(&*host, menu);
                     TableContents::from_stacks(&*host, &cur) != contents
                 })
@@ -804,7 +864,8 @@ pub fn on_server_tick_post(host: &mut dyn ServerHost, level: LevelRef) {
         }
         let new_power = compute_scaled_enchanting_power(&*host, level, entry.pos, &cfg);
         if new_power != entry.last_power
-            && let (Some(player), Some(menu)) = (host.player(uuid), host.menu(uuid, entry.window))
+            && let (Some(player), Some(menu)) =
+                (host.player(uuid), find_menu(&*host, uuid, entry.window))
         {
             let stacks = read_menu_owned_slots(&*host, menu);
             let seed = get_or_init_player_seed(host, uuid);
