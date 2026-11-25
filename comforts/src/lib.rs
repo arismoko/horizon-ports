@@ -1263,7 +1263,7 @@ struct SleepingBagItemPart {
 
 #[mod_api::sunrise_part]
 impl ItemPart for SleepingBagItemPart {
-    fn tooltip(&self, _host: &dyn ClientHost, event: &mut TooltipEvent<'_>) {
+    fn tooltip(&self, _host: &dyn ClientHost, event: &mut TooltipEvent<'_, '_>) {
         if client_sync_config().auto_use {
             let _ = event.lines.push((
                 Text::translate("item.comforts.sleeping_bag.auto_use.tooltip.0", vec![]),
@@ -1511,7 +1511,7 @@ struct HammockItemPart {
 
 #[mod_api::sunrise_part]
 impl ItemPart for HammockItemPart {
-    fn tooltip(&self, _host: &dyn ClientHost, event: &mut TooltipEvent<'_>) {
+    fn tooltip(&self, _host: &dyn ClientHost, event: &mut TooltipEvent<'_, '_>) {
         let rope_name = Text::translate("item.comforts.rope_and_nail", vec![]);
         let _ = event.lines.push((
             Text::translate("item.comforts.hammock.placement.tooltip", vec![rope_name]),
@@ -1655,7 +1655,7 @@ struct RopeAndNailItemPart;
 
 #[mod_api::sunrise_part]
 impl ItemPart for RopeAndNailItemPart {
-    fn tooltip(&self, _host: &dyn ClientHost, event: &mut TooltipEvent<'_>) {
+    fn tooltip(&self, _host: &dyn ClientHost, event: &mut TooltipEvent<'_, '_>) {
         let _ = event.lines.push((
             Text::translate("item.comforts.rope_and_nail.placement.tooltip", vec![]),
             GRAY_COLOR,
