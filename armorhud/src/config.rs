@@ -17,9 +17,6 @@ pub const SET_OFFHAND_BEHAVIOR: &str = "offhand_slot_behavior";
 pub const SET_DURABILITY_DISPLAY: &str = "durability_display";
 pub const SET_OFFHAND_DURABILITY: &str = "offhand_durability";
 pub const SET_MAINHAND_DURABILITY: &str = "mainhand_durability";
-pub const SET_PUSH_BOSSBARS: &str = "push_bossbars";
-pub const SET_PUSH_EFFECTS: &str = "push_status_effect_icons";
-pub const SET_PUSH_SUBTITLES: &str = "push_subtitles";
 pub const SET_REVERSED: &str = "reversed";
 pub const SET_ICONS_SHOWN: &str = "icons_shown";
 pub const SET_WARNING_SHOWN: &str = "warning_shown";
@@ -118,9 +115,6 @@ pub struct ArmorHudConfig {
     pub durability_display: DurabilityDisplay,
     pub offhand_durability: bool,
     pub mainhand_durability: bool,
-    pub push_bossbars: bool,
-    pub push_effects: bool,
-    pub push_subtitles: bool,
     pub reversed: bool,
     pub icons_shown: bool,
     pub warning_shown: bool,
@@ -145,9 +139,6 @@ impl Default for ArmorHudConfig {
             durability_display: DurabilityDisplay::Bar,
             offhand_durability: true,
             mainhand_durability: false,
-            push_bossbars: true,
-            push_effects: true,
-            push_subtitles: true,
             reversed: false,
             icons_shown: true,
             warning_shown: true,
@@ -214,9 +205,6 @@ impl ArmorHudConfig {
             ),
             offhand_durability: flag(SET_OFFHAND_DURABILITY, d.offhand_durability),
             mainhand_durability: flag(SET_MAINHAND_DURABILITY, d.mainhand_durability),
-            push_bossbars: flag(SET_PUSH_BOSSBARS, d.push_bossbars),
-            push_effects: flag(SET_PUSH_EFFECTS, d.push_effects),
-            push_subtitles: flag(SET_PUSH_SUBTITLES, d.push_subtitles),
             reversed: flag(SET_REVERSED, d.reversed),
             icons_shown: flag(SET_ICONS_SHOWN, d.icons_shown),
             warning_shown: flag(SET_WARNING_SHOWN, d.warning_shown),
@@ -355,24 +343,6 @@ pub fn register_settings(r: &mut dyn Registrar) {
             d.offhand_behavior.to_choice(),
         )
         .tooltip("armorhud.tooltip.offhandSlotBehavior"),
-        SettingSpec::toggle(
-            SET_PUSH_BOSSBARS,
-            "armorhud.option.pushBossbars",
-            d.push_bossbars,
-        )
-        .tooltip("armorhud.tooltip.pushBossbars"),
-        SettingSpec::toggle(
-            SET_PUSH_EFFECTS,
-            "armorhud.option.pushIcons",
-            d.push_effects,
-        )
-        .tooltip("armorhud.tooltip.pushIcons"),
-        SettingSpec::toggle(
-            SET_PUSH_SUBTITLES,
-            "armorhud.option.pushSubtitles",
-            d.push_subtitles,
-        )
-        .tooltip("armorhud.tooltip.pushSubtitles"),
         SettingSpec::toggle(
             SET_WARNING_SHOWN,
             "armorhud.option.showWarning",

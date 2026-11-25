@@ -197,62 +197,6 @@ pub fn widget_rect(cfg: &ArmorHudConfig, frame: &Frame, slots: usize) -> Option<
     Some(Rect { x, y, w, h })
 }
 
-/// The box including the warning icon and the durability text, which other layers make room for.
-pub fn effective_rect(cfg: &ArmorHudConfig, rect: Rect) -> Rect {
-    let mut rect = rect;
-    if cfg.orientation == Orientation::Horizontal {
-        let mut extra = 0;
-        if cfg.warning_shown {
-            extra += WARNING_SIZE + 2 + cfg.warning_bob / 2;
-        }
-        if cfg.durability_display != DurabilityDisplay::Bar {
-            extra += LINE_HEIGHT;
-        }
-        rect.h += extra;
-        if !cfg.anchor.is_top() {
-            rect.y -= extra;
-        }
-    }
-    rect
-}
-
-/// How far each pushed layer moves, in GUI pixels downwards (up when negative).
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub struct Pushes {
-    pub effects: i32,
-    pub bossbars: i32,
-    pub subtitles: i32,
-}
-
-pub fn pushes(cfg: &ArmorHudConfig, rect: Option<Rect>) -> Pushes {
-    let Some(rect) = rect else {
-        return Pushes::default();
-    };
-    if !cfg.enabled {
-        return Pushes::default();
-    }
-    let eff = effective_rect(cfg, rect);
-    Pushes {
-        effects: if cfg.push_effects && cfg.anchor == Anchor::Top && cfg.side == Side::Right {
-            eff.y + eff.h
-        } else {
-            0
-        },
-        bossbars: if cfg.push_bossbars && cfg.anchor == Anchor::TopCenter {
-            eff.y + eff.h
-        } else {
-            0
-        },
-        // The subtitles sit about 25 pixels above the bottom of the screen.
-        subtitles: if cfg.push_subtitles && cfg.anchor == Anchor::Bottom && cfg.side == Side::Right
-        {
-            -(eff.h - 25).max(0)
-        } else {
-            0
-        },
-    }
-}
-
 /// One slice of the slot background, drawn in the widget's own frame.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Slice {
@@ -750,52 +694,6 @@ mod tests {
         assert_eq!(r.y, (240 - 42) / 2 - 4);
         cfg.anchor = Anchor::Bottom;
         assert_eq!(widget_rect(&cfg, &frame(), 2).unwrap().y, 240 - 42 + 4);
-    }
-
-    #[test]
-    fn effective_rect_grows_away_from_the_edge() {
-        let mut cfg = ArmorHudConfig {
-            anchor: Anchor::Top,
-            durability_display: DurabilityDisplay::Numeric,
-            ..ArmorHudConfig::default()
-        };
-        let rect = Rect {
-            x: 0,
-            y: 5,
-            w: 22,
-            h: 22,
-        };
-        let eff = effective_rect(&cfg, rect);
-        assert_eq!((eff.y, eff.h), (5, 22 + 8 + 2 + 1 + 9));
-        cfg.anchor = Anchor::Bottom;
-        let eff = effective_rect(&cfg, rect);
-        assert_eq!((eff.y, eff.h), (5 - 20, 42));
-        cfg.orientation = Orientation::Vertical;
-        assert_eq!(effective_rect(&cfg, rect), rect);
-    }
-
-    #[test]
-    fn pushes_follow_anchor_side_and_switches() {
-        let mut cfg = ArmorHudConfig::default();
-        let rect = Some(Rect {
-            x: 0,
-            y: 0,
-            w: 22,
-            h: 22,
-        });
-        assert_eq!(pushes(&cfg, rect), Pushes::default());
-        cfg.anchor = Anchor::TopCenter;
-        assert_eq!(pushes(&cfg, rect).bossbars, 22 + 8 + 2 + 1);
-        cfg.push_bossbars = false;
-        assert_eq!(pushes(&cfg, rect).bossbars, 0);
-        cfg.anchor = Anchor::Top;
-        cfg.side = Side::Right;
-        assert_eq!(pushes(&cfg, rect).effects, 33);
-        cfg.anchor = Anchor::Bottom;
-        assert_eq!(pushes(&cfg, rect).subtitles, -8);
-        assert_eq!(pushes(&cfg, None), Pushes::default());
-        cfg.enabled = false;
-        assert_eq!(pushes(&cfg, rect), Pushes::default());
     }
 
     #[test]

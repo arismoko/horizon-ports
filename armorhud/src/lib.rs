@@ -8,9 +8,9 @@ mod layout;
 
 use crate::config::{ArmorHudConfig, MOD_ID, SET_ENABLED, Side, register_settings};
 use crate::layout::{
-    EMPTY_SLOT_SPRITES, Frame, Jitter, Label, PieceFacts, Pushes, Rect, Remembered, SIZE,
-    WARNING_SIZE, WatchedSlot, background, bar_color, plan_mainhand, plan_offhand, plan_slots,
-    pushes, should_play_break_sound, should_show_warning, visible_slots, widget_rect,
+    EMPTY_SLOT_SPRITES, Frame, Jitter, Label, PieceFacts, Remembered, SIZE, WARNING_SIZE,
+    WatchedSlot, background, bar_color, plan_mainhand, plan_offhand, plan_slots,
+    should_play_break_sound, should_show_warning, visible_slots, widget_rect,
 };
 use mod_api::client::hud_layout::{Blend, PoseOp};
 use mod_api::{
@@ -27,9 +27,6 @@ const WARNING_SPRITE: &str = "armorhud:warn";
 const BREAK_SOUND: &str = "armorhud:armor_breaking";
 const KEY_TOGGLE: &str = "toggle";
 const LAYER_HOTBAR: &str = "minecraft:hotbar";
-const LAYER_EFFECTS: &str = "minecraft:effects";
-const LAYER_BOSSBARS: &str = "minecraft:boss_overlay";
-const LAYER_SUBTITLES: &str = "minecraft:subtitle_overlay";
 
 /// Inventory slots of the worn pieces, head to feet, then the offhand.
 const INVENTORY_ARMOR: [u32; 4] = [39, 38, 37, 36];
@@ -284,46 +281,6 @@ fn render_widget(host: &dyn ClientHost, draw: &mut dyn DrawContext) {
     }
 }
 
-/// How far another layer moves for the widget, from the live settings and worn pieces.
-fn current_pushes(host: &dyn ClientHost, size: [f32; 2]) -> Pushes {
-    if !host.on(MOD_ID) || host.hud_mode() != HudMode::AllVisible {
-        return Pushes::default();
-    }
-    let cfg = ArmorHudConfig::read(host);
-    if !cfg.enabled {
-        return Pushes::default();
-    }
-    let Some(worn) = read_worn(host) else {
-        return Pushes::default();
-    };
-    let frame = frame_of(host, &cfg, size, &worn);
-    let rect: Option<Rect> = widget_rect(&cfg, &frame, slots_of(&cfg, &worn).len());
-    pushes(&cfg, rect)
-}
-
-/// Wrap a vanilla layer so it draws `pick(pushes)` pixels lower.
-fn push_layer(layers: &mut dyn mod_api::GuiLayerRegistrar, id: &str, pick: fn(&Pushes) -> i32) {
-    let _ = layers.wrap_layer(
-        id,
-        Box::new(move |ctx| {
-            let mut size = [0.0, 0.0];
-            ctx.with_draw(&mut |draw| size = draw.size());
-            let dy = pick(&current_pushes(ctx.host(), size));
-            if dy == 0 {
-                ctx.draw_previous();
-                return;
-            }
-            ctx.with_draw(&mut |draw| {
-                let _ = draw.gui_paint(&[GuiDraw::Push(vec![PoseOp::Translate(0.0, dy as f32)])]);
-            });
-            ctx.draw_previous();
-            ctx.with_draw(&mut |draw| {
-                let _ = draw.gui_paint(&[GuiDraw::Pop]);
-            });
-        }),
-    );
-}
-
 /// Remember the worn and held stacks and play the breaking sound when a piece got worn down
 /// to the warning.
 fn watch_wear(host: &mut dyn ClientHost) {
@@ -414,9 +371,6 @@ impl Hooks for ArmorHud {
             GuiLayerPlacement::Above(LAYER_HOTBAR.into()),
             Box::new(render_widget),
         );
-        push_layer(event.layers, LAYER_EFFECTS, |p| p.effects);
-        push_layer(event.layers, LAYER_BOSSBARS, |p| p.bossbars);
-        push_layer(event.layers, LAYER_SUBTITLES, |p| p.subtitles);
     }
 
     fn client_tick_post(&self, host: &mut dyn ClientHost, _event: &mut ClientTickPostEvent) {
