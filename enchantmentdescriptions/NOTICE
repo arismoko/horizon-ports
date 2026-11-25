@@ -1,0 +1,17 @@
+Enchantment Descriptions for Sunrise 26.3 (version 0.5.0)
+
+A port of Enchantment Descriptions (26.3.0) by Darkhax.
+Original source: https://github.com/Darkhax-Minecraft/Enchantment-Descriptions
+Original licence: LGPL-2.1 (GNU Lesser General Public License, version 2.1, in LICENSE)
+
+Ported to Sunrise by arismoko: the tooltip rules are written in Rust on Sunrise's typed mod
+API; no Java code is included. This port is distributed under the same licence as the
+original (LGPL-2.1-only).
+
+Carried from the original under the same licence:
+- assets/enchantmentdescriptions/lang/*.json: the description strings in the original's 25
+  language files (English, German, Spanish, French, Italian, Japanese, Korean, Dutch, Polish,
+  Portuguese, Russian, Swedish, Tamil, Turkish, Ukrainian, Vietnamese, Chinese and others),
+  written by Darkhax and the translators credited in the original's history. The only change
+  is the settings screen's strings, added to the end of en_us.json.
+- icon.png: the original's logo (logo_enchdesc.png).
