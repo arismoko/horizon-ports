@@ -1,6 +1,6 @@
 [package]
 name = "mod-armorhud"
-version = "0.5.1"
+version = "0.5.2"
 edition = "2024"
 license = "MIT"
 description = "Armor HUD for Sunrise: a vanilla-style widget beside the hotbar showing worn armour with durability warnings"
