@@ -27,7 +27,7 @@ Differences from the original:
 
 ## Remaining API differences
 
-- Worn Totem of Undying: no hook answers death protection for anything but a held totem (NeoForge `LivingUseTotemEvent`, vanilla `LivingEntity.checkTotemDeathProtection`). The earlier port patched the game for it; here it is left out. Not filed as an issue yet.
+- Worn Totem of Undying: no hook answers death protection for anything but a held totem (NeoForge `LivingUseTotemEvent`, vanilla `LivingEntity.checkTotemDeathProtection`). The earlier port patched the game for it; here it is left out. sunrise-org/sunrise#5751.
 - The slot menu is a two-row chest menu with placeholder items; the original draws its slots in a screen beside the inventory. Clicking is by `menu_clicked`.
 - Right-click wearing is server-only (the client does not predict it).
 - Death drop uses `living_death` and the `minecraft:keep_inventory` game rule; a grave mod taking the items first (universalgraves in the earlier pack) is not ported.
