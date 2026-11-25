@@ -1,7 +1,7 @@
 # Dynamic FPS for Sunrise: client-only native code in src/ using the typed mod API.
 id = "dynamicfps"
 name = "Dynamic FPS"
-version = "0.5.2"
+version = "0.5.3"
 description = "Reduces frame rate and audio volume while the game window is unfocused, minimized, idle, or on battery."
 authors = ["juliand665", "LostLuma", "arismoko"]
 license = "MIT"
