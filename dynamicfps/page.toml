@@ -9,7 +9,7 @@ Dynamic FPS lowers the game's frame rate and audio volume when you are not activ
 - **Ignore initial click**: optionally discard accidental mouse clicks during the first 10 ms after refocusing the window (**Disabled**, **In World**, or **Constant**).
 - **Battery integration**: monitors system batteries on Linux (`/sys/class/power_supply`, plus a mock battery mode on all platforms), switches to **On Battery** when discharging, draws a corner HUD battery indicator, and shows charging, discharging, and low-battery toasts.
 - **F3 debug entry**: adds `dynamicfps:power_state` in debug options to display the active power state and target frame rate.
-- **Options screen & hot-reloaded config**: core settings live in **Options → Mods → Dynamic FPS**; full per-source volume multipliers live in `config/dynamicfps.toml` and reload automatically.
+- **Config screen & hot-reloaded config**: **Mods → Dynamic FPS → Config** opens Dynamic FPS's own paged screen with toggles, choices and sliders; full per-source volume multipliers live in `config/dynamicfps.toml` and reload automatically.
 
 Client-side only: works in single player and on any multiplayer server.
 
@@ -22,7 +22,7 @@ Differences from the original:
 - Per-state VSync and **Graphics Options** (`Reduced` / `Minimal`) are preserved in `config/dynamicfps.toml` but cannot override video options at runtime yet (gap: [sunrise-org/sunrise#5553](https://github.com/sunrise-org/sunrise/issues/5553)).
 - F3 debug status is registered as its own `dynamicfps:power_state` entry instead of appending inline to vanilla's FPS line (gap: [sunrise-org/sunrise#5554](https://github.com/sunrise-org/sunrise/issues/5554)).
 - World rendering behind an unfinished resource-reload overlay is not skipped (gap: [sunrise-org/sunrise#5555](https://github.com/sunrise-org/sunrise/issues/5555)).
-- Settings use Sunrise's flat **Options → Mods → Dynamic FPS** screen rather than a tabbed category screen, with per-category sound multipliers edited in `config/dynamicfps.toml` (gap: [sunrise-org/sunrise#1217](https://github.com/sunrise-org/sunrise/issues/1217)).
+- Per-category sound multipliers beyond Master are edited in `config/dynamicfps.toml`, not on the config screen.
 - `run_garbage_collector` does not apply because Sunrise is native Rust with no JVM garbage collector.
 - Hardware battery polling reads Linux `/sys/class/power_supply`; on other platforms, mock battery mode is available.
 
@@ -32,7 +32,7 @@ categories = ["optimization", "utility"]
 
 [[screenshots]]
 path = "page/settings.png"
-caption = "Dynamic FPS settings in Options → Mods, including idle detection and volume transition speeds."
+caption = "Dynamic FPS settings, including idle detection and volume transition speeds."
 
 [[screenshots]]
 path = "page/unfocused-banner.png"
