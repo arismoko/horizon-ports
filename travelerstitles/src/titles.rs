@@ -87,6 +87,7 @@ impl Title {
     }
 
     /// Forget everything: timer, recent entries and the last shown title.
+    #[cfg(test)]
     pub fn reset(&mut self) {
         self.clear_timer();
         self.recent.clear();
