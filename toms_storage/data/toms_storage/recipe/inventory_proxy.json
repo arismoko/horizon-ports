@@ -1,0 +1,16 @@
+{
+  "key": {
+    "C": "minecraft:chest",
+    "P": "#minecraft:planks",
+    "T": "#minecraft:trapdoors"
+  },
+  "pattern": [
+    "PTP",
+    "TCT",
+    "PTP"
+  ],
+  "result": {
+    "id": "toms_storage:ts.inventory_proxy"
+  },
+  "type": "minecraft:crafting_shaped"
+}
