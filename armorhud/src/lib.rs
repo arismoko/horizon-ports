@@ -9,15 +9,15 @@ mod layout;
 use crate::config::{ArmorHudConfig, MOD_ID, SET_ENABLED, Side, register_settings};
 use crate::layout::{
     EMPTY_SLOT_SPRITES, Frame, Jitter, Label, PieceFacts, Remembered, SIZE, WARNING_SIZE,
-    WatchedSlot, background, bar_color, plan_mainhand, plan_offhand, plan_slots,
-    should_play_break_sound, should_show_warning, visible_slots, widget_rect,
+    WatchedSlot, attack_indicator_showing, background, bar_color, plan_mainhand, plan_offhand,
+    plan_slots, should_play_break_sound, should_show_warning, visible_slots, widget_rect,
 };
 use mod_api::client::hud_layout::{Blend, PoseOp};
 use mod_api::{
     ClientHost, ClientTickPostEvent, ComponentId, DrawContext, GuiDraw, GuiLayerPlacement, Hooks,
-    HudMode, ItemKey, ItemResource, ItemStack, ItemStackView, KeyConflictContext, KeyRegistration,
-    ModKeyMappingRef, RegisterGuiLayersEvent, Registrar, RegistrationContext, SoundPlay,
-    SoundSource, Tag, Text,
+    HotbarAttackIndicatorProgressEvent, HudMode, ItemKey, ItemResource, ItemStack, ItemStackView,
+    KeyConflictContext, KeyRegistration, ModKeyMappingRef, RegisterGuiLayersEvent, Registrar,
+    RegistrationContext, SoundPlay, SoundSource, Tag, Text,
 };
 use std::borrow::Cow;
 use std::sync::{LazyLock, Mutex, MutexGuard, PoisonError};
@@ -93,7 +93,13 @@ fn read_worn(host: &dyn ClientHost) -> Option<Worn> {
     })
 }
 
-fn frame_of(host: &dyn ClientHost, cfg: &ArmorHudConfig, size: [f32; 2], worn: &Worn) -> Frame {
+fn frame_of(
+    host: &dyn ClientHost,
+    cfg: &ArmorHudConfig,
+    size: [f32; 2],
+    worn: &Worn,
+    attack_progress: Option<f32>,
+) -> Frame {
     let main_left = host.gui_options().main_hand_left;
     let main_side = if main_left { Side::Left } else { Side::Right };
     Frame {
@@ -101,9 +107,7 @@ fn frame_of(host: &dyn ClientHost, cfg: &ArmorHudConfig, size: [f32; 2], worn: &
         gui_height: size[1] as i32,
         main_arm_on_side: main_side == cfg.side,
         offhand_filled: worn.offhand.is_some(),
-        // The hotbar attack indicator needs the client's attack charge, which a mod cannot
-        // read yet (gap: TBD-attack-indicator), so the widget does not make room for it.
-        attack_indicator_showing: false,
+        attack_indicator_showing: attack_indicator_showing(attack_progress),
     }
 }
 
@@ -149,6 +153,8 @@ struct State {
     jitter: Option<Jitter>,
     last: [Remembered<ItemKey>; 6],
     key_toggle: Option<ModKeyMappingRef>,
+    /// The attack charge the hotbar's indicator drew this frame, if it drew one.
+    attack_progress: Option<f32>,
 }
 
 static STATE: LazyLock<Mutex<State>> = LazyLock::new(|| {
@@ -156,6 +162,7 @@ static STATE: LazyLock<Mutex<State>> = LazyLock::new(|| {
         jitter: None,
         last: [Remembered::default(); 6],
         key_toggle: None,
+        attack_progress: None,
     })
 });
 
@@ -175,9 +182,11 @@ fn render_widget(host: &dyn ClientHost, draw: &mut dyn DrawContext) {
         return;
     };
     let size = draw.size();
-    let frame = frame_of(host, &cfg, size, &worn);
-    let slots = slots_of(&cfg, &worn);
     let mut jitter_guard = lock();
+    // The hotbar layer, below this one, reports the charge each frame it draws the indicator.
+    let attack_progress = jitter_guard.attack_progress.take();
+    let frame = frame_of(host, &cfg, size, &worn, attack_progress);
+    let slots = slots_of(&cfg, &worn);
     let jitter = jitter_guard
         .jitter
         .get_or_insert_with(|| Jitter::new(host.millis()));
@@ -371,6 +380,14 @@ impl Hooks for ArmorHud {
             GuiLayerPlacement::Above(LAYER_HOTBAR.into()),
             Box::new(render_widget),
         );
+    }
+
+    fn hotbar_attack_indicator_progress(
+        &self,
+        _host: &dyn ClientHost,
+        event: &mut HotbarAttackIndicatorProgressEvent,
+    ) {
+        lock().attack_progress = Some(event.progress);
     }
 
     fn client_tick_post(&self, host: &mut dyn ClientHost, _event: &mut ClientTickPostEvent) {

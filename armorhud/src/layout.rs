@@ -136,6 +136,13 @@ pub fn visible_slots<T>(
     out
 }
 
+/// Whether the hotbar's attack indicator is drawing a charge: vanilla draws it below full
+/// charge (`Player.getAttackStrengthScale(0) < 1`), and the original makes room for it then.
+/// `None` means the hotbar reported no charge this frame (another indicator mode).
+pub fn attack_indicator_showing(progress: Option<f32>) -> bool {
+    progress.is_some_and(|p| p < 1.0)
+}
+
 /// The widget's box, without the warning and the text. None when there is no slot.
 pub fn widget_rect(cfg: &ArmorHudConfig, frame: &Frame, slots: usize) -> Option<Rect> {
     if slots == 0 {
@@ -652,6 +659,14 @@ mod tests {
         let right = widget_rect(&cfg, &frame(), 4).unwrap();
         assert_eq!(right.x, 200 + 98);
         assert!(widget_rect(&cfg, &frame(), 0).is_none());
+    }
+
+    #[test]
+    fn attack_indicator_shows_below_full_charge_only() {
+        assert!(attack_indicator_showing(Some(0.4)));
+        assert!(attack_indicator_showing(Some(0.0)));
+        assert!(!attack_indicator_showing(Some(1.0)));
+        assert!(!attack_indicator_showing(None));
     }
 
     #[test]
