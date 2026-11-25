@@ -7,20 +7,19 @@
 mod model;
 
 use std::collections::BTreeMap;
-use std::sync::{LazyLock, Mutex, MutexGuard, OnceLock};
+use std::sync::{Arc, LazyLock, Mutex, MutexGuard, OnceLock};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use mod_api::{
-    Block, BlockEntityClientTickEvent, BlockEntityClientTicksEvent, BlockEntityPart, BlockKey,
+    AddDestroyEffectsEvent, Block, BlockEntityClientTickEvent, BlockEntityPart, BlockKey,
     BlockMetadata, BlockPart, BlockProperties, BlockShapes, BlockState, BlockStateProperty,
-    BlocksEvent, BuildCreativeModeTabContentsEvent, ClientHost, Config as ModConfig, ConfigContext,
-    ConfigKind, ConfigLoadingEvent, ConfigReloadingEvent, CreativeTabPlacement,
-    CreativeTabVisibility, EquipmentSlot, Flow, Hand, Hooks, Host, HostBlockStates, HostSide,
-    InteractionResult, ItemKey, ItemStack, LegacyRandomSource, LevelHost, LevelRef,
-    LevelTickPostEvent, LevelWriteHost, LivingRef, NeighborChangedEvent, NoteInstrument,
-    ParticleKey, ParticleOptions, RandomSource, RandomTickEvent, RandomTicks, RegisterConfigsEvent,
-    Registrar, RegistrationContext, ServerHost, SoundSource, StatType, TagKey, Text,
-    UseItemOnEvent, UseWithoutItemEvent,
+    BlocksEvent, BuildCreativeModeTabContentsEvent, ClientHost, ConfigEvent, ConfigKind,
+    ConfigSnapshot, ConfigSpec, CreativeTabPlacement, CreativeTabVisibility, EquipmentSlot, Flow,
+    Hand, Hooks, Host, HostBlockStates, HostSide, InteractionResult, ItemKey, ItemStack,
+    LegacyRandomSource, LevelHost, LevelRef, LevelTickPostEvent, LevelWriteHost, LivingRef,
+    NeighborChangedEvent, NoteInstrument, ParticleKey, ParticleOptions, RandomSource,
+    RandomTickEvent, RandomTicks, Registrar, RegistrationContext, ServerHost, SetPlacedByEvent,
+    SoundPlay, SoundSource, StatType, TagKey, Text, UseItemOnEvent, UseWithoutItemEvent,
 };
 use model::{
     CLEAN_HARDNESS, KINDS, RESISTANCE, ScrapingRecipe, Settings, TimeOfDay, Weather, Wind,
@@ -32,6 +31,7 @@ const RECIPE_TYPE: &str = "sootychimneys:soot_scraping";
 const SOOT_SCRAPED: &str = "sootychimneys:soot_scraped";
 const SMOKE_BLOCKING: &str = "sootychimneys:smoke_blocking";
 const SMOKE_BOOSTING: &str = "sootychimneys:smoke_boosting";
+const CONFIG_FILE: &str = "sootychimneys-local.toml";
 
 /// The registry keys the mod asks about, looked up once at registration.
 struct Keys {
@@ -39,6 +39,8 @@ struct Keys {
     blocks: [[BlockKey; 2]; 7],
     items: [[ItemKey; 2]; 7],
     scrapers: TagKey,
+    smoke_blocking: TagKey,
+    smoke_boosting: TagKey,
     cosy_smoke: ParticleKey,
     signal_smoke: ParticleKey,
     smoke: ParticleKey,
@@ -116,22 +118,34 @@ fn emits_smoke(
         && !blocked_above()
 }
 
+/// One soot particle's place: the block's centre moved by the mod's own random, ±0.8.
+fn soot_spot(pos: [i32; 3]) -> [f64; 3] {
+    let range = f64::from(0.8_f32);
+    let mut offsets = lock(&OFFSETS);
+    pos.map(|c| model::offset(&mut *offsets, f64::from(c) + 0.5, range))
+}
+
 /// `spawnSootParticles` on the server: a cloud of large smoke where a dirty chimney was.
 fn soot_cloud(level: &mut dyn LevelWriteHost, pos: [i32; 3]) {
     let large_smoke = ParticleOptions::simple(keys().large_smoke);
-    let centre = pos.map(|c| f64::from(c) + 0.5);
-    let range = f64::from(0.8_f32);
     let mut i = 0;
     // The bound is drawn again before every particle, as the original's loop condition is.
     while level
         .with_random(|random| random.next_int_range(12, 20))
         .is_some_and(|bound| i < bound)
     {
-        let at = {
-            let mut offsets = lock(&OFFSETS);
-            centre.map(|c| model::offset(&mut *offsets, c, range))
-        };
-        level.send_particles(&large_smoke, None, at, [0.0; 3], 0.0, 1);
+        level.send_particles(&large_smoke, None, soot_spot(pos), [0.0; 3], 0.0, 1);
+        i += 1;
+    }
+}
+
+/// `spawnSootParticles` on a client: the same cloud, drawn locally. `bound` is the level
+/// random's `nextInt(12, 20)`, drawn again before every particle.
+fn soot_cloud_client(host: &mut dyn ClientHost, pos: [i32; 3], mut bound: impl FnMut() -> i32) {
+    let large_smoke = ParticleOptions::simple(keys().large_smoke);
+    let mut i = 0;
+    while i < bound() {
+        host.add_particle(&large_smoke, soot_spot(pos), [0.0; 3]);
         i += 1;
     }
 }
@@ -146,7 +160,6 @@ struct Chimney {
 impl BlockPart for Chimney {
     /// `updateState`: stacked under another chimney, lit unless powered or over an unlit
     /// chimney. A dirty chimney with one put on top comes clean in a cloud of soot.
-    /// Placing a chimney doesn't run this (`onPlace`, sunrise-org/sunrise#5302).
     fn neighbor_changed(&self, level: &mut dyn LevelWriteHost, event: &mut NeighborChangedEvent) {
         let keys = keys();
         let pos = [event.pos.x, event.pos.y, event.pos.z];
@@ -177,6 +190,56 @@ impl BlockPart for Chimney {
         }
     }
 
+    /// `onPlace`'s `updateState`, for a chimney placed by an item or by a part
+    /// (`Block.setPlacedBy`): the game has no `onPlace` hook yet (sunrise-org/sunrise#5302), so
+    /// a chimney set by other code waits for its next neighbour change.
+    fn set_placed_by(&self, host: &mut dyn ServerHost, event: &mut SetPlacedByEvent<'_>) {
+        let keys = keys();
+        let (level, pos) = (event.level, event.pos);
+        let stacked = level
+            .block_state(&*host, offset_by(pos, 1))
+            .is_some_and(|above| keys.chimney(above.block()).is_some());
+        let mut state = event.state;
+        if stacked && self.dirty {
+            let Some(clean) = host.block_state_default(keys.blocks[self.kind][0]) else {
+                return;
+            };
+            state = clean;
+            let large_smoke = ParticleOptions::simple(keys.large_smoke);
+            let mut i = 0;
+            while level
+                .with_random(host, |random| random.next_int_range(12, 20))
+                .is_some_and(|bound| i < bound)
+            {
+                let _ = level.send_particles(
+                    host,
+                    &large_smoke,
+                    None,
+                    soot_spot(pos),
+                    [0.0; 3],
+                    0.0,
+                    1,
+                );
+                i += 1;
+            }
+        }
+        let unlit_below = level
+            .block_state(&*host, offset_by(pos, -1))
+            .is_some_and(|below| {
+                keys.chimney(below.block()).is_some() && !flag(&host.block_states(), below, "lit")
+            });
+        let lit = !level.has_neighbor_signal(&*host, pos) && !unlit_below;
+        let next = {
+            let states = host.block_states();
+            state
+                .with(&states, "lit", text(lit))
+                .and_then(|state| state.with(&states, "stacked", text(stacked)))
+        };
+        if let Ok(next) = next {
+            let _ = level.set_block(host, pos, next, flags());
+        }
+    }
+
     /// `randomTick`: a working clean chimney gets dirty with the configured chance.
     fn random_tick(&self, level: &mut dyn LevelWriteHost, event: &mut RandomTickEvent) -> Flow {
         if self.dirty {
@@ -186,7 +249,7 @@ impl BlockPart for Chimney {
         let reader: &dyn LevelHost = &*level;
         let emits = emits_smoke(&reader.block_states(), event.state, || {
             reader.block_state(offset_by(pos, 1)).is_some_and(|above| {
-                reader.block_in_tag(above.block(), SMOKE_BLOCKING) == Some(true)
+                above.is_in_tag(reader.tags(), keys().smoke_blocking) == Some(true)
             })
         });
         let dirty_chance = settings().dirty_chance;
@@ -201,16 +264,36 @@ impl BlockPart for Chimney {
         Flow::Cancel
     }
 
+    /// `destroy`: a dirty chimney being broken puffs soot on the client. The game asks every
+    /// client that draws the break, not just the breaking one (sunrise-org/sunrise#5383);
+    /// the usual debris still follows.
+    fn add_destroy_effects(
+        &self,
+        host: &mut dyn ClientHost,
+        event: &mut AddDestroyEffectsEvent<'_>,
+    ) -> Flow {
+        if self.dirty {
+            let pos = [event.pos.x, event.pos.y, event.pos.z];
+            let random = &mut *event.random;
+            soot_cloud_client(host, pos, || random.next_int_range(12, 20));
+        }
+        Flow::Continue
+    }
+
     /// `useWithoutItem`: an empty main hand opens or blocks the chimney.
     fn use_without_item(
         &self,
-        host: &mut dyn ServerHost,
+        host: HostSide<'_>,
         event: &mut UseWithoutItemEvent<'_>,
     ) -> Option<InteractionResult> {
         let click = event.click;
         if click.stack.is_some() {
             return None;
         }
+        // The client swings at once; the server does the work.
+        let HostSide::Server(host) = host else {
+            return Some(InteractionResult::Success);
+        };
         let level = host.level(click.dimension.key().id())?;
         let blocked = !flag(&host.block_states(), event.state, "blocked");
         let next = event
@@ -260,17 +343,37 @@ impl BlockPart for Chimney {
     }
 
     /// `useItemOn`: a soot scraper cleans a dirty chimney and scrapes off the recipe's results.
-    /// The scraping player's own sound, soot and swing are drawn by the game's client
-    /// (sunrise-org/sunrise#5063).
+    /// The scraping player's own client plays the scrape, draws the soot and swings; the
+    /// server does the rest and plays the scrape for the others.
     fn use_item_on(
         &self,
-        host: &mut dyn ServerHost,
+        host: HostSide<'_>,
         event: &mut UseItemOnEvent<'_>,
     ) -> Option<InteractionResult> {
         let keys = keys();
         let click = event.click;
         let stack = click.stack?;
-        if !self.dirty || host.tags().is_in_tag(stack.item(), keys.scrapers) != Some(true) {
+        if !self.dirty {
+            return None;
+        }
+        let host = match host {
+            HostSide::Server(host) => host,
+            HostSide::Client(host) => {
+                if host.tags().is_in_tag(stack.item(), keys.scrapers) != Some(true) {
+                    return None;
+                }
+                let centre = click.pos.map(|c| f64::from(c) + 0.5);
+                let _ = host.play_local_sound(
+                    &SoundPlay::at("minecraft:item.axe.scrape", SoundSource::Blocks, centre),
+                    0,
+                );
+                soot_cloud_client(host, click.pos, || {
+                    lock(&CLIENT_RANDOM).next_int_range(12, 20)
+                });
+                return Some(InteractionResult::Success);
+            }
+        };
+        if host.tags().is_in_tag(stack.item(), keys.scrapers) != Some(true) {
             return None;
         }
         let level = host.level(click.dimension.key().id())?;
@@ -367,14 +470,6 @@ impl BlockPart for Smoke {}
 
 #[mod_api::sunrise_part]
 impl BlockEntityPart for Smoke {
-    fn block_entity_client_ticks(
-        &self,
-        _: &dyn ClientHost,
-        event: &mut BlockEntityClientTicksEvent<'_>,
-    ) {
-        event.ticks = true;
-    }
-
     /// `particleTick`: a working chimney puffs smoke, signal smoke over a stacked chimney or a
     /// smoke-boosting block.
     fn block_entity_client_tick(&self, event: &mut BlockEntityClientTickEvent<'_>) {
@@ -400,7 +495,7 @@ impl BlockEntityPart for Smoke {
                 level
                     .block_state(reader, offset_by(pos, 1))
                     .is_some_and(|above| {
-                        reader.block_in_tag(above.block(), SMOKE_BLOCKING) == Some(true)
+                        above.is_in_tag(reader.tags(), keys.smoke_blocking) == Some(true)
                     })
             });
             if !emits {
@@ -410,7 +505,7 @@ impl BlockEntityPart for Smoke {
                 .block_state(reader, offset_by(pos, -1))
                 .is_some_and(|below| {
                     (keys.chimney(below.block()).is_some() && flag(&states, below, "stacked"))
-                        || reader.block_in_tag(below.block(), SMOKE_BOOSTING) == Some(true)
+                        || below.is_in_tag(reader.tags(), keys.smoke_boosting) == Some(true)
                 })
         };
         let wind = *lock(&WIND);
@@ -434,22 +529,14 @@ impl BlockEntityPart for Smoke {
     }
 }
 
-/// `Wind.getWindState`'s inputs for a level. The time of day can't be read yet
-/// (sunrise-org/sunrise#5385), so every hour counts as day.
+/// `Wind.getWindState`'s inputs for a level. A client can't read the sun-angle attribute
+/// itself (sunrise-org/sunrise#5385), so the time of day comes from the synchronized clock
+/// through the sun's classic curve.
 fn wind_state(host: &dyn Host, level: LevelRef) -> Option<WindState> {
     let day = (level.game_time(host)? / 24000) as i32;
+    let time = TimeOfDay::from_sun_angle(model::sun_angle(level.day_time(host)?));
     let (rain, thunder) = level.weather(host)?;
-    Some(model::wind_state(
-        day,
-        TimeOfDay::Day,
-        Weather::of(rain, thunder),
-    ))
-}
-
-fn apply(mod_id: &str, kind: ConfigKind, text: &str) {
-    if mod_id == MOD && kind == ConfigKind::Common {
-        *lock(&SETTINGS) = Settings::parse(text);
-    }
+    Some(model::wind_state(day, time, Weather::of(rain, thunder)))
 }
 
 fn sixteenths(boxes: &[[f64; 6]]) -> Vec<[f64; 6]> {
@@ -494,10 +581,21 @@ impl Hooks for Mod {
         r.register_raw_recipe_serializer(RECIPE_TYPE, RECIPE_TYPE);
         // A refused declaration refuses the mod at load, with its reason.
         let _ = r.register_custom_stat(SOOT_SCRAPED);
+        let listener = |event: ConfigEvent<'_>, snapshot: &ConfigSnapshot| -> Result<(), String> {
+            if let ConfigEvent::Loading(_) | ConfigEvent::Reloading(_) = event {
+                *lock(&SETTINGS) = Settings::parse(&snapshot.text);
+            }
+            Ok(())
+        };
+        let spec = ConfigSpec::new(ConfigKind::Common, model::DEFAULT_COMMON).file(CONFIG_FILE);
+        // A refused (duplicate) declaration leaves the defaults in use.
+        let _ = r.register_config(spec, Some(Arc::new(listener)));
         let _ = KEYS.set(Keys {
             blocks,
             items,
             scrapers: r.tag_key("sootychimneys:soot_scrapers"),
+            smoke_blocking: r.tag_key(SMOKE_BLOCKING),
+            smoke_boosting: r.tag_key(SMOKE_BOOSTING),
             cosy_smoke: r.particle_key("minecraft:campfire_cosy_smoke"),
             signal_smoke: r.particle_key("minecraft:campfire_signal_smoke"),
             smoke: r.particle_key("minecraft:smoke"),
@@ -552,31 +650,8 @@ impl Hooks for Mod {
         }
     }
 
-    fn register_configs(&self, _: &dyn ConfigContext, event: &mut RegisterConfigsEvent<'_>) {
-        event.configs.push(
-            ModConfig::new(MOD, ConfigKind::Common, model::DEFAULT_COMMON)
-                .file("sootychimneys-local.toml"),
-        );
-    }
-
-    fn config_loading(&self, _: &dyn ConfigContext, event: &mut ConfigLoadingEvent<'_>) {
-        apply(
-            event.config.mod_id.as_str(),
-            event.config.kind,
-            &event.config.text,
-        );
-    }
-
-    fn config_reloading(&self, _: HostSide, event: &mut ConfigReloadingEvent<'_>) {
-        apply(
-            event.config.mod_id.as_str(),
-            event.config.kind,
-            &event.config.text,
-        );
-    }
-
     /// `Wind.update` after each level's tick, on both sides, when the wind is on.
-    fn level_tick_post(&self, host: HostSide, event: &mut LevelTickPostEvent) {
+    fn level_tick_post(&self, host: HostSide<'_>, event: &mut LevelTickPostEvent) {
         if !settings().wind {
             return;
         }
@@ -600,19 +675,14 @@ impl Hooks for Mod {
     /// The chimneys go at the end of Functional Blocks, each clean one before its dirty one.
     fn build_creative_mode_tab_contents(
         &self,
-        host: HostSide,
+        _host: HostSide<'_>,
         event: &mut BuildCreativeModeTabContentsEvent<'_>,
     ) {
         if event.tab != "minecraft:functional_blocks" {
             return;
         }
-        let host: &dyn Host = match &host {
-            HostSide::Server(host) => &**host,
-            HostSide::Client(host) => &**host,
-        };
         for item in keys().items.iter().flatten() {
-            let _ = event.edit.insert(
-                host,
+            let _ = event.output.insert(
                 CreativeTabPlacement::Last,
                 ItemStack::of(*item),
                 CreativeTabVisibility::Both,

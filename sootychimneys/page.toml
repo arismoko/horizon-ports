@@ -11,11 +11,8 @@ The chimneys are at the end of the Functional Blocks tab. Install it on the serv
 
 Differences from the original:
 
-- Placing a chimney doesn't set it up at once: it becomes stacked, lit or unlit when a neighbour next changes ([sunrise-org/sunrise#5302](https://github.com/sunrise-org/sunrise/issues/5302)).
+- A chimney placed from an item is set up at once, but one set by a command or other code becomes stacked, lit or unlit only when a neighbour next changes ([sunrise-org/sunrise#5302](https://github.com/sunrise-org/sunrise/issues/5302)).
 - The wind doesn't bend campfire smoke yet; the `WindAffectsCampfire` setting is kept but has no effect ([sunrise-org/sunrise#5382](https://github.com/sunrise-org/sunrise/issues/5382)).
-- Breaking a dirty chimney doesn't puff a cloud of soot ([sunrise-org/sunrise#5383](https://github.com/sunrise-org/sunrise/issues/5383)).
-- The wind doesn't change between day and night yet: every hour counts as day ([sunrise-org/sunrise#5385](https://github.com/sunrise-org/sunrise/issues/5385)).
-- Scraping a chimney shows its scrape sound, soot and arm swing to other players, but not to the player who scrapes ([sunrise-org/sunrise#5063](https://github.com/sunrise-org/sunrise/issues/5063)).
 - The optional JEI and Create integrations aren't part of this port.
 
 A port of Sooty Chimneys by mortuusars, under the MIT licence.
