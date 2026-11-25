@@ -291,12 +291,11 @@ impl Script {
                 .unwrap_or(0);
             Bound(bound.to_string()).matches(f64::from(score))?
         };
-        let active: Vec<(String, i32)> = LivingRef::new(player.entity())
-            .effects(reader)
-            .unwrap_or_default()
-            .into_iter()
-            .map(|e| (e.id.id(reader).unwrap_or_default().to_string(), e.amplifier))
-            .collect();
+        let mut active: Vec<(String, i32)> = Vec::new();
+        let _ = LivingRef::new(player.entity()).visit_effects(reader, &mut |e| {
+            active.push((e.id.id(reader).unwrap_or_default().to_string(), e.amplifier));
+            std::ops::ControlFlow::Continue(())
+        });
         let effects = effects_hold(&c.effects, &active);
         Ok(advancement && gamemode && position && xp && scoreboard && effects)
     }

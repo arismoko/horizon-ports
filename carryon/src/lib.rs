@@ -989,7 +989,7 @@ impl Mod {
             sound_at(
                 host,
                 dim,
-                &snd.hit,
+                snd.hit.as_str(),
                 pos.map(|v| f64::from(v) + 0.5),
                 SoundSource::Blocks,
                 1.0,
@@ -1269,7 +1269,7 @@ impl Mod {
                     sound_at(
                         host,
                         dim,
-                        &snd.place,
+                        snd.place.as_str(),
                         pos.map(|v| f64::from(v) + 0.5),
                         SoundSource::Blocks,
                         1.0,
@@ -1321,7 +1321,15 @@ impl Mod {
         let reader: &dyn ServerHost = &*host;
         let mut top = clicked.root_vehicle(reader).unwrap_or(clicked);
         let mut count = 0;
-        while let Some(next) = top.passengers(reader).and_then(|p| p.first().copied()) {
+        loop {
+            let mut first = None;
+            let _ = top.visit_passengers(reader, &mut |p| {
+                first = Some(p);
+                ControlFlow::Break(())
+            });
+            let Some(next) = first else {
+                break;
+            };
             top = next;
             count += 1;
         }
@@ -1646,12 +1654,11 @@ fn draw_block(
             return;
         }
     }
-    let pairs: Vec<(&str, &str)> = props
-        .iter()
-        .map(|(k, v)| (k.as_str(), v.as_str()))
-        .collect();
-    if !draw.block(key, &pairs) {
-        draw.block(key, &[]);
+    let state = host
+        .block_state_id(&state_text(id, props))
+        .or_else(|| host.block_state_default(key));
+    if let Some(state) = state {
+        draw.block(state);
     }
 }
 
@@ -2161,7 +2168,7 @@ impl Hooks for Mod {
         let mut data = data;
         data.insert("id".into(), s(&kind));
         if event
-            .batch
+            .draw
             .entity(&GuiEntity::with_data(kind.clone(), data), view)
             .is_err()
         {
