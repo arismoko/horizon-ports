@@ -5,19 +5,19 @@
 //! | Moment | Where | What it does |
 //! |---|---|---|
 //! | `right_click_block` | [`harvest`] | harvests on the server, and on the client claims the click |
-//! | `register_configs`, `config_loading`, `config_reloading` | this module | `config/rightclickharvest-common.toml` |
+//! | `register` | this module | the config file's listener and the block tag keys |
 
 pub mod rules;
 
-use std::sync::Mutex;
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Arc, Mutex, OnceLock};
 
 use mod_api::text::TextStyle;
 use mod_api::{
-    BlockClick, ClientHost, Config as ModConfig, ConfigContext, ConfigKind, ConfigLoadingEvent,
-    ConfigPath, EquipmentSlot, Flow, Hand, Hooks, HostBlockStates, HostSide, InteractionResult,
-    ItemStack, LevelRef, LivingRef, PlayerRef, RegisterConfigsEvent, RightClickBlockEvent,
-    ServerHost, SoundPlay, StatType, Text,
+    BlockClick, ClientHost, ConfigEvent, ConfigKind, ConfigSnapshot, ConfigSpec, EquipmentSlot,
+    Flow, Hand, Hooks, HostBlockStates, HostSide, InteractionResult, ItemStack, LevelRef,
+    LivingRef, PlayerRef, Registrar, RegistrationContext, RightClickBlockEvent, ServerHost,
+    SoundPlay, StatType, TagKey, Text,
 };
 use rules::{Config, Gate, Kind, Player, Tiers};
 
@@ -34,23 +34,26 @@ static SETTINGS: Mutex<Config> = Mutex::new(Config {
 /// Whether the hoe warning was shown in this session, in case the config file could not be written.
 static WARNED: AtomicBool = AtomicBool::new(false);
 
-/// The config file `register_configs` declares (`ConfigKind::Common`).
+/// The config file `register` declares (`ConfigKind::Common`).
 const CONFIG_FILE: &str = "rightclickharvest-common.toml";
 
 /// Records `hasUserBeenWarnedForNotUsingHoe = true` in the config file, as the original's
 /// `CONFIG.save()` does; the reload that follows reads it back.
 fn save_warned(host: &dyn mod_api::Host) {
-    let Ok(path) = ConfigPath::new(CONFIG_FILE) else {
-        return;
-    };
-    let files = host.config_files();
-    let text = files
-        .read(&path)
-        .ok()
-        .and_then(|bytes| String::from_utf8(bytes).ok())
-        .unwrap_or_else(|| rules::DEFAULT_CONFIG.to_owned());
-    let _ = files.write(&path, rules::with_warned(&text).as_bytes());
+    let path = host.config_dir().join(CONFIG_FILE);
+    let text = std::fs::read_to_string(&path).unwrap_or_else(|_| rules::DEFAULT_CONFIG.to_owned());
+    let _ = std::fs::write(&path, rules::with_warned(&text));
 }
+
+/// The block tags the harvester reads, resolved once in `register` and kept across reloads.
+struct BlockTags {
+    blacklist: TagKey,
+    hoe_never_required: TagKey,
+    radius_blacklist: TagKey,
+    crops: TagKey,
+}
+
+static BLOCK_TAGS: OnceLock<BlockTags> = OnceLock::new();
 
 /// A green part of the warning, as the original styles its two arguments.
 fn green(text: Text) -> Text {
@@ -105,7 +108,12 @@ impl Cell {
             .map_or(text.as_str(), |(id, _)| id)
             .to_owned();
         let key = state.block();
-        let in_tag = |tag: &str| host.block_in_tag(key, tag).unwrap_or(false);
+        let in_tag = |pick: fn(&BlockTags) -> TagKey| {
+            BLOCK_TAGS
+                .get()
+                .and_then(|tags| host.tags().block_in_tag(key, pick(tags)))
+                .unwrap_or(false)
+        };
         let age = text
             .split_once('[')
             .and_then(|(_, props)| {
@@ -126,12 +134,12 @@ impl Cell {
                 .max()
         });
         Some(Self {
-            kind: Kind::of(&id, in_tag("minecraft:crops"), age.is_some()),
+            kind: Kind::of(&id, in_tag(|tags| tags.crops), age.is_some()),
             id,
             age: age.zip(max),
-            blacklisted: in_tag("rightclickharvest:blacklist"),
-            hoe_never_required: in_tag("rightclickharvest:hoe_never_required"),
-            radius_blacklisted: in_tag("rightclickharvest:radius_harvest_blacklist"),
+            blacklisted: in_tag(|tags| tags.blacklist),
+            hoe_never_required: in_tag(|tags| tags.hoe_never_required),
+            radius_blacklisted: in_tag(|tags| tags.radius_blacklist),
         })
     }
 
@@ -477,24 +485,22 @@ impl Hooks for Mod {
         }
     }
 
-    fn register_configs(&self, _: &dyn ConfigContext, event: &mut RegisterConfigsEvent<'_>) {
-        event.configs.push(ModConfig::new(
-            MOD,
-            ConfigKind::Common,
-            rules::DEFAULT_CONFIG,
-        ));
-    }
-
-    fn config_loading(&self, _: &dyn ConfigContext, event: &mut ConfigLoadingEvent<'_>) {
-        if event.config.mod_id == MOD {
-            *SETTINGS.lock().unwrap_or_else(|e| e.into_inner()) = Config::parse(&event.config.text);
-        }
-    }
-
-    fn config_reloading(&self, _: HostSide, event: &mut mod_api::ConfigReloadingEvent<'_>) {
-        if event.config.mod_id == MOD {
-            *SETTINGS.lock().unwrap_or_else(|e| e.into_inner()) = Config::parse(&event.config.text);
-        }
+    fn register(&self, r: &mut dyn Registrar, _cx: &RegistrationContext) {
+        let _ = BLOCK_TAGS.set(BlockTags {
+            blacklist: r.tag_key("rightclickharvest:blacklist"),
+            hoe_never_required: r.tag_key("rightclickharvest:hoe_never_required"),
+            radius_blacklist: r.tag_key("rightclickharvest:radius_harvest_blacklist"),
+            crops: r.tag_key("minecraft:crops"),
+        });
+        let listener = |event: ConfigEvent<'_>, snapshot: &ConfigSnapshot| -> Result<(), String> {
+            if matches!(event, ConfigEvent::Loading(_) | ConfigEvent::Reloading(_)) {
+                *SETTINGS.lock().unwrap_or_else(|e| e.into_inner()) = Config::parse(&snapshot.text);
+            }
+            Ok(())
+        };
+        let spec = ConfigSpec::new(ConfigKind::Common, rules::DEFAULT_CONFIG);
+        // A refused registration leaves the defaults in charge.
+        let _ = r.register_config(spec, Some(Arc::new(listener)));
     }
 }
 
