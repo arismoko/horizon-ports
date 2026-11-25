@@ -1,0 +1,28 @@
+# Better Mount HUD
+
+A Sunrise 26.3 client-only port of [Better Mount HUD](https://github.com/Lortseam/better-mount-hud) (1.3.1) by Lortseam and contributors (GPL-3.0-only).
+
+## What it does
+
+- **Hunger stays visible**: while riding a mount that shows its health, your own hunger bar keeps drawing (vanilla replaces it with the mount's hearts).
+- **Mount health above hunger**: the mount's hearts move one row up, above the hunger bar, in survival and adventure.
+- **Air bubbles above everything**: the air row sits above the mount's heart rows, with the original bubble-pop sound.
+- **Experience instead of the jump bar**: while riding a jumpable mount in survival or adventure, the experience bar and level number replace the jump bar. The jump bar comes back while the jump key is held, and always in creative mode.
+
+Client-side only: works in single player and on any multiplayer server. The original has no settings and no translations, and neither does this port.
+
+## Differences from the original
+
+- The jump bar shows while the **Jump** key is held, not while the jump charge is above zero, because the charge value is not readable (gap: sunrise-org/sunrise#5637).
+- While the jump bar shows, the experience level number is drawn with it, because vanilla's jump bar and level number are one layer (gap: sunrise-org/sunrise#5638).
+- When riding a jumpable mount and not charging, the experience bar always shows; the original falls back to vanilla's choice, which can be the locator bar when waypoints exist (gap: sunrise-org/sunrise#5638).
+- To move the mount's hearts and the air bubbles, the port redraws those rows (and the hunger row) from the GUI atlas sprites instead of shifting vanilla's own rows; whether a mount shows hearts is judged by its max health, and the pop sound plays on the Players source at the player (gap: sunrise-org/sunrise#5640).
+
+## Building
+
+```sh
+cargo sunrise-mod check
+cargo sunrise-mod build
+```
+
+A port of Better Mount HUD by Lortseam, under the GPL-3.0-only licence.
