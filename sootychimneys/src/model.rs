@@ -163,15 +163,14 @@ pub const CLEAN_HARDNESS: f32 = 2.2;
 /// `strength(2.0F, 2.0F)`'s explosion resistance.
 pub const RESISTANCE: f32 = 2.0;
 
-/// The settings of `sootychimneys-local.toml` (`Config.Common`). The file keeps
-/// `WindAffectsCampfire`, which nothing reads until campfire smoke can be changed
-/// (sunrise-org/sunrise#5382).
+/// The settings of `sootychimneys-local.toml` (`Config.Common`).
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Settings {
     pub smoke_flow: f64,
     pub dirty_chance: f64,
     pub wind: bool,
     pub wind_strength: f64,
+    pub wind_affects_campfire: bool,
 }
 
 /// The file's text when it does not exist yet.
@@ -184,6 +183,7 @@ impl Default for Settings {
             dirty_chance: 0.05,
             wind: true,
             wind_strength: 1.0,
+            wind_affects_campfire: true,
         }
     }
 }
@@ -216,6 +216,7 @@ impl Settings {
                 "DirtyChance" => set(&mut s.dirty_chance, real(0.0, 1.0)),
                 "Wind" => set(&mut s.wind, boolean),
                 "WindStrength" => set(&mut s.wind_strength, real(0.0, f64::MAX)),
+                "WindAffectsCampfire" => set(&mut s.wind_affects_campfire, boolean),
                 _ => {}
             }
         }
@@ -367,6 +368,17 @@ impl Wind {
     pub fn adjusted_strength(&self, settings: &Settings) -> f32 {
         self.strength * 0.1 * settings.wind_strength as f32
     }
+}
+
+/// A campfire's smoke particle after the wind has pushed it: the wind's direction times its
+/// adjusted strength is added to the horizontal speed; the rise is left alone.
+pub fn campfire_velocity(velocity: [f64; 3], wind: &Wind, settings: &Settings) -> [f64; 3] {
+    let strength = f64::from(wind.adjusted_strength(settings));
+    [
+        velocity[0] + wind.x * strength,
+        velocity[1],
+        velocity[2] + wind.z * strength,
+    ]
 }
 
 /// `Mth.map(value, 0, 1, min, max)`.
@@ -613,6 +625,31 @@ mod tests {
         wind.update(WINDY, &mut random);
         assert_eq!(wind.angle_degrees, -0.5);
         assert!((wind.strength - (0.05 + 0.1 * (0.15 - 0.05))).abs() < 1e-7);
+    }
+
+    #[test]
+    fn campfire_smoke_is_pushed_along_the_wind_only_sideways() {
+        let wind = Wind {
+            angle_degrees: 0.0,
+            strength: 1.0,
+            x: 1.0,
+            z: 0.0,
+        };
+        let settings = Settings::default();
+        let pushed = campfire_velocity([0.0, 0.07, 0.01], &wind, &settings);
+        assert!((pushed[0] - 0.1).abs() < 1e-7);
+        assert_eq!(pushed[1], 0.07);
+        assert_eq!(pushed[2], 0.01);
+        assert_eq!(
+            campfire_velocity([0.0, 0.07, 0.0], &Wind::STILL, &settings),
+            [0.0, 0.07, 0.0]
+        );
+    }
+
+    #[test]
+    fn wind_affects_campfire_is_read() {
+        assert!(Settings::default().wind_affects_campfire);
+        assert!(!Settings::parse("WindAffectsCampfire = false\n").wind_affects_campfire);
     }
 
     #[test]
