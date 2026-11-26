@@ -1,3 +1,4 @@
+#![deny(unsafe_code)]
 //! Armor Statues (Fuzs, MPL-2.0) and Statue Menus for Sunrise.
 //!
 //! Sneak and use an armor stand with an empty hand to open a tabbed configuration screen

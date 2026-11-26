@@ -1039,6 +1039,21 @@ pub struct StandSnapshot {
 }
 
 impl StandSnapshot {
+    /// Overwrites the pose and the four synced client flags with what the server last sent
+    /// (`ArmorStand.getHeadPose` ... `getRightLegPose`, `isSmall`, `showArms`, `showBasePlate`).
+    pub fn apply_live(
+        &mut self,
+        pose: [[f32; 3]; 6],
+        small: bool,
+        show_arms: bool,
+        show_base_plate: bool,
+    ) {
+        self.pose = pose;
+        self.small = small;
+        self.show_arms = show_arms;
+        self.no_base_plate = !show_base_plate;
+    }
+
     pub fn from_nbt(
         entity_id: u32,
         nbt: &Compound,
@@ -1173,6 +1188,38 @@ pub enum SyncMessage {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn live_state_replaces_defaults() {
+        let mut stand = StandSnapshot {
+            entity_id: 1,
+            pose: DEFAULT_POSE,
+            show_arms: false,
+            small: false,
+            invisible: true,
+            no_base_plate: false,
+            no_gravity: false,
+            invulnerable: false,
+            disabled_slots: 0,
+            pos: [0.0; 3],
+            yaw: 0.0,
+            pitch: 0.0,
+            scale: 1.0,
+            custom_name: String::new(),
+            custom_name_visible: false,
+            creative: false,
+            equipment: None,
+        };
+        let mut pose = DEFAULT_POSE;
+        pose[0] = [10.0, 20.0, 30.0];
+        stand.apply_live(pose, true, true, false);
+        assert_eq!(stand.pose[0], [10.0, 20.0, 30.0]);
+        assert!(stand.small && stand.show_arms && stand.no_base_plate);
+        assert!(stand.invisible, "flags outside the synced four are kept");
+        stand.apply_live(DEFAULT_POSE, false, false, true);
+        assert_eq!(stand.pose, DEFAULT_POSE);
+        assert!(!stand.small && !stand.show_arms && !stand.no_base_plate);
+    }
 
     #[test]
     fn disabled_slot_bits_match_all_slots_disabled() {

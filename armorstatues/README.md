@@ -26,8 +26,6 @@ The screen opens to the last tab you used and switches tabs by clicking the left
 
 ## Differences from the original
 
-- **Initial/live armor stand pose and flags on client**: When the server has Armor Statues, the client reads initial state from the server snapshot and tracks local edits plus server-pushed Show Arms and equipment updates; edits made by another player or command while the screen is open show up after reopening. In client-only mode on a vanilla server, an armor stand's existing pose and flags cannot be read on the client, so the screen starts from vanilla defaults (plus a per-session cache of your own edits) (gap: sunrise-org/sunrise#5528).
-- **Client-side permission pre-check**: In client-only mode, Sunrise does not expose the local player's command permission level on the client, so the mod checks `may_build` and lets the server enforce `/data` / `/attribute` command permissions (gap: sunrise-org/sunrise#5529).
 - **Vanilla Tweaks credits link**: Clicking the `?` credits button on Poses, Alignments, and Vanilla Tweaks plays the click sound and shows the credits tooltip, but does not open a confirmation dialog to `https://vanillatweaks.net/` (gap: sunrise-org/sunrise#5483).
 - **Stand previews**: the screen shows the armor stand item where the original shows a live, posed stand, because the mod API can't yet draw an armor stand in a screen (gap: sunrise-org/sunrise#5538).
 - **Vanilla sprites**: Original Statue Menus GUI textures are All Rights Reserved; the screen is drawn with vanilla GUI sprites and widgets.
