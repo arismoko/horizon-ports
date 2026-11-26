@@ -17,7 +17,6 @@ Client-side only: works in single player and on any multiplayer server using sta
 
 ## Differences from the original
 
-- **Post-bridging delay below 4 ticks (`delayPostBridging` < 4)**: values from `4` to `20` ticks are enforced, but shortening the cooldown below vanilla's hardcoded 4-tick right-click delay (such as `3` ticks) is not possible yet (gap: sunrise-org/sunrise#5588).
 - **Skip torch bridging with offhand blocks**: when `skipTorchBridging` is enabled and you hold a torch in your main hand while holding blocks in your offhand, bridging is suppressed rather than skipping the main hand to place from the offhand, because the mod API cannot invoke per-hand client block placement directly (gap: sunrise-org/sunrise#5325). Holding a non-block item (such as food, a tool, or a weapon) in your main hand and blocks in your offhand bridges normally.
 - Third-party mod integrations from the original (Dynamic Crosshair, Dank Storage, Sable) are omitted because those mods are not on Sunrise; `perspectiveLock = "let_bridging_mod_decide"` still checks whether `freelook` is loaded.
 

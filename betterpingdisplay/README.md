@@ -16,7 +16,7 @@ Client-side only: works on any multiplayer server and in LAN worlds.
 ## Differences from the original
 
 - Because the mod API does not yet expose a per-entry player-list ping render hook, this port wraps and replaces the `minecraft:tab_list` HUD layer; `ClientTabList` does not expose `online_mode` or per-player hat visibility, so player heads are always drawn with the hat layer enabled (gap: sunrise-org/sunrise#5596).
-- **Ping Text Format String** is edited in `config/betterpingdisplay.toml` (hot-reloaded on save) rather than in **Options → Mods → Better Ping Display**, and **Ping Text Color** stays interactive while **Auto-color Ping Text** is on, because Sunrise's mod settings UI does not yet have a string input or conditional row disabling (gap: sunrise-org/sunrise#1174).
+- **Ping Text Format String** is edited in `config/betterpingdisplay.toml` (hot-reloaded on save) rather than in **Options → Mods → Better Ping Display**, and **Ping Text Color** stays interactive while **Auto-color Ping Text** is on, because Sunrise's mod settings UI does not yet have a string input or conditional row disabling.
 
 ## Configuration
 

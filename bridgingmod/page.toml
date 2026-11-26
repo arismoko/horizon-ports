@@ -12,7 +12,6 @@ Client-side only: works in single player and on any multiplayer server.
 
 Differences from the original:
 
-- **Post-bridging delay below 4 ticks**: delays from `4` to `20` ticks are supported, but lowering the cooldown below vanilla's 4-tick right-click delay is not possible yet (gap: sunrise-org/sunrise#5588).
 - **Skip torch bridging with offhand blocks**: when holding a torch in the main hand and blocks in the offhand with `skipTorchBridging` enabled, bridging is suppressed instead of skipping the main hand to place from the offhand (gap: sunrise-org/sunrise#5325).
 - Optional integrations for third-party mods not on Sunrise (Dynamic Crosshair, Dank Storage, Sable) are omitted.
 
