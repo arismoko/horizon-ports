@@ -2,7 +2,7 @@
 # items, recipes and loot tables in data/, models, textures and translations in assets/.
 id = "toms_storage"
 name = "Tom's Simple Storage"
-version = "0.4.2"
+version = "0.4.3"
 description = "Join chests into one network and reach all of it from a storage or crafting terminal, over cables, trims and wireless terminals."
 authors = ["tom5454", "lavoide", "arismoko"]
 license = "MIT"
