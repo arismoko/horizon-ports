@@ -1,3 +1,4 @@
+#![deny(unsafe_code)]
 //! Comforts for Sunrise: sleeping bags, hammocks, and rope & nail.
 //!
 //! Pure rules, config parsing, sleep math, hammock geometry, and conditional recipe
@@ -24,7 +25,7 @@ use mod_api::{
     PayloadId, PlacementSource, PlayerBedEnterEvent, PlayerBedLeaveEvent, PlayerLoggedInEvent,
     PlayerRef, PlayerSetSpawnEvent, PlayerTickPostEvent, Registrar, RegistrationContext,
     ScreenKeyPressedPostEvent, ServerHost, SetPlacedByEvent, SleepFinishedTimeEvent, SleepProblem,
-    SleepSkipNightEvent, SoundSource, StatType, StateConstraint, StateForPlacementEvent,
+    SleepersNeededEvent, SoundSource, StatType, StateConstraint, StateForPlacementEvent,
     SupportType, Tag, TagKey, Text, ToClient, TooltipEvent, UpdateShapeEvent, UseOnEvent,
     UseWithoutItemEvent, Wire,
 };
@@ -45,7 +46,6 @@ const OVERWORLD_WAKE_MARKER: &str = "minecraft:wake_up_from_sleep";
 const NAP_WAKE_MARKER: &str = "comforts:wake_up_from_nap";
 const TIME_SINCE_REST: &str = "minecraft:time_since_rest";
 const SLEEP_IN_BED: &str = "minecraft:sleep_in_bed";
-const PLAYERS_SLEEPING_PERCENTAGE: &str = "minecraft:players_sleeping_percentage";
 const KEY_TOGGLE_PERSPECTIVE: &str = "key.togglePerspective";
 
 const GRAY_COLOR: u32 = 0xFFAA_AAAA;
@@ -2098,28 +2098,50 @@ impl Hooks for ComfortsMod {
         }
     }
 
-    fn sleep_skip_night(
-        &self,
-        host: &mut dyn ServerHost,
-        event: &mut SleepSkipNightEvent<'_>,
-    ) -> Flow {
+    fn sleepers_needed(&self, host: &mut dyn ServerHost, event: &mut SleepersNeededEvent<'_>) {
         let cfg = server_config();
         if cfg.day_sleeping_percentage < 0 {
-            return Flow::Continue;
+            return;
         }
         let Some(level) = host.level(event.dimension) else {
+            return;
+        };
+        if !level_is_bright(host, level) {
+            return;
+        }
+        // `needed` starts at vanilla's count for `players_sleeping_percentage`; daytime uses
+        // `daySleepingPercentage` instead, above or below it. The engine's night-skip check and
+        // sleep status line both read the answer, so no separate skip veto is needed.
+        *event.needed = sleepers_needed(event.active, cfg.day_sleeping_percentage);
+    }
+
+    fn sleep_status_announce(
+        &self,
+        host: &mut dyn ServerHost,
+        dimension: &str,
+        _sleeping: i64,
+        active: i64,
+    ) -> Flow {
+        if active <= 1 {
+            return Flow::Continue;
+        }
+        let Some(level) = host.level(dimension) else {
             return Flow::Continue;
         };
         if !level_is_bright(host, level) {
             return Flow::Continue;
         }
-        // If daySleepingPercentage is higher than vanilla's percentage, block premature day skip.
-        // (Lowering below players_sleeping_percentage is tracked in sunrise-org/sunrise#5558.)
-        let needed = sleepers_needed(event.active, cfg.day_sleeping_percentage);
-        if event.sleeping < needed {
-            return Flow::Cancel;
+        // Daytime: replace vanilla's line with Comforts' `comforts.skipping_day` for everyone.
+        let mut recipients = Vec::new();
+        let _ = level.visit_online_players(host, &mut |p| {
+            recipients.push(p);
+            ControlFlow::Continue(())
+        });
+        let msg = Text::translate("comforts.skipping_day", vec![]);
+        for p in recipients {
+            let _ = p.action_bar(host, msg.clone());
         }
-        Flow::Continue
+        Flow::Cancel
     }
 
     fn sleep_finished_time(
@@ -2167,30 +2189,6 @@ impl Hooks for ComfortsMod {
             *event.adjustment = ClockAdjustment::Absolute(target);
         }
 
-        // Update daytime sleep status message to players if day-skipping in multiplayer.
-        if wake_from_nap {
-            let pct = if cfg.day_sleeping_percentage >= 0 {
-                cfg.day_sleeping_percentage
-            } else {
-                match level.game_rule(host, PLAYERS_SLEEPING_PERCENTAGE) {
-                    Ok(Some(mod_api::GameRuleValue::Int(v))) => v,
-                    _ => 100,
-                }
-            };
-            if pct <= 100 {
-                let mut recipients = Vec::new();
-                let _ = level.visit_online_players(host, &mut |p| {
-                    recipients.push(p);
-                    ControlFlow::Continue(())
-                });
-                if recipients.len() > 1 {
-                    let msg = Text::translate("comforts.skipping_day", vec![]);
-                    for p in recipients {
-                        let _ = p.action_bar(host, msg.clone());
-                    }
-                }
-            }
-        }
         Flow::Continue
     }
 

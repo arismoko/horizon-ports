@@ -634,7 +634,8 @@ pub fn compute_break_chance(break_chance_pct: i32, luck: f64, luck_multiplier: f
     chance.clamp(0.0, 1.0)
 }
 
-/// `SleepStatus.sleepersNeeded` for a given `active` player count and percentage.
+/// `SleepStatus.sleepersNeeded` for a given `active` player count and percentage; the
+/// `sleepers_needed` hook answer for `daySleepingPercentage`.
 /// Matches `Math.max(1, Mth.ceil((float) (active * pct) / 100.0F))`.
 pub fn sleepers_needed(active: i64, percentage: i32) -> i64 {
     if active <= 0 {
