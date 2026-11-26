@@ -12,15 +12,16 @@ A Sunrise 26.3 client-only port of [Traveler's Titles](https://github.com/YUNG-G
 - **Blacklists**: biomes and dimensions that never show a title (`minecraft:the_end`, `minecraft:river` and `minecraft:frozen_river` by default).
 - **Commands**: `/biometitle <biome>` and `/dimensiontitle <dimension>` show a title as a preview, and `/tt_reload` clears the running titles and recent lists.
 - **Translations**: the original's English, Japanese, Russian, Ukrainian and Chinese files, with about 470 dimension and modded-biome names and colours.
+- **Text background**: a backdrop behind each title follows the vanilla Text Background option and fades with the title; it is not drawn when the option is limited to chat.
+- **Mod event**: other mods can depend on this one and listen to `TitleDisplayEvent` (`travelerstitles:title_display`, client side, cancellable) with `#[subscribe]`. It is posted just before a biome or dimension title starts and carries the kind, the biome or dimension id, the text and the colour; a listener may change the text or colour, or cancel the title (no title, no sound).
 - **Settings**: everything but the two blacklists is on **Options → Mods → Traveler's Titles**; the blacklists are in `config/travelerstitles.toml` and reload when saved.
 
 Client-side only: works in single player and on any multiplayer server.
 
 ## Differences from the original
 
-- Waystone titles (the title for the nearest named waystone, its sound, cache, range, cooldown and "override biome title" options) are not available: they need the list of waystones another mod sends to the client, and mods cannot yet listen to another mod's events from the original's side (gap: sunrise-org/sunrise#5137).
-- The biome and dimension blacklists are edited in `config/travelerstitles.toml` because Options → Mods has no text or list setting (gap: sunrise-org/sunrise#1174). A mod's own config screen (`register_config_screen`) would replace the whole settings page rather than add to it, so it is not used for the lists alone. Everything else is on the Options → Mods page, not a separate config file, and the option labels there are English only.
-- The optional text backdrop (drawn only when the player's Text Background option is not limited to chat) is not drawn, because mods cannot read that option (gap: sunrise-org/sunrise#5653).
+- Waystone titles (the title for the nearest named waystone, its sound, cache, range, cooldown and "override biome title" options) are not available: they need the list of waystones another mod sends to the client, which the Waystones side would have to publish as a typed mod event. This mod now declares its own event for that bus (`travelerstitles:title_display`, below) but does not listen to Waystones.
+- The biome and dimension blacklists are edited in `config/travelerstitles.toml` because Options → Mods has no text or list setting. A mod's own config screen (`register_config_screen`) would replace the whole settings page rather than add to it, so it is not used for the lists alone. The other settings are grouped under **Biome titles**, **Dimension titles** and **Sounds** headings on the Options → Mods page, and the option labels there are English only.
 - `/biometitle`, `/dimensiontitle` and `/tt_reload` are client commands with plain `namespace:path` arguments: they need no operator permission, give no suggestions and take no biome tags (gap: sunrise-org/sunrise#5654). `/tt_reload` does not re-read settings, which always apply at once, and the blacklist file reloads on save.
 
 ## Configuration

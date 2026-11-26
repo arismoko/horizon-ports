@@ -43,6 +43,17 @@ fn label(key: &str) -> String {
     format!("config.travelerstitles.{key}")
 }
 
+/// The section a setting sits under on Options > Mods: one per title kind, and the sounds.
+fn category(name: &str) -> &'static str {
+    if name.starts_with("sound_") {
+        "config.travelerstitles.category.sounds"
+    } else if name.starts_with("dimensions_") {
+        "config.travelerstitles.category.dimensions"
+    } else {
+        "config.travelerstitles.category.biomes"
+    }
+}
+
 fn tooltip(key: &str) -> String {
     format!("config.travelerstitles.{key}.tooltip")
 }
@@ -215,6 +226,9 @@ pub fn register_settings(r: &mut dyn Registrar) {
     for (name, spec) in specs {
         match r.register_setting(spec) {
             Ok(setting) => {
+                if let Err(error) = r.categorize_setting(setting, category(&name)) {
+                    eprintln!("travelerstitles: setting {name} not categorized: {error}");
+                }
                 keys.insert(name, setting);
             }
             Err(error) => eprintln!("travelerstitles: setting {name} not registered: {error}"),
@@ -399,6 +413,14 @@ mod tests {
     #[test]
     fn the_config_file_is_named_for_the_mod() {
         assert!(CONFIG_FILE.starts_with(MOD_ID));
+    }
+
+    #[test]
+    fn every_setting_has_a_category_by_its_name() {
+        assert!(category("biomes_enabled").ends_with("biomes"));
+        assert!(category("dimensions_color").ends_with("dimensions"));
+        assert!(category("sound_biomes_pitch").ends_with("sounds"));
+        assert!(category("sound_dimensions_volume").ends_with("sounds"));
     }
 
     #[test]

@@ -527,5 +527,8 @@
   "config.travelerstitles.sound_dimensions_volume": "Dimension Sound Effect Volume",
   "config.travelerstitles.sound_dimensions_volume.tooltip": "The volume of the sound that plays when a dimension title displays.",
   "config.travelerstitles.sound_dimensions_pitch": "Dimension Sound Effect Pitch",
-  "config.travelerstitles.sound_dimensions_pitch.tooltip": "The pitch of the sound that plays when a dimension title displays."
+  "config.travelerstitles.sound_dimensions_pitch.tooltip": "The pitch of the sound that plays when a dimension title displays.",
+  "config.travelerstitles.category.biomes": "Biome titles",
+  "config.travelerstitles.category.dimensions": "Dimension titles",
+  "config.travelerstitles.category.sounds": "Sounds"
 }
