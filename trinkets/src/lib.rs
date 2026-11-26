@@ -1,3 +1,4 @@
+#![deny(unsafe_code)]
 //! Trinkets 3.7.2 (Emi, C4; MIT): the player's extra equipment slots, written on Sunrise's typed mod API
 //! (no `[[native.mixin]]`, no game module).
 //!
@@ -10,6 +11,8 @@
 //!   server opens it on its next tick. A click on an inventory item wears it, a click on a worn one takes it off.
 //! - A right click with a trinket wears it in the first empty slot that takes it (TrinketItem.use).
 //! - The tooltip names the slots an item fits.
+//! - A worn Totem of Undying saves the player: `living_death_protection` hands the engine the worn totem as the
+//!   protector, takes it out of its slot and syncs `trinkets:worn`.
 //! - Death: unless keepInventory, the worn stacks drop where the player died (vanishing-cursed ones vanish).
 pub mod data;
 pub use data::SLOTS;
@@ -18,11 +21,12 @@ use std::collections::HashMap;
 use std::sync::{Arc, Mutex, RwLock};
 
 use mod_api::{
-    AttachmentCodec, AttachmentDescriptor, AttachmentKey, ClientHost, Compound, Flow, Hand, Holder,
-    Hooks, Host, HostSide, IPayloadContext, IPayloadHandler, Identifier, InputKeyEvent,
-    InteractionResult, ItemResource, ItemStack, ItemTooltipEvent, KeyAction, KeyRegistration,
-    LivingDeathEvent, MenuClickedEvent, MenuPart, MenuRef, MenuRemovedEvent, MenuReplace,
-    PayloadBytes, PayloadHandleError, PayloadId, PlayerRef, Registrar, RegistrationContext,
+    AttachmentCodec, AttachmentDescriptor, AttachmentKey, ClientHost, Compound, Flow, Hand,
+    HitHost, Holder, Hooks, Host, HostSide, IPayloadContext, IPayloadHandler, Identifier,
+    InputKeyEvent, InteractionResult, ItemResource, ItemStack, ItemTooltipEvent, KeyAction,
+    KeyRegistration, LivingDeathEvent, LivingDeathProtectionEvent, MenuClickedEvent, MenuPart,
+    MenuRef, MenuRemovedEvent, MenuReplace, PayloadBytes, PayloadHandleError, PayloadId,
+    PlayerLoggedInEvent, PlayerRef, PlayerRespawnedEvent, Registrar, RegistrationContext,
     RightClickItemEvent, ServerHost, ServerTickEvent, ServerTickPhase, Tag, Text,
 };
 
@@ -328,10 +332,54 @@ fn plan_wear(fits: &[usize], occupied: &[bool], count: u32, room: bool, inv: usi
 
 #[derive(Default)]
 struct Shared {
+    /// The worn Totem of Undying of each player, by entity id: what `living_death_protection` answers with. The hook's
+    /// host reads no item registry, so the stack is kept here whenever the worn stacks change or the player appears.
+    totems: Mutex<HashMap<i32, WornTotem>>,
     /// Players who pressed the key, to open the menu for on the next server tick.
     opens: Mutex<Vec<u128>>,
     /// The open trinket menu's window of each player.
     menus: Mutex<HashMap<u128, i32>>,
+}
+
+/// A worn totem: whose it is, the slot it sits in and the stack.
+struct WornTotem {
+    uuid: u128,
+    slot: usize,
+    stack: ItemStack,
+}
+
+/// The id of the item that protects from death.
+const TOTEM: &str = "minecraft:totem_of_undying";
+
+/// The first slot whose item is a totem.
+fn first_totem(ids: &[Option<&str>]) -> Option<usize> {
+    ids.iter().position(|id| *id == Some(TOTEM))
+}
+
+impl Shared {
+    /// Re-reads the player's worn stacks and keeps the first worn totem for `living_death_protection`.
+    fn refresh_totem(&self, host: &mut dyn ServerHost, uuid: u128) {
+        let Some(entity) = host.player(uuid).map(|p| p.entity().id() as i32) else {
+            return;
+        };
+        let stacks = worn(host, uuid);
+        let ids: Vec<Option<String>> = stacks
+            .iter()
+            .map(|s| {
+                s.as_ref()
+                    .filter(|s| !is_unknown(s))
+                    .map(|s| item_id(&*host, s))
+            })
+            .collect();
+        let refs: Vec<Option<&str>> = ids.iter().map(|i| i.as_deref()).collect();
+        let mut totems = lock(&self.totems);
+        totems.retain(|_, t| t.uuid != uuid);
+        if let Some(slot) = first_totem(&refs)
+            && let Some(stack) = stacks[slot].clone()
+        {
+            totems.insert(entity, WornTotem { uuid, slot, stack });
+        }
+    }
 }
 
 /// The player's open menu, when it is the window `window`.
@@ -444,6 +492,7 @@ impl Shared {
             }
         }
         set_worn(host, uuid, &worn);
+        self.refresh_totem(host, uuid);
         let items = menu_items(&*host, &worn);
         if let Some(menu) = live(&*host, uuid, window)
             && let Err(e) = menu.set_items(host, items)
@@ -586,6 +635,68 @@ impl Hooks for Mod {
             );
     }
 
+    /// A player who joins may wear a totem saved with them.
+    fn player_logged_in(&self, host: &mut dyn ServerHost, event: &mut PlayerLoggedInEvent<'_>) {
+        self.shared.refresh_totem(host, event.player);
+    }
+
+    /// A respawned player is a new entity; the worn stacks came over with them.
+    fn player_respawned(&self, host: &mut dyn ServerHost, event: &mut PlayerRespawnedEvent<'_>) {
+        self.shared.refresh_totem(host, event.player);
+    }
+
+    /// `LivingEntity.checkTotemDeathProtection` for a totem worn in a trinket slot: once neither hand protects, the
+    /// worn totem is the protector. One totem is used up (taken out of its slot, the attachment written and synced);
+    /// the engine applies its death protection effects as a hand's totem would.
+    fn living_death_protection(
+        &self,
+        host: &mut dyn HitHost,
+        event: &mut LivingDeathProtectionEvent<'_>,
+    ) -> Flow {
+        if event.protector.is_some() {
+            return Flow::Continue;
+        }
+        let Some(totem) = lock(&self.shared.totems).remove(&event.entity) else {
+            return Flow::Continue;
+        };
+        let Some(key) = worn_key() else {
+            return Flow::Continue;
+        };
+        let holder = Holder::Player(totem.uuid);
+        let Some(mut c) = key
+            .get_existing(host.attachments(), holder, |c| c.cloned())
+            .ok()
+            .flatten()
+        else {
+            return Flow::Continue;
+        };
+        let slot = SLOTS[totem.slot].0;
+        let left = totem.stack.count().saturating_sub(1);
+        match with_count(&totem.stack, left) {
+            Some(rest) => {
+                if let Some(Tag::Compound(entry)) = c.get_mut(&slot.into()) {
+                    entry.insert("count".into(), Tag::Int(left as i32));
+                }
+                lock(&self.shared.totems).insert(
+                    event.entity,
+                    WornTotem {
+                        uuid: totem.uuid,
+                        slot: totem.slot,
+                        stack: rest,
+                    },
+                );
+            }
+            None => {
+                c.remove(&slot.into());
+            }
+        }
+        if key.set(host.attachments(), holder, c).is_err() {
+            return Flow::Continue;
+        }
+        *event.protector = with_count(&totem.stack, 1);
+        Flow::Continue
+    }
+
     /// The Trinkets key, while playing or in the player's own inventory: asks the server for the menu.
     fn input_key(&self, host: &mut dyn ClientHost, event: &mut InputKeyEvent<'_>) {
         if !matches!(event.action, KeyAction::Press) {
@@ -652,6 +763,7 @@ impl Hooks for Mod {
         }
         worn[i] = with_count(click.stack, 1);
         set_worn(host, click.player, &worn);
+        self.shared.refresh_totem(host, click.player);
         if let Some(entity) = host.player(click.player).map(|p| p.entity()) {
             entity.play_sound(host, "minecraft:item.armor.equip_generic", 1.0, 1.0);
         }
@@ -753,6 +865,16 @@ struct Mod {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_first_worn_totem_protects() {
+        assert_eq!(
+            first_totem(&[None, Some("minecraft:apple"), Some(TOTEM), Some(TOTEM)]),
+            Some(2)
+        );
+        assert_eq!(first_totem(&[None, Some("minecraft:apple")]), None);
+        assert_eq!(first_totem(&[]), None);
+    }
 
     #[test]
     fn key_labels() {
