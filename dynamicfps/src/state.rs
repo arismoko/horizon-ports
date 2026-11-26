@@ -3,10 +3,10 @@
 
 use crate::battery::{BatterySnapshot, BatteryState};
 use crate::config::{
-    DynamicFpsConfig, IdleCondition, IgnoreInitialClick, NO_FRAME_RATE_LIMIT, PowerState,
-    VOLUME_TRANSITION_IMMEDIATE,
+    DynamicFpsConfig, GraphicsState, IdleCondition, IgnoreInitialClick, NO_FRAME_RATE_LIMIT,
+    PowerState, VOLUME_TRANSITION_IMMEDIATE,
 };
-use mod_api::SoundSource;
+use mod_api::{CloudStatus, SoundSource};
 use std::sync::atomic::{AtomicU32, Ordering};
 
 /// Window after regaining focus during which accidental clicks are ignored (`ClickIgnoreHandler`).
@@ -290,6 +290,61 @@ impl AtomicVolumeTable {
     }
 }
 
+/// What Dynamic FPS asks the host to hold for the current power state: session video options,
+/// toast hold, sound scales and pause, and the F3 FPS line text.
+#[derive(Clone, Debug, PartialEq)]
+pub struct HostEffects {
+    pub vsync: Option<bool>,
+    pub clouds: Option<CloudStatus>,
+    pub view_bobbing: Option<bool>,
+    pub toasts_held: bool,
+    pub sounds_paused: bool,
+    pub sound_scales: [f32; 11],
+    pub debug_text: Option<String>,
+}
+
+impl HostEffects {
+    /// Nothing overridden: what the host holds before the mod acts.
+    pub fn neutral() -> Self {
+        Self {
+            vsync: None,
+            clouds: None,
+            view_bobbing: None,
+            toasts_held: false,
+            sounds_paused: false,
+            sound_scales: [1.0; 11],
+            debug_text: None,
+        }
+    }
+}
+
+/// Resolve the host effects for `state`; `volumes` are the smoothed per-source multipliers.
+pub fn desired_effects(
+    state: PowerState,
+    config: &DynamicFpsConfig,
+    volumes: [f32; 11],
+) -> HostEffects {
+    let mut effects = HostEffects::neutral();
+    effects.sound_scales = volumes.map(|v| v.clamp(0.0, 1.0));
+    if state == PowerState::Focused {
+        return effects;
+    }
+    let state_cfg = config.state(state);
+    effects.vsync = Some(state_cfg.enable_vsync);
+    match state_cfg.graphics_state {
+        GraphicsState::Default => {}
+        GraphicsState::Reduced => effects.clouds = Some(CloudStatus::Fast),
+        GraphicsState::Minimal => {
+            effects.clouds = Some(CloudStatus::Off);
+            effects.view_bobbing = Some(false);
+        }
+    }
+    effects.toasts_held = !state_cfg.show_toasts;
+    effects.sounds_paused = volumes[SoundSource::Master.index()] <= 0.0;
+    effects.debug_text = format_debug_line(state, config);
+    effects
+}
+
 /// Format the F3 debug line matching Dynamic FPS's `DebugEntryFpsMixin` phrasing.
 pub fn format_debug_line(state: PowerState, config: &DynamicFpsConfig) -> Option<String> {
     if state == PowerState::Focused {
@@ -490,6 +545,55 @@ mod tests {
         assert!((table.effective_factor(SoundSource::Master) - 0.5).abs() < 1e-6);
         assert!((table.effective_factor(SoundSource::Music) - 0.2).abs() < 1e-6);
         assert!((table.effective_factor(SoundSource::Blocks) - 0.5).abs() < 1e-6);
+    }
+
+    #[test]
+    fn focused_state_overrides_nothing() {
+        let cfg = DynamicFpsConfig::default();
+        assert_eq!(
+            desired_effects(PowerState::Focused, &cfg, [1.0; 11]),
+            HostEffects::neutral()
+        );
+    }
+
+    #[test]
+    fn unfocused_state_holds_toasts_and_sets_vsync_and_text() {
+        let mut cfg = DynamicFpsConfig::default();
+        cfg.unfocused.show_toasts = false;
+        cfg.unfocused.enable_vsync = true;
+        cfg.unfocused.graphics_state = GraphicsState::Default;
+        let fx = desired_effects(PowerState::Unfocused, &cfg, [1.0; 11]);
+        assert!(fx.toasts_held);
+        assert_eq!(fx.vsync, Some(true));
+        assert_eq!(fx.clouds, None);
+        assert_eq!(fx.view_bobbing, None);
+        assert!(!fx.sounds_paused);
+        assert!(fx.debug_text.is_some());
+    }
+
+    #[test]
+    fn graphics_presets_map_to_clouds_and_bobbing() {
+        let mut cfg = DynamicFpsConfig::default();
+        cfg.invisible.graphics_state = GraphicsState::Reduced;
+        let fx = desired_effects(PowerState::Invisible, &cfg, [1.0; 11]);
+        assert_eq!(fx.clouds, Some(CloudStatus::Fast));
+        assert_eq!(fx.view_bobbing, None);
+        cfg.invisible.graphics_state = GraphicsState::Minimal;
+        let fx = desired_effects(PowerState::Invisible, &cfg, [1.0; 11]);
+        assert_eq!(fx.clouds, Some(CloudStatus::Off));
+        assert_eq!(fx.view_bobbing, Some(false));
+    }
+
+    #[test]
+    fn sounds_pause_once_master_is_silent() {
+        let cfg = DynamicFpsConfig::default();
+        let mut volumes = [1.0; 11];
+        volumes[SoundSource::Master.index()] = 0.2;
+        let fx = desired_effects(PowerState::Unfocused, &cfg, volumes);
+        assert!(!fx.sounds_paused);
+        assert!((fx.sound_scales[SoundSource::Master.index()] - 0.2).abs() < 1e-6);
+        volumes[SoundSource::Master.index()] = 0.0;
+        assert!(desired_effects(PowerState::Unfocused, &cfg, volumes).sounds_paused);
     }
 
     #[test]

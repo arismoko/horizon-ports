@@ -161,7 +161,7 @@ impl IdleCondition {
     }
 }
 
-/// Graphics preset stored per power state (runtime application awaits sunrise#5553).
+/// Graphics preset stored per power state (applied as session-only cloud and view bobbing overrides).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum GraphicsState {
     Default,
@@ -299,11 +299,11 @@ impl BatteryIndicatorPlacement {
 pub struct StateConfig {
     /// Target frame rate in FPS (`0..=260`; `260` means unlimited).
     pub frame_rate_target: i32,
-    /// Per-state VSync preference (stored for config parity; awaits sunrise#5553).
+    /// Per-state VSync preference (applied as a session-only override).
     pub enable_vsync: bool,
     /// Volume multipliers indexed by `SoundSource::index()` (`0.0..=1.0`).
     pub volume_multipliers: [f32; 11],
-    /// Per-state graphics preset (stored for config parity; awaits sunrise#5553).
+    /// Per-state graphics preset (applied as a session-only override).
     pub graphics_state: GraphicsState,
     /// Whether to allow toast notifications while in this state.
     pub show_toasts: bool,
