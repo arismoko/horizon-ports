@@ -1,7 +1,7 @@
 # BEBPM for Sunrise: native code in src/, the permeable-block tag in data/, translations in assets/.
 id = "bebpm"
 name = "Better Enchantment Bookshelf Placement"
-version = "1.0.1"
+version = "1.0.2"
 description = "Enchanting tables count bookshelves further away, with an optional line of sight."
 authors = ["CozyStudios", "arismoko"]
 license = "CC0-1.0"
