@@ -11,10 +11,7 @@ Pick Up Notifier adds a clean, customizable HUD feed showing everything you have
 
 Client-side only: works in single player and on any multiplayer server.
 
-Differences from the original:
-
-- Item icons cannot be drawn with partial alpha transparency yet; text, backgrounds, count overlays, and experience orbs fade smoothly while item icons stay opaque until the entry fades out. The pop-in squash/stretch matches the vanilla hotbar (gap: sunrise-org/sunrise#5594).
-- On multiplayer servers without Pick Up Notifier installed (or in `client_only` mode), client-side tracking uses inventory and experience diffing rather than decoded `take_item_entity` packet fields, so individual orb counts (`experience_value = false`), Mending-absorbed XP, and creative pick-ups are not detected there (gap: sunrise-org/sunrise#5595).
+Differences from the original: none known.
 
 A port of Pick Up Notifier by Fuzs, under the MPL-2.0 licence.
 """
