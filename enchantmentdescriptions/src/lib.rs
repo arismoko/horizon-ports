@@ -15,8 +15,8 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 
 use logic::{
-    DEFAULT_TOML, FileConfig, description_key, full_name, is_enchanting_menu, looks_like_json,
-    match_lines, name_key, parse_config,
+    DEFAULT_TOML, FileConfig, category_of, description_key, fill_template, full_name,
+    is_enchanting_menu, looks_like_json, match_lines, name_key, parse_config,
 };
 use mod_api::text::{TextContent, TextStyle};
 use mod_api::{
@@ -108,6 +108,30 @@ fn plain(text: &Text) -> String {
     out
 }
 
+/// A description component as the player reads it: a translation filled with its arguments,
+/// or the literal.
+fn rendered(host: &dyn Host, text: &Text) -> String {
+    match &text.content {
+        TextContent::Translatable {
+            key,
+            fallback,
+            arguments,
+        } => {
+            let template = host
+                .translate(key)
+                .or_else(|| fallback.clone())
+                .unwrap_or_else(|| key.clone());
+            let arguments: Vec<String> = arguments.iter().map(plain).collect();
+            let mut out = fill_template(&template, &arguments);
+            for child in &text.children {
+                out.push_str(&plain(child));
+            }
+            out
+        }
+        _ => plain(text),
+    }
+}
+
 /// A config text: a JSON component when it looks like one, otherwise plain text.
 fn component(host: &dyn ClientHost, text: &str) -> Option<Text> {
     if text.is_empty() {
@@ -167,6 +191,9 @@ impl Hooks for EnchantmentDescriptions {
             let spec =
                 SettingSpec::toggle(key, &label, default).tooltip(format!("{label}.tooltip"));
             if let Ok(setting) = r.register_setting(spec) {
+                if let Some(category) = category_of(key) {
+                    let _ = r.categorize_setting(setting, category);
+                }
                 KEYS.lock()
                     .unwrap_or_else(PoisonError::into_inner)
                     .push((key, setting));
@@ -176,6 +203,9 @@ impl Hooks for EnchantmentDescriptions {
             SettingSpec::color(COLOR, "enchdesc.config.color", DARK_GRAY)
                 .tooltip("enchdesc.config.color.tooltip"),
         ) {
+            if let Some(category) = category_of(COLOR) {
+                let _ = r.categorize_setting(setting, category);
+            }
             KEYS.lock()
                 .unwrap_or_else(PoisonError::into_inner)
                 .push((COLOR, setting));
@@ -234,19 +264,38 @@ impl Hooks for EnchantmentDescriptions {
             .map(|line| line.ok().map(|(text, _)| plain(&text)))
             .collect();
         let infos = host.enchantments();
-        let wanted_keys: Vec<String> = found
+        // Each enchantment's own description component (`Enchantment.description`) names its
+        // line and its description keys; the registry-id key is the fallback and also tried.
+        let wanted_keys: Vec<Vec<String>> = found
             .iter()
-            .map(|(id, _)| name_key(id).unwrap_or_default())
+            .map(|(id, _)| {
+                let info = infos.iter().find(|info| info.id == *id);
+                let mut bases = Vec::new();
+                if let Some(info) = info
+                    && let TextContent::Translatable { key, .. } = &info.description.content
+                {
+                    bases.push(key.clone());
+                }
+                if let Some(key) = name_key(id)
+                    && !bases.contains(&key)
+                {
+                    bases.push(key);
+                }
+                bases
+            })
             .collect();
         let wanted: Vec<String> = found
             .iter()
-            .zip(&wanted_keys)
-            .map(|((id, level), key)| {
-                let max_level = infos
-                    .iter()
-                    .find(|info| info.id == *id)
-                    .map_or(0, |info| info.max_level);
-                let name = host.translate(key).unwrap_or_else(|| key.clone());
+            .map(|(id, level)| {
+                let info = infos.iter().find(|info| info.id == *id);
+                let max_level = info.map_or(0, |info| info.max_level);
+                let name = match info.map(|info| &info.description) {
+                    Some(text) => rendered(host, text),
+                    None => {
+                        let key = name_key(id).unwrap_or_default();
+                        host.translate(&key).unwrap_or(key)
+                    }
+                };
                 full_name(name, *level, max_level, |level| {
                     let key = format!("enchantment.level.{level}");
                     host.translate(&key).unwrap_or(key)
@@ -256,9 +305,9 @@ impl Hooks for EnchantmentDescriptions {
         let mut insertions: Vec<(usize, Text)> = Vec::new();
         for (w, line) in match_lines(&line_texts, &wanted) {
             let (_, level) = &found[w];
-            let Some(key) =
-                description_key(&wanted_keys[w], *level, |key| host.translate(key).is_some())
-            else {
+            let Some(key) = wanted_keys[w].iter().find_map(|base| {
+                description_key(base, *level, |key| host.translate(key).is_some())
+            }) else {
                 continue;
             };
             let mut text = Text::literal("");
