@@ -6,5 +6,5 @@ A port of [Universal Bone Meal](https://github.com/Fuzss/universal-bone-meal) 26
 
 ## Differences from the original
 
-- Data packs can't change the growth rules: the original's `universalbonemeal:bonemealables` data map and its behaviour and predicate registries are the port's code (sunrise-org/sunrise#5368).
-- Copied plants and grown mushrooms follow vanilla's survival rules for their kind; another mod's plant with a rule of its own is judged by the vanilla one (sunrise-org/sunrise#3596).
+- Only the spread rules (lily pad, dead bush, small flowers) are data, in the `universalbonemeal:spread_rule` registry (`data/<namespace>/universalbonemeal/spread_rule/<name>.json`): `blocks` (a block, list or `#tag`), `width`, `most` and an optional `placeable` block predicate. The rest of the original's `bonemealables` data map and its behaviour registries stay code, and the registry is not sent to clients, so a client doesn't predict the spread.
+- A copied plant or mushroom survives where the game's `canSurvive` for it says, so another mod's plant with its own rule is judged by it.

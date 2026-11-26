@@ -18,8 +18,7 @@ Each use takes one bone meal, as vanilla's does, and shows vanilla's green growt
 
 Differences from the original:
 
-- Data packs can't change the growth rules. The original keeps them in a data map and two data registries; the port has the default rules in code ([sunrise-org/sunrise#5368](https://github.com/sunrise-org/sunrise/issues/5368)).
-- Copied flowers, lily pads and dead bushes, and grown mushrooms, follow vanilla's rules for where they survive. A plant from another mod with a rule of its own is judged by the vanilla rule of its kind ([sunrise-org/sunrise#3596](https://github.com/sunrise-org/sunrise/issues/3596)).
+- Only the spread rules for lily pads, dead bushes and small flowers are data (`universalbonemeal:spread_rule`); the other growth rules are in code, and clients don't predict the spread.
 
 A port of Universal Bone Meal by Fuzs, under the MPL-2.0 licence.
 """
