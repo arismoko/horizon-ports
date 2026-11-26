@@ -1,6 +1,6 @@
 [package]
 name = "mod-mythicupgrades"
-version = "0.3.3"
+version = "0.3.4"
 edition = "2024"
 license = "MIT"
 description = "Mythic Upgrades for Sunrise: eight gems and necoium, their ores, crystal geodes and gear whose armour sets and tools each have their own effect"
