@@ -1,6 +1,6 @@
 [package]
 name = "mod-badwithernocookie"
-version = "0.5.2"
+version = "0.5.3"
 edition = "2024"
 license = "MIT"
 description = "Bad Wither No Cookie - Reloaded for Sunrise: silences loud global and mob sounds with configurable toggles, Silence books, and operator commands"
