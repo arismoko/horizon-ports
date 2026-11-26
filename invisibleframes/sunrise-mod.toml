@@ -1,7 +1,7 @@
 # Invisible Frames for Sunrise: native code in src/.
 id = "invisibleframes"
 name = "Invisible Frames"
-version = "0.5.3"
+version = "0.5.4"
 description = "Sneak and use an item frame to make it invisible, leaving only its item in view."
 authors = ["Roundaround", "arismoko"]
 license = "MIT"
