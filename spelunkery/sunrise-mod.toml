@@ -1,7 +1,7 @@
 # Spelunkery for Sunrise: native code in src/, content in data/ and assets/.
 id = "spelunkery"
 name = "Spelunkery"
-version = "0.1.2"
+version = "0.1.3"
 description = "Ores in granite, andesite, diorite and tuff, rough gems and raw nuggets, cave mushrooms, rock salt, glowsticks, rope ladders and mining tools."
 authors = ["Ordana", "Keybounce", "arismoko"]
 license = "LGPL-3.0-only"
