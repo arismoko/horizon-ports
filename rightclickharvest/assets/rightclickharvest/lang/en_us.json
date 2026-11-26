@@ -1,5 +1,8 @@
 {
   "config.rightclickharvest.title": "Right Click Harvest Config",
+  "config.rightclickharvest.category.requirements": "Requirements",
+  "config.rightclickharvest.category.harvesting": "Harvesting",
+  "config.rightclickharvest.category.costs": "Costs",
   "config.rightclickharvest.requireHoe": "Require Hoe",
   "config.rightclickharvest.requireHoe.tooltip": "Only allow harvesting certain crops (e.g. wheat, carrots) if the player is holding a hoe in their hand.",
   "config.rightclickharvest.harvestInRadius": "Harvest in Radius",

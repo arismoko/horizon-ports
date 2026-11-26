@@ -17,8 +17,8 @@ What it does:
 Differences from the original:
 
 - A hoe is an item in `#minecraft:hoes` or one of the three tier tags; the original's extra test for a block-transformer component that tills is not read, as the mod API does not expose that component's contents ([sunrise-org/sunrise#5099](https://github.com/sunrise-org/sunrise/issues/5099)).
-- Other mods' claim protection (the original asks the loader's break and place events, [sunrise-org/sunrise#5288](https://github.com/sunrise-org/sunrise/issues/5288)) and the original's `AfterHarvest` event for other mods ([sunrise-org/sunrise#5137](https://github.com/sunrise-org/sunrise/issues/5137)) are not available.
-- There is no in-game config screen; the options are in `config/rightclickharvest-common.toml` ([sunrise-org/sunrise#1174](https://github.com/sunrise-org/sunrise/issues/1174)).
+- Other mods can veto a harvest by cancelling the typed `rightclickharvest:before_harvest` event, and hear `rightclickharvest:after_harvest` when it is done; the loader's break and place events themselves are not available.
+- The settings are in Options > Mods in three sections and in `config/rightclickharvest-common.toml`; there is no config screen with links.
 """
 categories = ["utility"]
 

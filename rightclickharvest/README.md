@@ -17,8 +17,18 @@ A port of [Right Click Harvest](https://github.com/JamCoreModding/right-click-ha
 ## Differences from the original
 
 - A hoe is an item in `#minecraft:hoes` or one of the three tier tags; the original's extra test for a block-transformer component that tills is not read, as the mod API does not expose that component's contents ([sunrise-org/sunrise#5099](https://github.com/sunrise-org/sunrise/issues/5099)).
-- Other mods' claim protection (the original asks the loader's break and place events, [sunrise-org/sunrise#5288](https://github.com/sunrise-org/sunrise/issues/5288)) and the original's `AfterHarvest` event for other mods ([sunrise-org/sunrise#5137](https://github.com/sunrise-org/sunrise/issues/5137)) are not available.
-- There is no in-game config screen; the options are in `config/rightclickharvest-common.toml` ([sunrise-org/sunrise#1174](https://github.com/sunrise-org/sunrise/issues/1174)).
+- Other mods' claim protection cannot be asked through the loader's break and place events: the mod API has no host-level break or place veto to call ([sunrise-org/sunrise#5288](https://github.com/sunrise-org/sunrise/issues/5288)). Instead the mod posts a typed `rightclickharvest:before_harvest` event that a claim mod cancels (see below); spawn protection and build permission are still checked.
+- The original's `AfterHarvest` event is the typed `rightclickharvest:after_harvest` event ([sunrise-org/sunrise#5137](https://github.com/sunrise-org/sunrise/issues/5137)).
+- The settings are also under Options > Mods, in three sections (Requirements, Harvesting, Costs); a change there is written to the config file ([sunrise-org/sunrise#1174](https://github.com/sunrise-org/sunrise/issues/1174)). There is no config screen with links as in the original. Only the English text of the section names is shipped.
+
+## Events for other mods
+
+A mod that depends on this crate listens with `#[subscribe]` on the server:
+
+- `BeforeHarvestEvent` (`rightclickharvest:before_harvest`, cancellable): the player, dimension, block position, block id and whether it is replanted. Cancelling leaves the block as it is.
+- `AfterHarvestEvent` (`rightclickharvest:after_harvest`): the same, once the harvest is done.
+
+The replant item of a crop comes from the block's pick-block stack (`PlayerRef::clone_item_stack`, [sunrise-org/sunrise#5289](https://github.com/sunrise-org/sunrise/issues/5289)), so modded crops keep back their own seed.
 
 ## Building
 

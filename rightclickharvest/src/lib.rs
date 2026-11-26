@@ -6,7 +6,11 @@
 //! | Moment | Where | What it does |
 //! |---|---|---|
 //! | `right_click_block` | [`harvest`] | harvests on the server, and on the client claims the click |
-//! | `register` | this module | the config file's listener and the block tag keys |
+//! | `register` | this module | the config file's listener, the Options > Mods settings (in sections) and the block tag keys |
+//! | `setting_changed` | this module | a setting changed in the game goes to the live config and the file |
+//!
+//! Other mods hear two typed events on the server: [`BeforeHarvestEvent`] (cancel it to veto a
+//! harvest, as a claim mod does) and [`AfterHarvestEvent`] (the original's `AfterHarvest`).
 
 pub mod rules;
 
@@ -15,9 +19,10 @@ use std::sync::{Arc, Mutex, OnceLock};
 
 use mod_api::text::TextStyle;
 use mod_api::{
-    BlockClick, ClientHost, ConfigEvent, ConfigKind, ConfigSnapshot, ConfigSpec, EquipmentSlot,
-    Flow, Hand, Hooks, HostBlockStates, HostSide, InteractionResult, ItemStack, LevelRef,
-    LivingRef, PlayerRef, Registrar, RegistrationContext, RightClickBlockEvent, ServerHost,
+    BlockClick, ClientHost, ClientTickPostEvent, ConfigEvent, ConfigKind, ConfigSnapshot,
+    ConfigSpec, EquipmentSlot, Flow, Hand, Hooks, HostBlockStates, HostSide, InteractionResult,
+    ItemStack, LevelRef, LivingRef, PlayerRef, Registrar, RegistrationContext,
+    RightClickBlockEvent, ServerHost, SettingChangedEvent, SettingKey, SettingSpec, SettingValue,
     SoundPlay, StatType, TagKey, Text,
 };
 use rules::{Config, Gate, Kind, Player, Tiers};
@@ -32,6 +37,153 @@ static SETTINGS: Mutex<Config> = Mutex::new(Config {
 
 /// Whether the hoe warning was shown in this session, in case the config file could not be written.
 static WARNED: AtomicBool = AtomicBool::new(false);
+
+/// Posted on the server before a crop or column is harvested, once per block (the clicked one
+/// and each one a hoe's radius reaches). Other mods hear it with `#[subscribe]` (their crate
+/// depends on this mod): a claim or protection mod cancels it to veto the harvest, which then
+/// leaves the block as it is. Stands in for the original's loader break and place events.
+#[derive(mod_api::Event)]
+#[event(id = "rightclickharvest:before_harvest", side = server, cancellable)]
+#[non_exhaustive]
+pub struct BeforeHarvestEvent {
+    /// The player who clicked.
+    pub player: PlayerRef,
+    /// The dimension the block is in, such as `minecraft:overworld`.
+    pub dimension: String,
+    /// The block that would be broken (the second block of a cane or cactus column).
+    pub pos: [i32; 3],
+    /// The block's id, such as `minecraft:wheat`.
+    pub block: String,
+    /// Whether the block would be replanted at its first age (false for a column).
+    pub replant: bool,
+    /// Set by a listener (or by returning `Flow::Cancel`) to stop the harvest.
+    pub cancelled: bool,
+}
+
+impl BeforeHarvestEvent {
+    pub fn new(
+        player: PlayerRef,
+        dimension: String,
+        pos: [i32; 3],
+        block: String,
+        replant: bool,
+    ) -> Self {
+        Self {
+            player,
+            dimension,
+            pos,
+            block,
+            replant,
+            cancelled: false,
+        }
+    }
+}
+
+/// Posted on the server after a harvest is done (the original's `AfterHarvest`).
+#[derive(mod_api::Event)]
+#[event(id = "rightclickharvest:after_harvest", side = server)]
+#[non_exhaustive]
+pub struct AfterHarvestEvent {
+    /// The player who harvested.
+    pub player: PlayerRef,
+    /// The dimension the block is in.
+    pub dimension: String,
+    /// The block that was broken.
+    pub pos: [i32; 3],
+    /// The block's id.
+    pub block: String,
+    /// Whether the block was replanted at its first age.
+    pub replanted: bool,
+}
+
+impl AfterHarvestEvent {
+    pub fn new(
+        player: PlayerRef,
+        dimension: String,
+        pos: [i32; 3],
+        block: String,
+        replanted: bool,
+    ) -> Self {
+        Self {
+            player,
+            dimension,
+            pos,
+            block,
+            replanted,
+        }
+    }
+}
+
+const MOD_ID: &str = "rightclickharvest";
+
+/// The handles of the registered settings by name, kept at registration.
+static SETTING_KEYS: OnceLock<Vec<(&'static str, SettingKey)>> = OnceLock::new();
+
+/// Whether the settings screen was given the file's values since the game started.
+static SYNCED: AtomicBool = AtomicBool::new(false);
+
+/// Registers the four settings on Options > Mods and puts each under its section.
+fn register_settings(r: &mut dyn Registrar) {
+    let label = |name: &str| format!("config.{MOD_ID}.{name}");
+    let tooltip = |name: &str| format!("config.{MOD_ID}.{name}.tooltip");
+    let defaults = Config::default();
+    let mut keys = Vec::new();
+    for name in rules::SETTING_NAMES {
+        let spec = match name {
+            "hungerLevel" | "experienceType" => {
+                let options: &[&str] = if name == "hungerLevel" {
+                    &["none", "low", "normal", "high"]
+                } else {
+                    &["none", "cost", "reward"]
+                };
+                SettingSpec::choice(
+                    name,
+                    label(name),
+                    options
+                        .iter()
+                        .map(|option| format!("config.{MOD_ID}.{name}.{option}")),
+                    defaults.choice_index(name).unwrap_or(0),
+                )
+            }
+            _ => SettingSpec::toggle(
+                name,
+                label(name),
+                if name == "requireHoe" {
+                    defaults.require_hoe
+                } else {
+                    defaults.harvest_in_radius
+                },
+            ),
+        }
+        .tooltip(tooltip(name));
+        match r.register_setting(spec) {
+            Ok(key) => {
+                if let Err(error) = r.categorize_setting(key, rules::category(name)) {
+                    eprintln!("rightclickharvest: setting {name} not categorized: {error}");
+                }
+                keys.push((name, key));
+            }
+            Err(error) => eprintln!("rightclickharvest: setting {name} not registered: {error}"),
+        }
+    }
+    let _ = SETTING_KEYS.set(keys);
+}
+
+/// Shows the config's values on the settings screen. A changed value notifies
+/// `setting_changed`, which finds the live config already equal and writes nothing.
+fn mirror_settings(host: &mut dyn ClientHost, config: Config) {
+    let Some(keys) = SETTING_KEYS.get() else {
+        return;
+    };
+    for (name, key) in keys {
+        let value = match *name {
+            "requireHoe" => SettingValue::Toggle(config.require_hoe),
+            "harvestInRadius" => SettingValue::Toggle(config.harvest_in_radius),
+            _ => SettingValue::Choice(config.choice_index(name).unwrap_or(0)),
+        };
+        let _ = host.set_setting(*key, value);
+    }
+}
 
 /// The config file `register` declares (`ConfigKind::Common`).
 const CONFIG_FILE: &str = "rightclickharvest-common.toml";
@@ -163,6 +315,7 @@ fn player_state(host: &dyn mod_api::Host, player: PlayerRef, hand: Hand) -> Opti
 /// What the harvest of one cell needs from the click that started it.
 struct Click<'a> {
     level: LevelRef,
+    dimension: &'a str,
     player: PlayerRef,
     hand: Hand,
     stack: Option<&'a ItemStack>,
@@ -241,7 +394,29 @@ fn harvest_at(host: &mut dyn ServerHost, click: &Click<'_>, pos: [i32; 3], initi
     if !may {
         return false;
     }
-    complete(host, click, &cell, break_pos, hoe_in_use, replant)
+    let dimension = click.dimension.to_owned();
+    let mut before = BeforeHarvestEvent::new(
+        click.player,
+        dimension.clone(),
+        break_pos,
+        cell.id.clone(),
+        replant,
+    );
+    host.post(&mut before);
+    if before.cancelled {
+        return false;
+    }
+    let done = complete(host, click, &cell, break_pos, hoe_in_use, replant);
+    if done {
+        host.post(&mut AfterHarvestEvent::new(
+            click.player,
+            dimension,
+            break_pos,
+            cell.id.clone(),
+            replant,
+        ));
+    }
+    done
 }
 
 /// `completeHarvest` on the server: stats, the drops without one seed, the replant or removal,
@@ -446,6 +621,7 @@ impl Hooks for Mod {
                 };
                 let context = Click {
                     level,
+                    dimension: click.dimension.key().id(),
                     player,
                     hand: click.hand,
                     stack: click.stack,
@@ -491,7 +667,34 @@ impl Hooks for Mod {
         }
     }
 
+    fn setting_changed(&self, host: &dyn mod_api::Host, event: &mut SettingChangedEvent<'_>) {
+        if event.mod_id != MOD_ID {
+            return;
+        }
+        let changed = {
+            let mut config = SETTINGS.lock().unwrap_or_else(|e| e.into_inner());
+            match event.value {
+                SettingValue::Toggle(on) => config.set_toggle(event.key, on),
+                SettingValue::Choice(index) => config.set_choice(event.key, index),
+                _ => false,
+            }
+        };
+        if changed {
+            let path = host.config_dir().join(CONFIG_FILE);
+            let text =
+                std::fs::read_to_string(&path).unwrap_or_else(|_| rules::DEFAULT_CONFIG.to_owned());
+            let _ = std::fs::write(&path, settings().written_into(&text));
+        }
+    }
+
+    fn client_tick_post(&self, host: &mut dyn ClientHost, _event: &mut ClientTickPostEvent) {
+        if !SYNCED.swap(true, Ordering::Relaxed) {
+            mirror_settings(host, settings());
+        }
+    }
+
     fn register(&self, r: &mut dyn Registrar, _cx: &RegistrationContext) {
+        register_settings(r);
         let _ = BLOCK_TAGS.set(BlockTags {
             blacklist: r.tag_key("rightclickharvest:blacklist"),
             hoe_never_required: r.tag_key("rightclickharvest:hoe_never_required"),
@@ -499,8 +702,20 @@ impl Hooks for Mod {
             crops: r.tag_key("minecraft:crops"),
         });
         let listener = |event: ConfigEvent<'_>, snapshot: &ConfigSnapshot| -> Result<(), String> {
-            if matches!(event, ConfigEvent::Loading(_) | ConfigEvent::Reloading(_)) {
-                *SETTINGS.lock().unwrap_or_else(|e| e.into_inner()) = Config::parse(&snapshot.text);
+            match event {
+                ConfigEvent::Loading(_) => {
+                    *SETTINGS.lock().unwrap_or_else(|e| e.into_inner()) =
+                        Config::parse(&snapshot.text);
+                }
+                ConfigEvent::Reloading(host) => {
+                    let parsed = Config::parse(&snapshot.text);
+                    *SETTINGS.lock().unwrap_or_else(|e| e.into_inner()) = parsed;
+                    // Written with the lock released: a changed value notifies `setting_changed`.
+                    if let HostSide::Client(client) = host {
+                        mirror_settings(client, parsed);
+                    }
+                }
+                _ => {}
             }
             Ok(())
         };
