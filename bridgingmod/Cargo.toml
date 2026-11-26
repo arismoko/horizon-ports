@@ -1,6 +1,6 @@
 [package]
 name = "mod-bridgingmod"
-version = "0.5.3"
+version = "0.5.4"
 edition = "2024"
 license = "MIT"
 description = "Bridging Mod for Sunrise: Bedrock-style reach-around block placement with crosshair indicator and block outline"

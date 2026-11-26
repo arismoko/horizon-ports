@@ -1,7 +1,7 @@
 # InvMove for Sunrise: client-only native code in src/ using the typed mod API.
 id = "invmove"
 name = "InvMove"
-version = "0.5.3"
+version = "0.5.4"
 description = "Walk, jump, sneak and sprint while an inventory or other screen is open."
 authors = ["PieKing1215", "arismoko"]
 license = "LGPL-3.0-only"
@@ -11,4 +11,4 @@ side = "client"
 
 [native]
 game = "26.3"
-sunrise = "6a02076f89cd189d74d63492dda5b023fa85a38f"
+sunrise = "ba1f24e4ad41246b558230aa665539dc768b1287"

@@ -1,7 +1,7 @@
 # Falling Leaves for Sunrise: native code in src/ using the typed mod API.
 id = "fallingleaves"
 name = "Falling Leaves"
-version = "0.5.3"
+version = "0.5.4"
 description = "Adds wind-driven falling leaf and snowflake particles from leaf blocks."
 authors = ["Fourmisain", "BrekiTomasson", "RandomMcSomethin", "arismoko"]
 license = "MIT"
@@ -13,4 +13,4 @@ side = "both"
 
 [native]
 game = "26.3"
-sunrise = "6a02076f89cd189d74d63492dda5b023fa85a38f"
+sunrise = "ba1f24e4ad41246b558230aa665539dc768b1287"

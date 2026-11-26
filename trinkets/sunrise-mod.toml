@@ -1,7 +1,7 @@
 # Trinkets for Sunrise: native code in src/, the slot placeholder items in data/, pictures and text in assets/.
 id = "trinkets"
 name = "Trinkets"
-version = "0.5.1"
+version = "0.5.2"
 description = "Extra equipment slots for trinkets, worn from a menu on G."
 authors = ["Emi", "C4", "lavoide", "arismoko"]
 license = "MIT"
@@ -11,4 +11,4 @@ side = "both"
 
 [native]
 game = "26.3"
-sunrise = "6a02076f89cd189d74d63492dda5b023fa85a38f"
+sunrise = "ba1f24e4ad41246b558230aa665539dc768b1287"

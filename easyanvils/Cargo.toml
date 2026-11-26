@@ -1,6 +1,6 @@
 [package]
 name = "mod-easyanvils"
-version = "0.5.3"
+version = "0.5.4"
 edition = "2024"
 license = "MPL-2.0"
 description = "Easy Anvils for Sunrise: persistent anvils, configurable prior work penalty and repair costs, iron block anvil repair, and formatted renaming"

@@ -1,6 +1,6 @@
 [package]
 name = "mod-accelerateddecay"
-version = "0.5.3"
+version = "0.5.4"
 edition = "2024"
 license = "GPL-3.0-only"
 description = "Accelerated Decay for Sunrise: unsupported leaves decay quickly"
