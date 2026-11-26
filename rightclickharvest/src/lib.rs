@@ -1,3 +1,4 @@
+#![deny(unsafe_code)]
 //! Right Click Harvest for Sunrise: right-click a grown crop to harvest and replant it
 //! (`RightClickHarvest.onBlockUse` in the original), with a hoe's tier choosing how many
 //! neighbours go with it.
