@@ -1,7 +1,7 @@
 # Tokimi's Toolshed for Sunrise: native code in src/, items in data/, models and textures in assets/.
 id = "tokimistoolshed"
 name = "Tokimi's Toolshed"
-version = "0.1.2"
+version = "0.1.3"
 description = "Hammers, excavators, scythes, clippers, lumber axes, copper buckets, trowel, chisels and abacus"
 authors = ["Tokimi", "CozyStudios", "arismoko"]
 license = "CC0-1.0"
