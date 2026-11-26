@@ -22,3 +22,7 @@ Differences from the original:
 A port of Bad Wither No Cookie - Reloaded by Kreezxil and Eleksploded, under the MIT licence.
 """
 categories = ["utility"]
+
+[[screenshots]]
+path = "page/world.png"
+caption = "Bad Wither No Cookie Reloaded /bwncr show settings readout in Sunrise Dev 2"

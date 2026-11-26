@@ -15,3 +15,7 @@ More Chat History raises how much chat the game remembers. Vanilla keeps only th
 A port of More Chat History by JackFred, under the CC0-1.0 licence.
 """
 categories = ["utility", "social"]
+
+[[screenshots]]
+path = "page/world.png"
+caption = "More Chat History keeping extended chat history up to 16,384 messages in Sunrise Dev 2"
