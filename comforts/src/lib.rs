@@ -498,7 +498,7 @@ fn check_tired_restriction(host: &mut dyn ServerHost, player: PlayerRef, level: 
 
 /// Mark both halves occupied and place the player onto a Comforts bed with `sleep_timer = 0`.
 ///
-/// `LivingRef::start_sleeping` checks `name.ends_with("_bed")` on bdad86d
+/// `LivingRef::start_sleeping` checks `name.ends_with("_bed")` on Dev 2
 /// (gap: sunrise-org/sunrise#5557), so we position the player on the bed surface and set
 /// their sleeping position directly; `can_continue_sleeping` then sustains sleep.
 fn place_player_in_comforts_bed(
@@ -720,7 +720,7 @@ fn handle_comforts_wake_up(host: &mut dyn ServerHost, player: PlayerRef, bed_pos
     }
 
     // Free occupied flag and stand player up beside the bed (since engine `bed_wake_pose`
-    // only recognizes `_bed` ids on bdad86d). Guard on `block_kind.is_some()` so a bed
+    // only recognizes `_bed` ids on Dev 2). Guard on `block_kind.is_some()` so a bed
     // already broken by someone else while sleeping never duplicates an auto-used bag.
     if let Some(state) = state_at_bed
         && block_kind.is_some()

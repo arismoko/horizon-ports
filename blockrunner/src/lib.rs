@@ -350,7 +350,7 @@ impl Hooks for Mod {
             r.block_part(key, NeutralFactor(block));
         }
         let mut payloads = r.payload_handlers();
-        let mut channel_registrar = payloads.registrar("1");
+        let mut channel_registrar = payloads.registrar("1").optional();
         channel_registrar.play_to_client(channel(), Some(Arc::new(SpeedsHandler)));
     }
 

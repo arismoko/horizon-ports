@@ -37,7 +37,7 @@ impl Hooks for PingWheel {
         client::register_key_mappings(r);
 
         let mut payloads = r.payload_handlers();
-        let mut net = payloads.registrar("1");
+        let mut net = payloads.registrar("1").optional();
         let ping_location_c2s = net.play_to_server_typed::<PingLocationC2S>(
             id_ping_location_c2s(),
             server::handle_ping_location,

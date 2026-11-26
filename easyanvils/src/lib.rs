@@ -80,7 +80,7 @@ impl Hooks for EasyAnvils {
         let _ = r.register_menu_screen(MENU_ID, Arc::new(client::build_anvil_screen));
 
         let mut payloads = r.payload_handlers();
-        let mut net = payloads.registrar("1");
+        let mut net = payloads.registrar("1").optional();
         let server_config_ch =
             net.play_to_client_typed::<ServerConfig>(id_server_config(), |cfg, _| {
                 set_synced_server_config(cfg);
