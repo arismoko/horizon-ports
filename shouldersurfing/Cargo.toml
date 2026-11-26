@@ -1,6 +1,6 @@
 [package]
 name = "mod-shouldersurfing"
-version = "0.5.3"
+version = "0.5.4"
 edition = "2024"
 license = "MIT"
 description = "Shoulder Surfing Reloaded for Sunrise: an over-the-shoulder third-person camera with a decoupled view and a crosshair that follows what you act on"
