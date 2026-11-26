@@ -1,6 +1,6 @@
 [package]
 name = "mod-morechathistory"
-version = "0.5.1"
+version = "0.5.2"
 edition = "2024"
 license = "CC0-1.0"
 description = "More Chat History for Sunrise: keeps up to 16,384 chat messages, wrapped lines and sent lines"
