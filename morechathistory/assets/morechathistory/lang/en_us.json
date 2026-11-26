@@ -1,0 +1,4 @@
+{
+  "morechathistory.config.limit": "Chat history limit",
+  "morechathistory.config.limit_tooltip": "How many messages, wrapped lines and sent lines the chat remembers. Vanilla keeps 100."
+}

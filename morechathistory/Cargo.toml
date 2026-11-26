@@ -1,0 +1,13 @@
+[package]
+name = "mod-morechathistory"
+version = "0.5.0"
+edition = "2024"
+license = "CC0-1.0"
+description = "More Chat History for Sunrise: keeps up to 16,384 chat messages, wrapped lines and sent lines"
+# Ported from: More Chat History 2.0.0 (JackFredMods/MoreChatHistory, CC0-1.0).
+# Cargo's name and version are not the mod's identity: sunrise-mod.toml is.
+publish = false
+
+[dependencies]
+# The pinned SDK's API crate, fetched into .sunrise/sdk/ by any `cargo sunrise-mod` command.
+sunrise-mod-api = { path = ".sunrise/sdk/api/crates/sunrise-mod-api" }
