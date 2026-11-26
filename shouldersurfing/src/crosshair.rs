@@ -155,6 +155,37 @@ impl Obstruction {
     }
 }
 
+/// What the crosshair attack indicator shows (`Hud.extractCrosshair`).
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum AttackIndicator {
+    #[default]
+    Hidden,
+    /// The full-charge icon, drawn when the target is a living entity in reach.
+    Full,
+    /// The charging bar, `0..=16` pixels of the progress sprite.
+    Progress(i32),
+}
+
+/// `Hud.extractCrosshair`'s indicator rules. `mode` is the attack indicator option (1 is
+/// crosshair); `target_living` is `Some(alive)` when the crosshair is on a living entity.
+pub fn attack_indicator(
+    mode: u8,
+    scale: f32,
+    full_charge_delay: f32,
+    target_living: Option<bool>,
+) -> AttackIndicator {
+    if mode != 1 {
+        return AttackIndicator::Hidden;
+    }
+    if scale >= 1.0 {
+        return match target_living {
+            Some(alive) if full_charge_delay > 5.0 && alive => AttackIndicator::Full,
+            _ => AttackIndicator::Hidden,
+        };
+    }
+    AttackIndicator::Progress(((scale.max(0.0) * 17.0) as i32).min(16))
+}
+
 /// A map drawn at `x, y`, `size` GUI pixels wide.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct MapRect {
@@ -265,6 +296,20 @@ mod tests {
             ..StackFacts::new("minecraft:spear")
         };
         assert!(a.holding(&spear));
+    }
+
+    #[test]
+    fn attack_indicator_follows_vanilla() {
+        use AttackIndicator::*;
+        assert_eq!(attack_indicator(0, 0.5, 20.0, None), Hidden);
+        assert_eq!(attack_indicator(2, 0.5, 20.0, None), Hidden);
+        assert_eq!(attack_indicator(1, 0.5, 20.0, None), Progress(8));
+        assert_eq!(attack_indicator(1, 0.0, 20.0, Some(true)), Progress(0));
+        assert_eq!(attack_indicator(1, 1.0, 20.0, Some(true)), Full);
+        assert_eq!(attack_indicator(1, 1.0, 20.0, Some(false)), Hidden);
+        assert_eq!(attack_indicator(1, 1.0, 5.0, Some(true)), Hidden);
+        assert_eq!(attack_indicator(1, 1.0, 20.0, None), Hidden);
+        assert_eq!(attack_indicator(1, 0.999, 20.0, Some(true)), Progress(16));
     }
 
     #[test]

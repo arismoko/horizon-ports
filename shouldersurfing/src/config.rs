@@ -53,6 +53,18 @@ impl Opt {
         format!("{LABEL_PREFIX}{path}")
     }
 
+    /// The page section of the setting: the translation key of the first segment of the
+    /// original's config path (camera, perspective, player, object_picker, crosshair, gui, audio).
+    pub fn category_key(&self) -> String {
+        let path = if self.lang.is_empty() {
+            self.key
+        } else {
+            self.lang
+        };
+        let section = path.split('.').next().unwrap_or(path);
+        format!("{LABEL_PREFIX}{section}")
+    }
+
     pub fn default_value(&self) -> f64 {
         match self.kind {
             Kind::Bool(b) => f64::from(u8::from(b)),
@@ -146,6 +158,7 @@ options! {
     KeepOutOfHead, "camera.keep_camera_out_of_head_distance_multiplier", "", float(0.0, 5.0, 0.05, 0.75);
     TransitionSpeed, "camera.camera_transition_speed_multiplier", "", float(0.05, 1.0, 0.05, 0.25);
     CenterLookingDown, "camera.center_camera_when_looking_down_angle", "", float(0.0, 90.0, 1.0, 1.0);
+    ViewBobbingMode, "camera.view_bobbing_mode", "", choice("view_bobbing_mode", &["inherit", "on", "off"], 0);
     DistanceAttributeMode, "camera.camera_distance_attribute_mode", "", choice("distance_attribute_mode", &["relative", "absolute", "ignore"], 0);
     DecoupledCamera, "camera.decoupled_camera", "", Kind::Bool(true);
     FovOverrideEnabled, "camera.fov.fov_override_enabled", "", Kind::Bool(false);
@@ -238,7 +251,11 @@ pub fn register_settings(r: &mut dyn Registrar) {
                 def,
             ),
         };
-        keys.push(r.register_setting(spec.tooltip(tooltip)).ok());
+        let registered = r.register_setting(spec.tooltip(tooltip)).ok();
+        if registered.is_some() {
+            let _ = r.categorize_setting(opt.key, &opt.category_key());
+        }
+        keys.push(registered);
     }
     *SETTING_KEYS.write().unwrap_or_else(|e| e.into_inner()) = keys;
 }
@@ -398,6 +415,18 @@ choice_enum!(DistanceAttributeMode {
     Ignore,
 });
 choice_enum!(Origin { Player, Camera });
+choice_enum!(ViewBobbing { Inherit, On, Off });
+
+impl ViewBobbing {
+    /// The session view bobbing to set: None restores the player's own option.
+    pub fn session_value(self, surfing: bool) -> Option<bool> {
+        match (self, surfing) {
+            (Self::On, true) => Some(true),
+            (Self::Off, true) => Some(false),
+            _ => None,
+        }
+    }
+}
 
 impl TurningMode {
     /// `TurningMode.shouldTurn` for a crosshair that is on something.
@@ -781,6 +810,33 @@ mod tests {
         assert_eq!(parsed.hold_items, Lists::default().hold_items);
         assert_eq!(parsed.use_items, vec!["a".to_owned(), "b".to_owned()]);
         assert_eq!(Lists::parse(""), Lists::default());
+    }
+
+    #[test]
+    fn every_setting_has_a_translated_category() {
+        let lang = include_str!("../assets/shouldersurfing/lang/en_us.json");
+        let mut sections = std::collections::BTreeSet::new();
+        for opt in TABLE {
+            let category = opt.category_key();
+            assert!(
+                lang.contains(&format!("\"{category}\":")),
+                "{category} has no label"
+            );
+            sections.insert(category);
+        }
+        assert_eq!(sections.len(), 7);
+    }
+
+    #[test]
+    fn view_bobbing_overrides_only_while_surfing() {
+        assert_eq!(ViewBobbing::Inherit.session_value(true), None);
+        assert_eq!(ViewBobbing::On.session_value(true), Some(true));
+        assert_eq!(ViewBobbing::Off.session_value(true), Some(false));
+        assert_eq!(ViewBobbing::Off.session_value(false), None);
+        assert_eq!(
+            ViewBobbing::from_index(Values::default().c(K::ViewBobbingMode)),
+            ViewBobbing::Inherit
+        );
     }
 
     #[test]
