@@ -14,8 +14,6 @@ Install on both client and server for the full six-tab experience, or client-onl
 
 Differences from the original:
 
-- External edits while the screen is open show up after reopening, and client-only mode starts from default stand pose/flags plus a per-session edit cache (gap: sunrise-org/sunrise#5528).
-- Client-only mode checks `may_build` and lets the server enforce command permissions rather than pre-checking the player's permission level on the client (gap: sunrise-org/sunrise#5529).
 - The Vanilla Tweaks credits button on Poses, Alignments, and Vanilla Tweaks shows its tooltip but does not open an external URL confirmation prompt (gap: sunrise-org/sunrise#5483).
 - The screen shows the armor stand item where the original shows a live, posed stand (gap: sunrise-org/sunrise#5538).
 - Draws with vanilla GUI sprites instead of the original's All Rights Reserved textures.
