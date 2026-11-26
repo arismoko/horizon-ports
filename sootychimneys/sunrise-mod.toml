@@ -1,7 +1,7 @@
 # Sooty Chimneys for Sunrise: native code in src/, blocks' data in data/, models and textures in assets/.
 id = "sootychimneys"
 name = "Sooty Chimneys"
-version = "0.6.3"
+version = "0.6.4"
 description = "Spiritual successor to campfires!"
 authors = ["mortuusars", "arismoko"]
 license = "MIT"
