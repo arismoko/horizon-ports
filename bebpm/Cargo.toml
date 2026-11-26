@@ -1,0 +1,13 @@
+[package]
+name = "mod-bebpm"
+version = "1.0.0"
+edition = "2024"
+license = "CC0-1.0"
+description = "BEBPM for Sunrise: the enchanting table counts bookshelves further away"
+# Ported from: BEBPM 1.0.0 (CozyStudios, CC0-1.0).
+# Cargo's name and version are not the mod's identity: sunrise-mod.toml is.
+publish = false
+
+[dependencies]
+# The pinned SDK's API crate, fetched into .sunrise/sdk/ by any `cargo sunrise-mod` command.
+sunrise-mod-api = { path = ".sunrise/sdk/api/crates/sunrise-mod-api" }

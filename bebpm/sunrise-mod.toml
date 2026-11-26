@@ -1,0 +1,14 @@
+# BEBPM for Sunrise: native code in src/, the permeable-block tag in data/, translations in assets/.
+id = "bebpm"
+name = "Better Enchantment Bookshelf Placement"
+version = "1.0.0"
+description = "Enchanting tables count bookshelves further away, with an optional line of sight."
+authors = ["CozyStudios", "arismoko"]
+license = "CC0-1.0"
+credits = "A port of BEBPM by CozyStudios, written for Sunrise by arismoko."
+homepage = "https://github.com/arismoko/sunrise-ports"
+side = "both"
+
+[native]
+game = "26.3"
+sunrise = "6a02076f89cd189d74d63492dda5b023fa85a38f"

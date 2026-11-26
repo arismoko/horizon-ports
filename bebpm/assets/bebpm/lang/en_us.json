@@ -1,0 +1,16 @@
+{
+  "tag.block.bebpm.power_permeable": "Power Permeable Blocks",
+  "setting.bebpm.radius_x": "Search radius (X)",
+  "setting.bebpm.radius_x.tooltip": "How far east and west of the table bookshelves count. Never below vanilla's 2. Needs a restart.",
+  "setting.bebpm.radius_z": "Search radius (Z)",
+  "setting.bebpm.radius_z.tooltip": "How far north and south of the table bookshelves count. Never below vanilla's 2. Needs a restart.",
+  "setting.bebpm.radius_up": "Search radius (up)",
+  "setting.bebpm.radius_up.tooltip": "How far above the table bookshelves count. Never below vanilla's 1. Needs a restart.",
+  "setting.bebpm.radius_down": "Search radius (down)",
+  "setting.bebpm.radius_down.tooltip": "How far below the table bookshelves count. Needs a restart.",
+  "setting.bebpm.line_of_sight": "Line of sight",
+  "setting.bebpm.line_of_sight.tooltip": "Off: every bookshelf in range counts. Decor only: solid blocks between the table and the shelf block it, except blocks in #bebpm:power_permeable. On: every block between must let power through, as vanilla's transmitter tag. Needs a restart.",
+  "setting.bebpm.line_of_sight.off": "Off",
+  "setting.bebpm.line_of_sight.decor_only": "Decor only",
+  "setting.bebpm.line_of_sight.on": "On"
+}
