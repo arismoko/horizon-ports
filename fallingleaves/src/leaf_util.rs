@@ -4,11 +4,23 @@
 use crate::config::{FallingLeavesConfig, LeafSettingsEntry, ParticleImplementation};
 use crate::particles::LeafParticleData;
 use mod_api::{
-    BlockState, ClientHost, ColorResolver, Direction, Heightmap, LevelRef, ParticleKey,
-    ParticleOptions, ParticleType, RandomSource, TagKey,
+    AtlasSpriteError, BlockState, ClientHost, ColorResolver, Direction, Heightmap, LevelRef,
+    ParticleKey, ParticleOptions, ParticleType, RandomSource, SpriteRef, TagKey,
 };
+use std::cell::Cell;
+use std::collections::HashMap;
 use std::ops::ControlFlow;
-use std::sync::OnceLock;
+use std::sync::{Mutex, OnceLock};
+
+thread_local! {
+    static OWN_VANILLA_SPAWN: Cell<bool> = const { Cell::new(false) };
+}
+
+/// Whether this mod is itself adding a vanilla-typed leaf particle right now, which
+/// `client_particle_add` must not cancel.
+pub fn own_vanilla_spawn_active() -> bool {
+    OWN_VANILLA_SPAWN.with(Cell::get)
+}
 
 /// The `#minecraft:leaves` tag key resolved during `Hooks::register`.
 pub static LEAVES_TAG: OnceLock<TagKey> = OnceLock::new();
@@ -136,7 +148,8 @@ pub fn unpack_rgb(rgb: u32) -> [f32; 3] {
     ]
 }
 
-/// Approximate texture brightness / base RGB for vanilla leaf blocks.
+/// Fallback texture brightness / base RGB for vanilla leaf blocks, used only when the
+/// resource pack's sprite pixels cannot be read (`atlas_sprite_pixels`).
 /// Tinted leaves use a greyscale leaf texture (~0.72 average brightness) multiplied by
 /// the biome foliage tint; untinted leaves carry their own fixed leaf RGB.
 pub fn base_texture_rgb(block_id: &str, is_tinted: bool) -> [f32; 3] {
@@ -153,28 +166,91 @@ pub fn base_texture_rgb(block_id: &str, is_tinted: bool) -> [f32; 3] {
     }
 }
 
-/// Resolve the particle RGB color for `state` at `pos`, combining `block_sprites`,
-/// `block_tint_color` / `biome_tint`, and base texture brightness.
+/// Average RGB of the visible pixels (alpha above zero) of an RGBA8 sprite, normalized to
+/// `0.0..=1.0`. `None` when the buffer holds no visible pixel. Matches the original's
+/// average over the sprite's non-transparent pixels.
+pub fn average_opaque_rgb(rgba: &[u8]) -> Option<[f32; 3]> {
+    let mut sum = [0u64; 3];
+    let mut count = 0u64;
+    for px in rgba.chunks_exact(4) {
+        if px[3] == 0 {
+            continue;
+        }
+        sum[0] += u64::from(px[0]);
+        sum[1] += u64::from(px[1]);
+        sum[2] += u64::from(px[2]);
+        count += 1;
+    }
+    if count == 0 {
+        return None;
+    }
+    let scale = 255.0 * count as f64;
+    Some([
+        (sum[0] as f64 / scale) as f32,
+        (sum[1] as f64 / scale) as f32,
+        (sum[2] as f64 / scale) as f32,
+    ])
+}
+
+/// Averages already computed from the active resource pack's blocks atlas, keyed by sprite
+/// reference and dropped whenever `block_sprites_version` changes (a resource reload).
+#[derive(Default)]
+struct SpriteAverages {
+    version: u64,
+    by_sprite: HashMap<(u32, u32), Option<[f32; 3]>>,
+}
+
+static SPRITE_AVERAGES: OnceLock<Mutex<SpriteAverages>> = OnceLock::new();
+
+/// The average visible colour of `sprite`'s first frame, read from the blocks atlas on the CPU
+/// (`RenderAssets::atlas_sprite_pixels`). `None` when the atlas is not ready, the reference is
+/// stale, or the sprite is fully transparent; callers then use the built-in fallback table.
+fn sprite_average_rgb(host: &dyn ClientHost, sprite: SpriteRef) -> Option<[f32; 3]> {
+    let version = host.block_sprites_version();
+    let mut cache = SPRITE_AVERAGES
+        .get_or_init(Mutex::default)
+        .lock()
+        .unwrap_or_else(|e| e.into_inner());
+    if cache.version != version {
+        cache.version = version;
+        cache.by_sprite.clear();
+    }
+    let key = (sprite.array, sprite.layer);
+    if let Some(hit) = cache.by_sprite.get(&key) {
+        return *hit;
+    }
+    let average = match host.atlas_sprite_pixels(sprite) {
+        Ok(pixels) => average_opaque_rgb(&pixels.rgba),
+        // Not ready (resources still loading): do not cache, ask again next time.
+        Err(AtlasSpriteError::NotReady) => return None,
+        Err(_) => None,
+    };
+    cache.by_sprite.insert(key, average);
+    average
+}
+
+/// Resolve the particle RGB color for `state` at `pos`: the average colour of the block's
+/// sprite in the active resource pack (falling back to `base_texture_rgb` when it cannot be
+/// read), multiplied by the biome-blended tint for tinted faces.
 pub fn leaf_color(host: &dyn ClientHost, state: BlockState, pos: [i32; 3]) -> [f32; 3] {
     let block_id = state.block().id(host).unwrap_or("");
 
-    let tint_index = host
-        .block_sprites(&[state])
-        .into_iter()
-        .next()
-        .flatten()
-        .and_then(|sprites| {
-            let down = Direction::Down as usize;
-            sprites
-                .sides
-                .get(down)
-                .and_then(|faces| faces.first())
-                .map(|f| f.tint_index)
-        })
-        .unwrap_or(0);
+    let sprites = host.block_sprites(&[state]).into_iter().next().flatten();
+    let face = sprites.as_ref().and_then(|sprites| {
+        sprites
+            .sides
+            .get(Direction::Down as usize)
+            .and_then(|faces| faces.first())
+    });
+    let tint_index = face.map(|f| f.tint_index).unwrap_or(0);
+    let sprite = face
+        .map(|f| f.sprite)
+        .or_else(|| sprites.as_ref().and_then(|s| s.particle));
 
     let is_tinted = tint_index >= 0;
-    let mut rgb = base_texture_rgb(block_id, is_tinted);
+    let mut rgb = sprite
+        .and_then(|sprite| sprite_average_rgb(host, sprite))
+        .unwrap_or_else(|| base_texture_rgb(block_id, is_tinted));
 
     if is_tinted {
         let tint = host.block_tint_color(state, tint_index, pos).or_else(|| {
@@ -283,7 +359,9 @@ pub fn spawn_leaf_particles(
                 f64::from(pos[1]) - 0.05
             };
             let opts = vanilla_leaf_options(&*host, handles, &block_id, state, pos);
+            OWN_VANILLA_SPAWN.with(|flag| flag.set(true));
             let _ = host.add_particle(&opts, [x, y, z], [0.0, 0.0, 0.0]);
+            OWN_VANILLA_SPAWN.with(|flag| flag.set(false));
         }
         return;
     }
@@ -449,6 +527,25 @@ mod tests {
         let placed = "minecraft:oak_leaves[distance=7,persistent=true,waterlogged=false]";
         assert!(is_persistent_leaf(placed));
         assert!(!is_decaying_leaf(placed));
+    }
+
+    #[test]
+    fn average_opaque_rgb_skips_transparent_pixels() {
+        let rgba = [
+            255, 0, 0, 255, // red, visible
+            0, 0, 255, 255, // blue, visible
+            9, 9, 9, 0, // transparent: ignored
+        ];
+        let avg = average_opaque_rgb(&rgba).expect("visible pixels");
+        assert!((avg[0] - 0.5).abs() < 1e-6);
+        assert!(avg[1].abs() < 1e-6);
+        assert!((avg[2] - 0.5).abs() < 1e-6);
+    }
+
+    #[test]
+    fn average_opaque_rgb_none_when_fully_transparent_or_empty() {
+        assert_eq!(average_opaque_rgb(&[]), None);
+        assert_eq!(average_opaque_rgb(&[1, 2, 3, 0, 4, 5, 6, 0]), None);
     }
 
     #[test]

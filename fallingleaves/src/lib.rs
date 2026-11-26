@@ -10,12 +10,11 @@ mod particles;
 mod wind;
 
 use crate::config::{
-    CONFIG_FILE_NAME, FallingLeavesConfig, MOD_ID, ParticleImplementation,
-    is_vanilla_untinted_leaves, register_config, register_settings,
+    CONFIG_FILE_NAME, FallingLeavesConfig, MOD_ID, register_config, register_settings,
 };
 use crate::leaf_util::{
     LEAVES_TAG, ParticleHandles, binomial_half, chebyshev_distance, is_decaying_leaf,
-    modified_spawn_chance, spawn_leaf_particles, spawn_snow_particles,
+    modified_spawn_chance, own_vanilla_spawn_active, spawn_leaf_particles, spawn_snow_particles,
 };
 use crate::particles::{
     LeafParticleData, LeafParticleKind, LeafParticleProvider, ParticleSharedState,
@@ -23,10 +22,10 @@ use crate::particles::{
 use crate::wind::{Wind, WindRng, WindState};
 use mod_api::{
     AddHitEffectsEvent, AnimateTickEvent, BlockPart, BlockState, ClientBlockChangedEvent,
-    ClientHost, ClientLevelLoadEvent, ClientTickPostEvent, ConfigEvent, ConfigSnapshot, DebugEntry,
-    DebugGroup, Flow, Hooks, Host, HostSide, ParticleOptions, RandomSource,
-    RegisterDebugEntriesEvent, RegisterParticleProvidersEvent, Registrar, RegistrationContext,
-    SettingChangedEvent,
+    ClientHost, ClientLevelLoadEvent, ClientParticleAddEvent, ClientTickPostEvent, ConfigEvent,
+    ConfigSnapshot, DebugEntry, DebugGroup, Flow, Hooks, Host, HostSide, ParticleOptions,
+    RandomSource, RegisterDebugEntriesEvent, RegisterParticleProvidersEvent, Registrar,
+    RegistrationContext, SettingChangedEvent,
 };
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex, MutexGuard, OnceLock};
@@ -249,21 +248,10 @@ impl BlockPart for LeafBlockPart {
             });
 
         let settings = config.settings_for(block_id);
-        let implementation = settings.effective_implementation(&config);
-
-        // When using the Vanilla implementation on a vanilla leaf block that already
-        // spawns particles in Sunrise's built-in animateTick, avoid doubling at 1.0x rate;
-        // only add extra spawns if the configured chance exceeds vanilla's default.
-        let spawn_chance =
+        // Vanilla's own leaf particles are cancelled in `client_particle_add` while this mod is
+        // enabled, so the configured chance is never reduced by vanilla's default.
+        let effective_chance =
             modified_spawn_chance(&config, player_block_pos, pos, &serialized, true, &settings);
-
-        let effective_chance = if implementation == ParticleImplementation::Vanilla
-            && vanilla_block_already_animates(block_id)
-        {
-            (spawn_chance - vanilla_default_chance(block_id)).max(0.0)
-        } else {
-            spawn_chance
-        };
 
         if effective_chance > 0.0 && event.random.next_float() < effective_chance {
             spawn_leaf_particles(
@@ -374,29 +362,6 @@ impl BlockPart for LeafBlockPart {
     }
 }
 
-fn vanilla_block_already_animates(block_id: &str) -> bool {
-    is_vanilla_untinted_leaves(block_id)
-        || matches!(
-            block_id,
-            "minecraft:oak_leaves"
-                | "minecraft:birch_leaves"
-                | "minecraft:jungle_leaves"
-                | "minecraft:acacia_leaves"
-                | "minecraft:dark_oak_leaves"
-                | "minecraft:mangrove_leaves"
-                | "minecraft:azalea_leaves"
-                | "minecraft:flowering_azalea_leaves"
-        )
-}
-
-fn vanilla_default_chance(block_id: &str) -> f32 {
-    match block_id {
-        "minecraft:cherry_leaves" => 0.1,
-        "minecraft:pale_oak_leaves" => 0.02,
-        _ => 0.01,
-    }
-}
-
 #[derive(Default)]
 struct FallingLeaves;
 
@@ -501,6 +466,30 @@ impl Hooks for FallingLeaves {
                     shared: shared.clone(),
                     frames: sprites.frame_count(),
                 });
+        }
+    }
+
+    /// Vanilla's own falling-leaf particles (`FallingParticlesLeavesBlock`) would double up with
+    /// ours, so they are dropped while the mod is enabled. Particles this mod spawns with the
+    /// "vanilla" implementation are let through (`leaf_util::own_vanilla_spawn`).
+    fn client_particle_add(&self, event: &mut ClientParticleAddEvent<'_>) -> Flow {
+        let Some(handles) = HANDLES.get() else {
+            return Flow::Continue;
+        };
+        let key = event.options.key();
+        let is_vanilla_leaf = [
+            handles.vanilla_tinted_leaves,
+            handles.vanilla_cherry_leaves,
+            handles.vanilla_pale_oak_leaves,
+            handles.vanilla_red_poplar_leaves,
+            handles.vanilla_orange_poplar_leaves,
+            handles.vanilla_yellow_poplar_leaves,
+        ]
+        .contains(&key);
+        if is_vanilla_leaf && !own_vanilla_spawn_active() && lock_runtime().config.enabled {
+            Flow::Cancel
+        } else {
+            Flow::Continue
         }
     }
 
