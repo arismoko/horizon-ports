@@ -11,8 +11,7 @@ Client-side only: works in single player and on any multiplayer server.
 
 Differences from the original:
 
-- Descriptions are placed by finding each enchantment's own tooltip line by its text (its name translated from `enchantment.<namespace>.<name>`, then the level), so an enchantment whose name is not that (a data pack enchantment with a custom description key) gets no description (gap: sunrise-org/sunrise#5639).
-- Prefix, suffix, hint text and text styling are set in `config/enchantmentdescriptions.toml`, not on a settings screen with text fields (gap: sunrise-org/sunrise#1174).
+- Prefix, suffix, hint text and text styling are set in `config/enchantmentdescriptions.toml`, not on a settings screen with text fields.
 - Enchantments without a description are not logged.
 
 A port of Enchantment Descriptions by Darkhax, under the LGPL-2.1 licence.
