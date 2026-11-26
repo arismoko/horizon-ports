@@ -6,18 +6,17 @@ Falling Leaves adds gentle, wind-driven falling leaf and snowflake particles to 
 - **Smooth-noise wind**: transitions between **Calm**, **Windy**, and **Stormy** states with weather changes (rain and thunderstorms), with configurable `windless_dimensions` (`minecraft:the_nether`, `minecraft:the_end`).
 - **Snowflakes from snowy trees**: drops snowflakes from leaf blocks in snowy biomes or under surface snow.
 - **Hit and decay bursts**: hitting leaf blocks shakes loose 0–3 leaves and 0–6 snowflakes; decaying leaf blocks release a burst of leaves and snowflakes in both singleplayer and multiplayer.
-- **Full configuration & 12 locales**: edit scalar settings in **Options → Mods → Falling Leaves** and per-block overrides or custom `leaf_spawners` (such as `minecraft:bamboo[leaves=large]`) in `config/fallingleaves-client.toml`.
+- **Real leaf colours**: particles take the average colour of your resource pack's leaf sprites, and vanilla's own leaf particles are suppressed so they do not double up.
+- **Full configuration & 12 locales**: edit scalar settings (grouped into sections) in **Options → Mods → Falling Leaves** and per-block overrides or custom `leaf_spawners` (such as `minecraft:bamboo[leaves=large]`) in `config/fallingleaves-client.toml`.
 - **F3 wind debug entry**: adds `fallingleaves:wind` in debug options to show live wind state and velocity.
 
 Needs installing on both the client and the server (`side = "both"`) because a client-only mod cannot register particle types (gap: sunrise-org/sunrise#5611).
 
 Differences from the original:
 
-- Vanilla's built-in leaf particles (`tinted_leaves`, `cherry_leaves`, `pale_oak_leaves`, poplar leaves) cannot be suppressed from `animate_tick` and continue to emit alongside Falling Leaves' custom particles (gap: sunrise-org/sunrise#5382).
 - Needs installing on the server as well as the client (`side = "both"` rather than `side = "client"`, with no `registerParticles = false` mode) because a client-only mod cannot register particle types (gap: sunrise-org/sunrise#5611).
-- Leaf particle tint uses exact biome-blended `block_tint_color` and vanilla base colors rather than averaging stitched `TextureAtlasSprite` pixels for custom resource-pack or modded untinted leaves (gap: sunrise-org/sunrise#4601).
 - Resource packs cannot add unregistered per-block sprite sets under `assets/fallingleaves/particles/block/<ns>/<path>.json` (gap: sunrise-org/sunrise#5612).
-- Per-block `leaf_settings` maps and `windless_dimensions` / `leaf_spawners` lists are edited in `config/fallingleaves-client.toml` rather than in-game (gap: sunrise-org/sunrise#1174).
+- Per-block `leaf_settings` maps and `windless_dimensions` / `leaf_spawners` lists are edited in `config/fallingleaves-client.toml` rather than in-game.
 - Fabric Seasons and Serene Seasons compatibility multipliers are omitted because those mods are not present on Sunrise.
 
 A port of Falling Leaves by Fourmisain, BrekiTomasson, and RandomMcSomethin, under the MIT licence.
