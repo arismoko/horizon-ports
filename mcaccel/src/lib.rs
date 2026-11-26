@@ -1,3 +1,4 @@
+#![deny(unsafe_code)]
 //! Minecraft Accelerated for Sunrise: shears carve nine faces into carved pumpkins,
 //! jack o'lanterns and soul jack o'lanterns, one after another, and carve them back.
 //!
@@ -20,7 +21,7 @@ use mod_api::{
     CreativeTabPlacement, CreativeTabVisibility, EquipmentSlot, Flow, GameEventContext, Hand,
     Hooks, Host, HostBlockStates, HostSide, InteractionResult, ItemKey, ItemStack,
     LeftClickBlockEvent, LevelRef, LivingRef, NoteInstrument, PlayerRef, PushReaction, Registrar,
-    RegistrationContext, RightClickBlockEvent, ServerHost, SoundSource, StatType, Tag,
+    RegistrationContext, RightClickBlockEvent, ServerHost, SoundSource, SpawnRule, StatType, Tag,
 };
 
 const MOD: &str = "mcaccel";
@@ -95,6 +96,23 @@ fn equippable(face: &str) -> Tag {
     tag.insert("dispensable".into(), Tag::Byte(0));
     tag.insert("swappable".into(), Tag::Byte(0));
     Tag::Compound(tag)
+}
+
+/// `copyOf(Blocks.PUMPKIN).pistonBehavior(DESTROY)`, the lanterns with light 15. The spawn rule
+/// is pumpkin's own default (a sturdy top and light below 14), so no mob spawns on a lantern.
+fn properties(face: bool) -> BlockProperties {
+    BlockProperties {
+        hardness: Some(1.0),
+        explosion_resistance: Some(1.0),
+        light: Some(if face { 0 } else { 15 }),
+        // MapColor.COLOR_ORANGE.
+        map_color: Some(15),
+        sounds: Some("minecraft:pumpkin".into()),
+        instrument: Some(NoteInstrument::Didgeridoo),
+        push_reaction: Some(PushReaction::Popped),
+        spawn_rule: Some(SpawnRule::Default),
+        ..Default::default()
+    }
 }
 
 struct Keys {
@@ -195,17 +213,7 @@ impl Hooks for Mod {
                 None => "minecraft:jack_o_lantern",
             };
             let mut block = Block::new(format!("{MOD}:{name}"), template).with_item(true);
-            block.properties = BlockProperties {
-                hardness: Some(1.0),
-                explosion_resistance: Some(1.0),
-                light: Some(if face.is_some() { 0 } else { 15 }),
-                // MapColor.COLOR_ORANGE.
-                map_color: Some(15),
-                sounds: Some("minecraft:pumpkin".into()),
-                instrument: Some(NoteInstrument::Didgeridoo),
-                push_reaction: Some(PushReaction::Popped),
-                ..Default::default()
-            };
+            block.properties = properties(face.is_some());
             if let Some(face) = face {
                 // The original's faces are not compostable (only the vanilla carved pumpkin is),
                 // so the template's `compostable` goes.
@@ -340,6 +348,22 @@ mod tests {
         let refs: [[&str; 10]; 3] =
             std::array::from_fn(|i| std::array::from_fn(|at| cycles[i][at].as_str()));
         step(&refs, name, forward).map(str::to_owned)
+    }
+
+    #[test]
+    fn every_block_keeps_pumpkins_spawn_rule() {
+        assert!(properties(true).spawn_rule.is_some());
+        assert!(properties(false).spawn_rule.is_some());
+        assert_eq!(properties(false).light, Some(15));
+    }
+
+    #[test]
+    fn the_equippable_flags_are_nbt_bytes() {
+        let Tag::Compound(tag) = equippable("x") else {
+            panic!("not a compound");
+        };
+        assert_eq!(tag.get("dispensable"), Some(&Tag::Byte(0)));
+        assert_eq!(tag.get("swappable"), Some(&Tag::Byte(0)));
     }
 
     #[test]
