@@ -1,7 +1,7 @@
 # Cut Through for Sunrise: client-only native code in src/ using the typed mod API.
 id = "cutthrough"
 name = "Cut Through"
-version = "0.5.4"
+version = "0.5.5"
 description = "Cleanly swing through blocks without a collision shape, like tall grass, to hit mobs without breaking the block."
 authors = ["Fuzs", "arismoko"]
 license = "MPL-2.0"
