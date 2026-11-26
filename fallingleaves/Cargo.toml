@@ -1,6 +1,6 @@
 [package]
 name = "mod-fallingleaves"
-version = "0.5.4"
+version = "0.5.5"
 edition = "2024"
 license = "MIT"
 description = "Falling Leaves for Sunrise: adds wind-driven falling leaf and snowflake particles from leaf blocks"
