@@ -174,7 +174,9 @@ impl Hooks for CutThrough {
 
     /// Hitting a mob through a plant must not mine the plant a moment later: vanilla's
     /// mining delay is not reset by an entity attack, so the held attack would break the
-    /// block as soon as the mob is gone.
+    /// block as soon as the mob is gone. The API only reads the delay, so the reset is
+    /// emulated: while vanilla's own delay still runs the held attack is left alone, and
+    /// once it is 0 the attack is cancelled for 5 ticks after an entity attack.
     fn interaction_key_mapping_triggered(
         &self,
         host: &mut dyn ClientHost,
@@ -195,6 +197,7 @@ impl Hooks for CutThrough {
             }
             Some(CrosshairTarget::Block { .. })
                 if event.attempt == InteractionAttempt::Held
+                    && host.mining_destroy_delay() == 0
                     && ray::mining_suspended(rt.client_tick, rt.last_entity_attack) =>
             {
                 event.swing_hand = false;

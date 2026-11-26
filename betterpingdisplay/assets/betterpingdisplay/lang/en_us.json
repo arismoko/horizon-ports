@@ -1,4 +1,6 @@
 {
+  "betterpingdisplay.settings.category.text": "Ping Text",
+  "betterpingdisplay.settings.category.bars": "Ping Bars",
   "betterpingdisplay.settings.title": "Better Ping Display Settings",
   "betterpingdisplay.settings.autoColorPingText": "Auto-color Ping Text",
   "betterpingdisplay.settings.autoColorPingText.description": "Whether to color player's ping based on their latency.  E.g, low latency = green, high latency = red",

@@ -57,10 +57,8 @@ struct Runtime {
     key_toggle_bridging: Option<ModKeyMappingRef>,
     /// Player Y fractional part while standing on ground (`BridgingStateTracker.lastKnownYFrac`).
     last_known_y_frac: f64,
-    /// Monotonic client tick counter for post-bridging delay enforcement (> 4 ticks).
-    client_tick: u64,
-    /// Client tick on which the last bridged placement occurred.
-    last_bridged_place_tick: Option<u64>,
+    /// A bridged placement just started; the end of this tick sets the use key's repeat delay.
+    post_bridging_delay_due: bool,
     /// Current bridging pick injected during the latest `client_pick`.
     active_pick: Option<ActiveBridgingPick>,
     /// Snapshot for HUD and world-outline rendering.
@@ -75,8 +73,7 @@ impl Runtime {
             settings_synced: false,
             key_toggle_bridging: None,
             last_known_y_frac: 0.0,
-            client_tick: 0,
-            last_bridged_place_tick: None,
+            post_bridging_delay_due: false,
             active_pick: None,
             render_snapshot: RenderSnapshot::default(),
         }
@@ -247,10 +244,16 @@ impl Hooks for BridgingMod {
 
         {
             let mut rt = self.lock();
-            rt.client_tick = rt.client_tick.saturating_add(1);
             if let Some(frac) = ground_y_frac {
                 rt.last_known_y_frac = frac;
             }
+        }
+        let post_delay = {
+            let mut rt = self.lock();
+            std::mem::take(&mut rt.post_bridging_delay_due).then_some(rt.config.delay_post_bridging)
+        };
+        if let Some(ticks) = post_delay {
+            host.set_right_click_delay(ticks);
         }
         self.sync_initial_settings(host);
         self.poll_toggle_key(host);
@@ -405,18 +408,10 @@ impl Hooks for BridgingMod {
                 Flow::Cancel
             }
             InteractionKey::Use => {
-                // Enforce post-bridging delays above vanilla's 4-tick rightClickDelay.
+                // Vanilla sets the repeat delay to 4 as this use starts; the end of the
+                // tick replaces it with the configured post-bridging delay.
                 if event.hand == Hand::Main {
-                    let min_delay = u64::from(rt.config.delay_post_bridging);
-                    if event.attempt == InteractionAttempt::Held
-                        && min_delay > 4
-                        && let Some(last_tick) = rt.last_bridged_place_tick
-                        && rt.client_tick.saturating_sub(last_tick) < min_delay
-                    {
-                        event.swing_hand = false;
-                        return Flow::Cancel;
-                    }
-                    rt.last_bridged_place_tick = Some(rt.client_tick);
+                    rt.post_bridging_delay_due = true;
                 }
                 Flow::Continue
             }

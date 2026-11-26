@@ -216,6 +216,9 @@ pub struct SettingKeys {
     pub ping_text_color: SettingKey,
 }
 
+const CATEGORY_TEXT: &str = "betterpingdisplay.settings.category.text";
+const CATEGORY_BARS: &str = "betterpingdisplay.settings.category.bars";
+
 /// Register the in-game settings on Sunrise's Options > Mods > Better Ping Display page.
 /// Returns `None` if the game refused one of them.
 pub fn register_settings(r: &mut dyn Registrar) -> Option<SettingKeys> {
@@ -249,6 +252,14 @@ pub fn register_settings(r: &mut dyn Registrar) -> Option<SettingKeys> {
             .tooltip("betterpingdisplay.settings.renderPingBars.description"),
         )
         .ok()?;
+    // A failed grouping only leaves the setting in the flat list.
+    for (key, category) in [
+        (auto_color, CATEGORY_TEXT),
+        (ping_text_color, CATEGORY_TEXT),
+        (render_ping_bars, CATEGORY_BARS),
+    ] {
+        let _ = r.categorize_setting(key, category);
+    }
     Some(SettingKeys {
         auto_color,
         render_ping_bars,

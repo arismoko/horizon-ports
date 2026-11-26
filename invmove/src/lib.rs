@@ -25,6 +25,38 @@ use mod_api::{
     VanillaKeyMappingRef,
 };
 
+/// Posted on the client for each screen InvMove has decided about, so another mod can allow or
+/// veto walking in it: `allowed` holds InvMove's answer and a listener may change it.
+#[derive(mod_api::Event)]
+#[event(id = "invmove:screen_movement", side = client)]
+#[non_exhaustive]
+pub struct ScreenMovementEvent {
+    /// The screen's id as the game names it.
+    pub screen: String,
+    /// The menu type behind the screen, if it is a container screen.
+    pub menu: Option<String>,
+    /// The screen's mod id, if a mod owns it.
+    pub mod_screen: Option<String>,
+    /// Whether the player may move in this screen.
+    pub allowed: bool,
+}
+
+impl ScreenMovementEvent {
+    pub fn new(
+        screen: String,
+        menu: Option<String>,
+        mod_screen: Option<String>,
+        allowed: bool,
+    ) -> Self {
+        Self {
+            screen,
+            menu,
+            mod_screen,
+            allowed,
+        }
+    }
+}
+
 const KEY_TOGGLE_MOVE: &str = "toggle_move";
 const UNBOUND: &str = "key.keyboard.unknown";
 
@@ -185,7 +217,7 @@ impl Runtime {
         {
             return false;
         }
-        match screen.class() {
+        let allowed = match screen.class() {
             Class::Known(key) => keys
                 .screen_movement_key(key)
                 .and_then(|setting| host.setting_bool(setting).ok())
@@ -193,7 +225,19 @@ impl Runtime {
             Class::Fixed | Class::BookEdit => false,
             Class::GameMode => true,
             Class::Unrecognized(key) => self.unrecognized(true, &key, opts.unrecognized_movement),
+        };
+        // Other mods may allow or veto movement; InvMove's own screen stays fixed.
+        if screen.is_own() {
+            return allowed;
         }
+        let mut event = ScreenMovementEvent::new(
+            screen.id.clone(),
+            screen.menu.clone(),
+            screen.mod_screen.clone(),
+            allowed,
+        );
+        host.post(&mut event);
+        event.allowed
     }
 
     /// `InvMove.shouldDisableScreenBackground`, for a screen already classified.
