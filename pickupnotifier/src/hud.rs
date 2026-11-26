@@ -204,11 +204,7 @@ fn render_single_entry(
             if with_sprite {
                 match &entry.kind {
                     EntryKind::Item(item) => {
-                        // Item models take no alpha tint, so the icon stays opaque until the
-                        // entry is gone (gap: sunrise-org/sunrise#5594).
-                        if alpha > 0.05 {
-                            let _ = draw_item(c, item, sprite_x, pos_y, partial_tick);
-                        }
+                        let _ = draw_item(c, item, sprite_x, pos_y, partial_tick, alpha);
                         if let Some((label, label_w)) = &count_label {
                             let count_scale = (16.0 / label_w).min(1.0);
                             let cx = (sprite_x as f32 + 17.0) - label_w * count_scale;
@@ -249,15 +245,17 @@ fn render_single_entry(
 }
 
 /// Draws an item icon with vanilla's hotbar pop-in squash (`Gui.renderSlot`), then its
-/// decorations (bar, cooldown) outside the squeeze. The count is drawn by the caller.
+/// decorations (bar, cooldown) outside the squeeze. The icon, glint included, fades with `alpha`. The count is drawn by the caller.
 fn draw_item(
     canvas: &mut dyn GuiCanvas,
     item: &ItemEntry,
     x: i32,
     y: i32,
     partial_tick: f32,
+    alpha: f32,
 ) -> Result<(), GuiDrawError> {
     let at = [x as f32, y as f32];
+    let tint = argb_white(alpha);
     let pop = item.pop_time as f32 - partial_tick;
     if item.pop_time > 0 && pop > 0.0 {
         let grow = 1.0 + pop / (ITEM_STACK_POP_TIME as f32);
@@ -269,10 +267,10 @@ fn draw_item(
                 PoseOp::Translate(-px, -py),
             ],
             None,
-            &mut |model| model.item(&item.stack, at, 0),
+            &mut |model| model.item_tinted(&item.stack, at, 0, tint),
         )?;
     } else {
-        canvas.item(&item.stack, at, 0)?;
+        canvas.item_tinted(&item.stack, at, 0, tint)?;
     }
     canvas.item_decorations(&item.stack, at, Some(""))
 }
@@ -286,5 +284,8 @@ mod tests {
         assert_eq!(argb_white(1.0), 0xFFFF_FFFF);
         assert_eq!(argb_white(0.0), 0x00FF_FFFF);
         assert_eq!(argb_white(0.5), 0x80FF_FFFF);
+        // Item icons take this same tint through `GuiCanvas::item_tinted`.
+        assert_eq!(argb_white(2.0), 0xFFFF_FFFF);
+        assert_eq!(argb_white(-1.0), 0x00FF_FFFF);
     }
 }
