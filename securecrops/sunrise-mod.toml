@@ -1,7 +1,7 @@
 # Secure Crops for Sunrise: native code in src/, translations in assets/.
 id = "securecrops"
 name = "Secure Crops"
-version = "0.5.3"
+version = "0.5.4"
 description = "Three game rules that keep farmland, and the crops on it, from being trampled."
 authors = ["zekk051", "arismoko"]
 license = "MIT"
