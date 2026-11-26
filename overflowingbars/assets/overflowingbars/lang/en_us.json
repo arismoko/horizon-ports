@@ -1,4 +1,8 @@
 {
+  "overflowingbars.category.health": "Health",
+  "overflowingbars.category.armor": "Armor",
+  "overflowingbars.category.toughness": "Armor Toughness",
+  "overflowingbars.category.count": "Row Count",
   "overflowingbars.option.health_allow_layers": "Health: Allow Layers",
   "overflowingbars.tooltip.health_allow_layers": "Add layers to this bar. When disabled any modifications to the bar from this mod will be turned off.",
   "overflowingbars.option.health_allow_count": "Health: Row Count",

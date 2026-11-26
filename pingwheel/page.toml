@@ -14,9 +14,7 @@ Requires the mod on both client and server for multiplayer pings.
 
 Differences from the original:
 
-- Standing block raycasts use collision shapes rather than `ClipContext.Block.VISUAL`, and sneaking raycasts use block outlines without hitting fluids (`ClipContext.Fluid.ANY`) (gap: sunrise-org/sunrise#4677, sunrise-org/sunrise#4630).
 - The server admin command is `/pingwheel-server` instead of `/pingwheel:server` because `:` is not accepted in command root literals yet (gap: sunrise-org/sunrise#4585).
-- Client-side entity raycasting cannot locally check `Entity.isSpectator` because `EntityRef::spectator` is server-only (gap: sunrise-org/sunrise#5613).
 - Optional third-party integrations for FTB Teams, Simple Voice Chat, and Distant Horizons are omitted; vanilla scoreboard teams work in full.
 
 A port of Ping Wheel by Luken (LukenSkyne) and contributor RXJpaw, under the MIT licence.

@@ -11,6 +11,9 @@ pub enum Hunger {
 }
 
 impl Hunger {
+    /// The levels in the order of the Options > Mods choice.
+    pub const ALL: [Self; 4] = [Self::None, Self::Low, Self::Normal, Self::High];
+
     /// `HungerLevel.modifier`.
     pub fn modifier(self) -> f32 {
         match self {
@@ -28,6 +31,11 @@ pub enum Experience {
     None,
     Cost,
     Reward,
+}
+
+impl Experience {
+    /// The types in the order of the Options > Mods choice.
+    pub const ALL: [Self; 3] = [Self::None, Self::Cost, Self::Reward];
 }
 
 /// The mod's settings (`Config`), with the original's defaults.
@@ -98,27 +106,121 @@ impl Config {
     }
 }
 
-/// The config text with `hasUserBeenWarnedForNotUsingHoe` set to true: the key's line is
-/// replaced where it is, or added at the end, and every other line is kept as written.
-pub fn with_warned(text: &str) -> String {
-    const LINE: &str = "hasUserBeenWarnedForNotUsingHoe = true";
+/// The config text with `key` set to `literal` (as written in the file, quotes included): the
+/// key's line is replaced where it is, or added at the end, and every other line is kept as
+/// written.
+pub fn with_value(text: &str, key: &str, literal: &str) -> String {
+    let line = format!("{key} = {literal}");
     let mut found = false;
     let mut out: Vec<&str> = text
         .lines()
-        .map(|line| match line.split_once('=') {
-            Some((key, _)) if key.trim() == "hasUserBeenWarnedForNotUsingHoe" => {
+        .map(|existing| match existing.split_once('=') {
+            Some((name, _)) if name.trim() == key => {
                 found = true;
-                LINE
+                line.as_str()
             }
-            _ => line,
+            _ => existing,
         })
         .collect();
     if !found {
-        out.push(LINE);
+        out.push(&line);
     }
     let mut joined = out.join("\n");
     joined.push('\n');
     joined
+}
+
+/// The config text with `hasUserBeenWarnedForNotUsingHoe` set to true.
+pub fn with_warned(text: &str) -> String {
+    with_value(text, "hasUserBeenWarnedForNotUsingHoe", "true")
+}
+
+/// The Options > Mods setting names: the config file's keys, in the order they are listed.
+pub const SETTING_NAMES: [&str; 4] = [
+    "requireHoe",
+    "harvestInRadius",
+    "hungerLevel",
+    "experienceType",
+];
+
+/// The language key of the section a setting sits under on Options > Mods (`setting-categories`):
+/// what a harvest needs, what it reaches, and what it costs.
+pub fn category(name: &str) -> &'static str {
+    match name {
+        "requireHoe" => "config.rightclickharvest.category.requirements",
+        "harvestInRadius" => "config.rightclickharvest.category.harvesting",
+        _ => "config.rightclickharvest.category.costs",
+    }
+}
+
+impl Config {
+    /// Applies a changed on/off setting; true when the value changed.
+    pub fn set_toggle(&mut self, name: &str, on: bool) -> bool {
+        let field = match name {
+            "requireHoe" => &mut self.require_hoe,
+            "harvestInRadius" => &mut self.harvest_in_radius,
+            _ => return false,
+        };
+        let changed = *field != on;
+        *field = on;
+        changed
+    }
+
+    /// Applies a changed choice setting by the index of its option; true when the value
+    /// changed. An index past the options changes nothing.
+    pub fn set_choice(&mut self, name: &str, index: usize) -> bool {
+        match name {
+            "hungerLevel" => Hunger::ALL.get(index).is_some_and(|&hunger| {
+                let changed = self.hunger != hunger;
+                self.hunger = hunger;
+                changed
+            }),
+            "experienceType" => Experience::ALL.get(index).is_some_and(|&experience| {
+                let changed = self.experience != experience;
+                self.experience = experience;
+                changed
+            }),
+            _ => false,
+        }
+    }
+
+    /// The index of the chosen option of `hungerLevel` or `experienceType`.
+    pub fn choice_index(self, name: &str) -> Option<usize> {
+        match name {
+            "hungerLevel" => Hunger::ALL.iter().position(|&h| h == self.hunger),
+            "experienceType" => Experience::ALL.iter().position(|&e| e == self.experience),
+            _ => None,
+        }
+    }
+
+    /// The config text with the four settings written as they are, every other line kept
+    /// (`hasUserBeenWarnedForNotUsingHoe` included).
+    pub fn written_into(self, text: &str) -> String {
+        let hunger = ["none", "low", "normal", "high"];
+        let experience = ["none", "cost", "reward"];
+        let pick = |names: &[&'static str], index: Option<usize>| {
+            format!(
+                "\"{}\"",
+                index.and_then(|i| names.get(i)).unwrap_or(&"none")
+            )
+        };
+        let text = with_value(text, "requireHoe", &self.require_hoe.to_string());
+        let text = with_value(
+            &text,
+            "harvestInRadius",
+            &self.harvest_in_radius.to_string(),
+        );
+        let text = with_value(
+            &text,
+            "hungerLevel",
+            &pick(&hunger, self.choice_index("hungerLevel")),
+        );
+        with_value(
+            &text,
+            "experienceType",
+            &pick(&experience, self.choice_index("experienceType")),
+        )
+    }
 }
 
 /// What a block is to the harvester.
@@ -339,6 +441,61 @@ mod tests {
             }
         );
         assert_eq!(Config::parse("hungerLevel = \"bogus\""), Config::default());
+    }
+
+    #[test]
+    fn settings_changed_in_the_game_are_written_to_the_file_and_read_back() {
+        let mut config = Config::default();
+        assert!(config.set_toggle("requireHoe", true));
+        assert!(!config.set_toggle("requireHoe", true));
+        assert!(config.set_toggle("harvestInRadius", false));
+        assert!(config.set_choice("hungerLevel", 3));
+        assert!(config.set_choice("experienceType", 2));
+        assert!(!config.set_choice("experienceType", 2));
+        // Out of range, and names that are not settings, change nothing.
+        assert!(!config.set_choice("hungerLevel", 4));
+        assert!(!config.set_toggle("hungerLevel", true));
+        assert!(!config.set_choice("requireHoe", 0));
+        assert_eq!(config.hunger, Hunger::High);
+        assert_eq!(config.experience, Experience::Reward);
+        let saved = config.written_into(&with_warned(DEFAULT_CONFIG));
+        assert_eq!(
+            Config::parse(&saved),
+            Config {
+                require_hoe: true,
+                harvest_in_radius: false,
+                hunger: Hunger::High,
+                experience: Experience::Reward,
+                warned: true,
+            }
+        );
+        // The comments stay and no key is written twice.
+        assert!(saved.contains("# The food usage when harvesting crops"));
+        assert_eq!(saved.matches("requireHoe =").count(), 1);
+        assert_eq!(config.choice_index("hungerLevel"), Some(3));
+        assert_eq!(config.choice_index("requireHoe"), None);
+        assert_eq!(
+            Config::default().written_into(""),
+            "requireHoe = false\nharvestInRadius = true\nhungerLevel = \"none\"\nexperienceType = \"none\"\n"
+        );
+    }
+
+    #[test]
+    fn every_setting_sits_in_a_section() {
+        assert_eq!(
+            category("requireHoe"),
+            "config.rightclickharvest.category.requirements"
+        );
+        assert_eq!(
+            category("harvestInRadius"),
+            "config.rightclickharvest.category.harvesting"
+        );
+        assert_eq!(category("hungerLevel"), category("experienceType"));
+        assert!(
+            SETTING_NAMES
+                .iter()
+                .all(|name| category(name).starts_with("config.rightclickharvest.category."))
+        );
     }
 
     #[test]

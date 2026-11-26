@@ -1,9 +1,10 @@
+#![deny(unsafe_code)]
 //! Secure Crops for Sunrise: three game rules, all off by default as in Secure Crops 2.0.1
 //! (zekk051), decide what happens when a landing would trample farmland.
 //!
 //! - `securecrops:secure_farmland_and_crops`: with a crop on it, the farmland and the crop stay.
 //! - `securecrops:secure_farmland_break_crops`: with a crop on it, the farmland stays and the
-//!   crop should break, dropping its items; until sunrise-org/sunrise#5372 the crop stays too.
+//!   crop breaks, dropping its items, with the trampling entity as the breaker.
 //! - `securecrops:secure_farmland_if_empty`: with nothing on it, the farmland stays.
 //!
 //! "A crop" is what vanilla's `FarmlandBlock.shouldMaintainFarmland` reads: the block above is in
@@ -11,6 +12,7 @@
 //! where the original's mixin cancels `turnToBaseBlock`; fall damage happens either way.
 use std::sync::OnceLock;
 
+use mod_api::BlockKey;
 use mod_api::{
     BoolGameRuleKey, FarmlandTrampleEvent, Flow, Hooks, Host, LevelRef, Registrar,
     RegistrationContext, ServerHost, TagKey,
@@ -23,7 +25,7 @@ struct Rules {
     and_crops: BoolGameRuleKey,
     break_crops: BoolGameRuleKey,
     if_empty: BoolGameRuleKey,
-    maintains_farmland: TagKey,
+    maintains_farmland: TagKey<BlockKey>,
 }
 
 static RULES: OnceLock<Rules> = OnceLock::new();
@@ -68,7 +70,7 @@ impl Hooks for Mod {
                 and_crops: r.game_rule_bool("secure_farmland_and_crops", &category, false)?,
                 break_crops: r.game_rule_bool("secure_farmland_break_crops", &category, false)?,
                 if_empty: r.game_rule_bool("secure_farmland_if_empty", &category, false)?,
-                maintains_farmland: r.tag_key(MAINTAINS_FARMLAND),
+                maintains_farmland: r.tag_key(MAINTAINS_FARMLAND).typed(),
             })
         })();
         if let Ok(rules) = declared {
@@ -101,10 +103,19 @@ impl Hooks for Mod {
         ) {
             Outcome::Trample => Flow::Continue,
             Outcome::Keep => Flow::Cancel,
-            // The crop should break here too, but a cancelling listener's writes are rolled back
-            // and `destroy_block` refuses inside the hook's transaction (sunrise-org/sunrise#5372),
-            // so for now the crop stays like the farmland.
-            Outcome::BreakCrop => Flow::Cancel,
+            // A cancelling listener's writes now commit, so the crop breaks (and drops) while the
+            // trample is cancelled, as the original's `breakBlock(pos.up(), true, entity)`.
+            Outcome::BreakCrop => {
+                let _ = level.destroy_block(
+                    host,
+                    above,
+                    true,
+                    None,
+                    Some(event.entity.entity()),
+                    false,
+                );
+                Flow::Cancel
+            }
         }
     }
 }

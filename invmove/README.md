@@ -20,7 +20,7 @@ Each is a limit of the mod API at the pinned Sunrise commit.
 - Other gameplay keys only update their key state inside screens (vanilla and NeoForge have no such moment).
 - Space/Enter is cancelled across the whole screen, not only for focused buttons, whenever jump is allowed and bound to it: the focused widget can't be seen, so every button, and any other use of those keys in that screen, is skipped while jump is bound to Space or Enter (gap: sunrise-org/sunrise#5656).
 - Not every screen's background can be hidden (gap: sunrise-org/sunrise#5657).
-- The addon module API is not ported (gap: sunrise-org/sunrise#5137).
+- Other mods can allow or veto movement in a screen through the typed `invmove:screen_movement` event (`ScreenMovementEvent`, posted on the client; a listener edits `allowed`). InvMove's own config screen is never offered. The original's addon module API is replaced by this event rather than ported as is.
 - The Debug Display option is omitted: it is a no-op on 26.x in the original.
 
 ## Configuration

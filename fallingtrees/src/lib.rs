@@ -560,7 +560,7 @@ fn item_in_tag(host: &dyn Host, item: mod_api::ItemKey, tag: &str) -> bool {
     mod_api::Identifier::parse(tag)
         .ok()
         .and_then(|id| tags.key(&id))
-        .and_then(|key| tags.is_in_tag(item, key))
+        .and_then(|key| tags.is_in_tag(item, key.typed()))
         == Some(true)
 }
 
@@ -599,7 +599,7 @@ fn read_block(host: &dyn Host, level: LevelRef, pos: [i32; 3]) -> Block {
                 .ok()
                 .and_then(|id| tags.key(&id)),
         )
-        .and_then(|(block, tag)| tags.block_in_tag(block, tag))
+        .and_then(|(block, tag)| tags.block_in_tag(block, tag.typed()))
             == Some(true)
     };
     let name = key.and_then(|k| k.id(host)).unwrap_or_default();

@@ -14,6 +14,67 @@ pub fn name_key(id: &str) -> Option<String> {
     Some(format!("enchantment.{namespace}.{path}"))
 }
 
+/// The Options > Mods section (a translation key) a setting is listed under.
+pub fn category_of(name: &str) -> Option<&'static str> {
+    match name {
+        "enabled" | "only_on_books" | "only_in_enchanting_table" => {
+            Some("enchdesc.category.display")
+        }
+        "require_keybind" | "display_activate_text" => Some("enchdesc.category.hint"),
+        "color" => Some("enchdesc.category.style"),
+        _ => None,
+    }
+}
+
+/// A translation template with its `%s`, `%1$s` and `%%` filled from `arguments`; a missing
+/// argument leaves nothing.
+pub fn fill_template(template: &str, arguments: &[String]) -> String {
+    let mut out = String::new();
+    let mut next = 0;
+    let mut chars = template.chars().peekable();
+    while let Some(c) = chars.next() {
+        if c != '%' {
+            out.push(c);
+            continue;
+        }
+        match chars.peek().copied() {
+            Some('%') => {
+                chars.next();
+                out.push('%');
+            }
+            Some('s') => {
+                chars.next();
+                if let Some(arg) = arguments.get(next) {
+                    out.push_str(arg);
+                }
+                next += 1;
+            }
+            Some(d) if d.is_ascii_digit() => {
+                let mut digits = String::new();
+                while let Some(d) = chars.peek().copied().filter(char::is_ascii_digit) {
+                    digits.push(d);
+                    chars.next();
+                }
+                if chars.peek() == Some(&'$') {
+                    chars.next();
+                    if chars.peek() == Some(&'s') {
+                        chars.next();
+                    }
+                    let index = digits.parse::<usize>().ok().and_then(|n| n.checked_sub(1));
+                    if let Some(arg) = index.and_then(|i| arguments.get(i)) {
+                        out.push_str(arg);
+                    }
+                } else {
+                    out.push('%');
+                    out.push_str(&digits);
+                }
+            }
+            _ => out.push('%'),
+        }
+    }
+    out
+}
+
 /// The first description key the language defines for `base` at `level`: for each of
 /// [`KEY_TYPES`], `base.type`, then `base.type.level`.
 pub fn description_key(base: &str, level: u32, has: impl Fn(&str) -> bool) -> Option<String> {
@@ -290,6 +351,28 @@ mod tests {
         assert_eq!(match_lines(&lines, &wanted), vec![(0, 4), (1, 1), (2, 3)]);
         assert!(match_lines(&[], &wanted).is_empty());
         assert!(match_lines(&lines, &[]).is_empty());
+    }
+
+    #[test]
+    fn settings_are_categorised() {
+        assert_eq!(category_of("enabled"), Some("enchdesc.category.display"));
+        assert_eq!(
+            category_of("require_keybind"),
+            Some("enchdesc.category.hint")
+        );
+        assert_eq!(category_of("color"), Some("enchdesc.category.style"));
+        assert_eq!(category_of("other"), None);
+    }
+
+    #[test]
+    fn templates_fill_arguments() {
+        let args = vec!["A".to_owned(), "B".to_owned()];
+        assert_eq!(fill_template("x %s y %s", &args), "x A y B");
+        assert_eq!(fill_template("%2$s %1$s", &args), "B A");
+        assert_eq!(fill_template("100%% %s %s %s", &args), "100% A B ");
+        assert_eq!(fill_template("%", &args), "%");
+        assert_eq!(fill_template("%9$s %0$s %12", &args), "  %12");
+        assert_eq!(fill_template("%é", &[]), "%é");
     }
 
     #[test]

@@ -49,7 +49,7 @@ impl Hooks for EasyMagic {
         client::init_enchant_particle(r.particle_key("minecraft:enchant"));
 
         let mut payloads = r.payload_handlers();
-        let mut net = payloads.registrar("1");
+        let mut net = payloads.registrar("1").optional();
         let server_config_ch =
             net.play_to_client_typed::<ServerConfig>(id_server_config(), |cfg, _| {
                 set_synced_server_config(cfg);

@@ -1,0 +1,7 @@
+More Chat History for Sunrise is a port of More Chat History 2.0.0 by JackFred
+(https://github.com/JackFredMods/MoreChatHistory), licensed CC0-1.0.
+
+No Java source was copied; the code is a new implementation against Sunrise's mod API.
+This port is distributed under the original's licence (CC0-1.0); the licence text is in LICENSE.
+
+Ported by arismoko.

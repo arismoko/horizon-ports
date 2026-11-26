@@ -1,7 +1,7 @@
 # SafeSpawn for Sunrise: native code in src/.
 id = "safespawn"
 name = "SafeSpawn"
-version = "0.5.3"
+version = "0.5.4"
 description = "New players never start standing in water, lava, fire or on leaves: they're moved to the nearest safe ground."
 authors = ["Tokimi", "CozyStudios", "arismoko"]
 license = "CC0-1.0"
@@ -11,4 +11,4 @@ side = "server"
 
 [native]
 game = "26.3"
-sunrise = "6a02076f89cd189d74d63492dda5b023fa85a38f"
+sunrise = "ba1f24e4ad41246b558230aa665539dc768b1287"

@@ -239,6 +239,90 @@ pub fn grow_bamboo(
     }
 }
 
+/// A setting of the file: its key, the section it sits in, and whether it is a switch.
+pub const SETTINGS: [(&str, &str, bool); 14] = [
+    ("use_rain_growth_speed", "general", true),
+    ("rain_growth_speed", "general", false),
+    ("use_individual_speeds", "individual", true),
+    ("bamboo_custom_speed", "individual", false),
+    ("cocoa_custom_speed", "individual", false),
+    ("crops_custom_speed", "individual", false),
+    ("sapling_custom_speed", "individual", false),
+    ("sugar_cane_custom_speed", "individual", false),
+    ("sweet_berry_custom_speed", "individual", false),
+    ("separate_stem_speed", "individual", true),
+    ("melon_custom_speed", "individual", false),
+    ("pumpkin_custom_speed", "individual", false),
+    ("debug_mode", "debug", true),
+    ("halt_regular_growth", "debug", true),
+];
+
+impl Config {
+    /// The switch the file's `key` names.
+    pub fn flag(&mut self, key: &str) -> Option<&mut bool> {
+        Some(match key {
+            "use_rain_growth_speed" => &mut self.use_rain_growth_speed,
+            "use_individual_speeds" => &mut self.use_individual_speeds,
+            "separate_stem_speed" => &mut self.separate_stem_speed,
+            "debug_mode" => &mut self.debug_mode,
+            "halt_regular_growth" => &mut self.halt_regular_growth,
+            _ => return None,
+        })
+    }
+
+    /// The number the file's `key` names.
+    pub fn number(&mut self, key: &str) -> Option<&mut i32> {
+        Some(match key {
+            "rain_growth_speed" => &mut self.rain_growth_speed,
+            "bamboo_custom_speed" => &mut self.bamboo,
+            "cocoa_custom_speed" => &mut self.cocoa,
+            "crops_custom_speed" => &mut self.crops,
+            "sapling_custom_speed" => &mut self.sapling,
+            "sugar_cane_custom_speed" => &mut self.sugar_cane,
+            "sweet_berry_custom_speed" => &mut self.sweet_berry,
+            "melon_custom_speed" => &mut self.melon,
+            "pumpkin_custom_speed" => &mut self.pumpkin,
+            _ => return None,
+        })
+    }
+
+    /// The file's text with these values, in the layout of [`DEFAULT_CONFIG`].
+    pub fn to_text(self) -> String {
+        let mut config = self;
+        let mut out = String::new();
+        let mut section = "";
+        for (key, name, is_flag) in SETTINGS {
+            if name != section {
+                if !out.is_empty() {
+                    out.push('\n');
+                }
+                out.push_str(&format!("[{name}]\n"));
+                section = name;
+                match name {
+                    "general" => {}
+                    "individual" => out.push_str("\t#The chance describes a 1 out of x chance that a crop will grow extra each tick.\n\t#Set to 0 to disable speed up for that crop.\n"),
+                    _ => {}
+                }
+            }
+            if key == "rain_growth_speed" {
+                out.push_str("\t#The chance describes a 1 out of x chance that a crop will grow extra each tick.\n");
+            }
+            if is_flag {
+                out.push_str(&format!(
+                    "\t{key} = {}\n",
+                    config.flag(key).copied().unwrap_or(false)
+                ));
+            } else {
+                out.push_str(&format!(
+                    "\t{key} = {}\n",
+                    config.number(key).copied().unwrap_or(0)
+                ));
+            }
+        }
+        out
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -370,5 +454,21 @@ mod tests {
         assert_eq!(grow_bamboo(11, 0, Some(Leaves::Large), true, 0.1).stage, 1);
         assert_eq!(grow_bamboo(11, 0, Some(Leaves::Large), true, 0.5).stage, 0);
         assert_eq!(grow_bamboo(5, 0, Some(Leaves::Large), true, 0.1).stage, 0);
+    }
+
+    #[test]
+    fn the_default_config_writes_the_default_file() {
+        assert_eq!(Config::default().to_text(), DEFAULT_CONFIG);
+    }
+
+    #[test]
+    fn a_written_config_reads_back() {
+        let config = Config {
+            rain_growth_speed: 3,
+            debug_mode: true,
+            bamboo: 0,
+            ..Config::default()
+        };
+        assert_eq!(Config::parse(&config.to_text()), config);
     }
 }

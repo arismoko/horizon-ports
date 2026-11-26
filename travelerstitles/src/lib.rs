@@ -8,7 +8,9 @@ mod config;
 mod titles;
 
 use crate::config::{Kind, Lists, MOD_ID};
-use crate::titles::{Style, Title, description_id, opacity, origin, parse_color};
+use crate::titles::{
+    Style, Title, backdrop_argb, backdrop_rect, description_id, opacity, origin, parse_color,
+};
 use mod_api::{
     ClientHost, ClientPlayerLoggingOutEvent, ClientTickPostEvent, ClientTickPreEvent, DrawContext,
     Hooks, Host, RegisterClientCommandsEvent, Registrar, RegistrationContext, RenderFramePreEvent,
@@ -20,6 +22,54 @@ use std::sync::{Arc, Mutex};
 /// (`Biomes.LUSH_CAVES`, `Biomes.DRIPSTONE_CAVES` and the `travelerstitles:is_underground` tag).
 const UNDERGROUND_BIOMES: [&str; 2] = ["minecraft:lush_caves", "minecraft:dripstone_caves"];
 const UNDERGROUND_TAG: &str = "travelerstitles:is_underground";
+
+/// Which kind of title an event or a pending title is for.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[non_exhaustive]
+pub enum TitleKind {
+    Biome,
+    Dimension,
+}
+
+/// Posted on the client just before a biome or dimension title starts. Other mods listen to
+/// it with `#[subscribe]` (their crate depends on this mod): they may change the text or
+/// colour, or cancel the title; a cancelled title shows nothing and plays no sound.
+#[derive(mod_api::Event)]
+#[event(id = "travelerstitles:title_display", side = client, cancellable)]
+#[non_exhaustive]
+pub struct TitleDisplayEvent {
+    /// Whether this is a biome or a dimension title.
+    pub kind: TitleKind,
+    /// The biome or dimension id the title is for, such as `minecraft:desert`.
+    pub id: String,
+    /// The title text; a listener may replace it.
+    pub text: String,
+    /// The title colour as `0xRRGGBB`; a listener may replace it.
+    pub color: u32,
+    /// Set by a listener (or by returning `Flow::Cancel`) to drop the title.
+    pub cancelled: bool,
+}
+
+impl TitleDisplayEvent {
+    pub fn new(kind: TitleKind, id: String, text: String, color: u32) -> Self {
+        Self {
+            kind,
+            id,
+            text,
+            color,
+            cancelled: false,
+        }
+    }
+}
+
+/// A title that passed every rule and waits for its event to be posted.
+struct Pending {
+    kind: TitleKind,
+    id: String,
+    text: String,
+    color: u32,
+    style: Style,
+}
 
 #[derive(Default)]
 pub(crate) struct State {
@@ -90,10 +140,46 @@ pub(crate) fn play_entry_sound(host: &dyn ClientHost, kind: Kind) {
 }
 
 impl TravelersTitles {
-    /// `TitleRenderManager.playerTick`.
-    fn player_tick(&self, host: &dyn ClientHost) {
+    /// `TitleRenderManager.playerTick`: decide which titles start, post their events (outside
+    /// the state lock, so a listener may do anything) and show the ones not cancelled.
+    fn player_tick(&self, host: &mut dyn ClientHost) {
+        for pending in self.collect(&*host) {
+            let mut event =
+                TitleDisplayEvent::new(pending.kind, pending.id, pending.text, pending.color);
+            host.post(&mut event);
+            if event.cancelled {
+                continue;
+            }
+            with_state(&self.state, |state| match pending.kind {
+                TitleKind::Dimension => {
+                    state
+                        .dimension
+                        .display(event.text, event.color, &pending.style);
+                }
+                TitleKind::Biome => {
+                    state.biome.display(event.text, event.color, &pending.style);
+                }
+            });
+            let sound = match pending.kind {
+                TitleKind::Dimension => Some(Kind::Dimension),
+                // The biome sound would overlap the dimension's.
+                TitleKind::Biome => {
+                    let dimension_showing = with_state(&self.state, |s| s.dimension.is_showing());
+                    (!dimension_showing).then_some(Kind::Biome)
+                }
+            };
+            if let Some(kind) = sound {
+                play_entry_sound(&*host, kind);
+            }
+        }
+    }
+
+    /// The rules of `playerTick`: update the cooldowns and recent lists, and return the titles
+    /// to show, the dimension's first.
+    fn collect(&self, host: &dyn ClientHost) -> Vec<Pending> {
+        let mut pending = Vec::new();
         let Some(player) = host.local_player() else {
-            return;
+            return pending;
         };
         let h: &dyn Host = host;
         let (Some(level), Some(pos), Some(dimension)) = (
@@ -101,13 +187,13 @@ impl TravelersTitles {
             player.entity().block_position(h),
             player.dimension(h),
         ) else {
-            return;
+            return pending;
         };
         if !level.is_loaded(h, pos) {
-            return;
+            return pending;
         }
         let Some(dimension_type) = level.dimension_type(h) else {
-            return;
+            return pending;
         };
         let dimension = dimension.to_string();
         let underground = dimension_type.has_skylight && !level.can_see_sky(h, pos).unwrap_or(true);
@@ -137,9 +223,14 @@ impl TravelersTitles {
                 && !state.lists.dimensions.contains(&dimension)
             {
                 let (text, color) = dimension_title(host, &dimension, dimension_style.color);
-                state.dimension.display(text, color, &dimension_style);
                 state.dimension.add_recent(1, dimension_type.id.to_owned());
-                play_entry_sound(host, Kind::Dimension);
+                pending.push(Pending {
+                    kind: TitleKind::Dimension,
+                    id: dimension.clone(),
+                    text,
+                    color,
+                    style: dimension_style,
+                });
             }
 
             // Biome title.
@@ -167,19 +258,28 @@ impl TravelersTitles {
             if state.biome.displayed.as_deref() == Some(text.as_str()) {
                 return;
             }
-            state.biome.display(text, color, &biome_style);
             state.biome.cooldown = config::biome_cooldown(host);
             state
                 .biome
-                .add_recent(config::biome_cache_size(host), biome);
-            // The biome sound would overlap the dimension's.
-            if !state.dimension.is_showing() {
-                play_entry_sound(host, Kind::Biome);
-            }
+                .add_recent(config::biome_cache_size(host), biome.clone());
+            pending.push(Pending {
+                kind: TitleKind::Biome,
+                id: biome,
+                text,
+                color,
+                style: biome_style,
+            });
         });
+        pending
     }
 
-    fn draw_title(draw: &mut dyn DrawContext, title: &Title, style: &Style, partial: f32) {
+    fn draw_title(
+        draw: &mut dyn DrawContext,
+        title: &Title,
+        style: &Style,
+        partial: f32,
+        background: u32,
+    ) {
         let Some(text) = title.displayed.as_deref() else {
             return;
         };
@@ -192,6 +292,10 @@ impl TravelersTitles {
         }
         let width = draw.text_width(text);
         let at = origin(style, width, draw.size());
+        let backdrop = backdrop_argb(background, opacity);
+        if backdrop >> 24 != 0 {
+            draw.fill(backdrop_rect(at, width, style.size), backdrop);
+        }
         let argb = ((opacity as u32) << 24) | (title.color & 0xFF_FFFF);
         draw.text_scaled(text, at, style.size, argb, style.shadow);
     }
@@ -228,7 +332,7 @@ impl Hooks for TravelersTitles {
         if !host.on(MOD_ID) || host.is_paused() {
             return;
         }
-        self.player_tick(&*host);
+        self.player_tick(host);
     }
 
     fn client_player_logging_out(
@@ -256,7 +360,15 @@ impl Hooks for TravelersTitles {
         let biome_style = config::read_style(host, Kind::Biome);
         let state = self.state.lock().unwrap_or_else(|e| e.into_inner());
         let partial = state.partial_tick;
-        Self::draw_title(event.draw, &state.dimension, &dimension_style, partial);
-        Self::draw_title(event.draw, &state.biome, &biome_style, partial);
+        // `Options.getBackgroundColor(0.0)`: transparent while Text Background is "chat only".
+        let background = host.gui_options().background_color(0.0);
+        Self::draw_title(
+            event.draw,
+            &state.dimension,
+            &dimension_style,
+            partial,
+            background,
+        );
+        Self::draw_title(event.draw, &state.biome, &biome_style, partial, background);
     }
 }

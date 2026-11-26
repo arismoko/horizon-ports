@@ -16,16 +16,16 @@ use crate::config::{
 };
 use crate::hud::{ensure_toast_icons_registered, render_hud, toast_icon_id};
 use crate::state::{
-    AtomicVolumeTable, ClickIgnoreTracker, IdleTracker, PowerStateInput, SmoothVolumeTracker,
-    format_debug_line, limit_for, resolve_power_state,
+    AtomicVolumeTable, ClickIgnoreTracker, HostEffects, IdleTracker, PowerStateInput,
+    SmoothVolumeTracker, desired_effects, limit_for, resolve_power_state,
 };
 use mod_api::{
     ClientHost, ClientSetupContext, ClientSetupEvent, ClientStoppingEvent, ClientTickPreEvent,
-    ConfigEvent, ConfigSnapshot, DebugEntry, DebugGroup, Flow, FramerateLimitEvent, Hooks, Host,
-    HostSide, Identifier, InputKeyEvent, KeyConflictContext, KeyRegistration, ModKeyMappingRef,
-    ModToast, MouseButtonPreEvent, MouseScrollingEvent, PlaySoundEvent, RegisterDebugEntriesEvent,
-    Registrar, RegistrationContext, RenderFramePreEvent, RenderGuiPostEvent, ScreenInitPostEvent,
-    ScreenOpening, ScreenOpeningEvent, SettingChangedEvent, Text, ToastAddEvent, ToastIcon,
+    ConfigEvent, ConfigSnapshot, Flow, FramerateLimitEvent, Hooks, Host, HostSide, Identifier,
+    InputKeyEvent, KeyConflictContext, KeyRegistration, ModKeyMappingRef, ModToast,
+    MouseButtonPreEvent, MouseScrollingEvent, PlaySoundEvent, Registrar, RegistrationContext,
+    RenderFramePreEvent, RenderGuiPostEvent, ScreenInitPostEvent, ScreenOpening,
+    ScreenOpeningEvent, SettingChangedEvent, SoundSource, Text, ToastIcon,
 };
 use std::sync::atomic::Ordering;
 use std::sync::{Arc, Mutex, MutexGuard};
@@ -40,6 +40,9 @@ struct Runtime {
     has_rendered_first_frame: bool,
     focused: bool,
     minimized: bool,
+    hovered: bool,
+    occluded: bool,
+    applied: HostEffects,
     disabled_by_user: bool,
     forcing_low_fps: bool,
     idle: IdleTracker,
@@ -61,6 +64,9 @@ impl Runtime {
             has_rendered_first_frame: true,
             focused: true,
             minimized: false,
+            hovered: false,
+            occluded: false,
+            applied: HostEffects::neutral(),
             disabled_by_user: false,
             forcing_low_fps: false,
             idle: IdleTracker::default(),
@@ -82,9 +88,9 @@ impl Runtime {
             disabled_by_user: self.disabled_by_user,
             forcing_low_fps: self.forcing_low_fps,
             focused: self.focused,
-            // Window hover over unfocused window awaits sunrise-org/sunrise#5549.
-            hovered: false,
-            minimized: self.minimized,
+            hovered: self.hovered,
+            // A fully hidden window counts as minimized (`Invisible`).
+            minimized: self.minimized || self.occluded,
             idle,
             battery,
             battery_enabled: self.config.battery.enabled,
@@ -95,9 +101,13 @@ impl Runtime {
             self.has_rendered_first_frame = false;
             self.smooth_volume.on_state_change(&self.config, next);
             VOLUME_TABLE.store(self.smooth_volume.snapshot());
-            publish_debug_state(next, &self.config);
         }
         next
+    }
+
+    fn observe_window(&mut self, host: &dyn ClientHost) {
+        self.hovered = host.window_hovered();
+        self.occluded = host.window_occluded();
     }
 
     fn poll_keybinds(&mut self, host: &mut dyn ClientHost, now_ms: u64) {
@@ -206,44 +216,48 @@ fn adopt_config_text(runtime: &Mutex<Runtime>, text: &str) -> DynamicFpsConfig {
     rt.battery.configure(rt.config.battery);
     rt.smooth_volume.on_state_change(&rt.config, rt.state);
     VOLUME_TABLE.store(rt.smooth_volume.snapshot());
-    publish_debug_state(rt.state, &rt.config);
     rt.config.clone()
 }
 
-static DEBUG_STATE: Mutex<(PowerState, DynamicFpsConfig)> = Mutex::new((
-    PowerState::Focused,
-    // Replaced on startup once config loads.
-    DynamicFpsConfig {
-        enabled: true,
-        uncap_menu_frame_rate: false,
-        ignore_initial_click: config::IgnoreInitialClick::Disabled,
-        idle: config::IdleConfig {
-            timeout_seconds: 300,
-            condition: config::IdleCondition::Vanilla,
-        },
-        volume_transition: config::VolumeTransitionConfig { up: 1.0, down: 0.5 },
-        battery: config::BatteryTrackerConfig {
-            enabled: false,
-            critical_level: 10,
-            switch_states: false,
-            notifications: true,
-            show_when_debug: false,
-            display_condition: config::BatteryIndicatorCondition::Critical,
-            display_placement: config::BatteryIndicatorPlacement::TopLeft,
-            mock_battery_data: false,
-        },
-        hovered: config::StateConfig::ACTIVE,
-        unfocused: config::StateConfig::ACTIVE,
-        invisible: config::StateConfig::ACTIVE,
-        unplugged: config::StateConfig::ACTIVE,
-        abandoned: config::StateConfig::ACTIVE,
-    },
-));
-
-fn publish_debug_state(state: PowerState, config: &DynamicFpsConfig) {
-    let mut guard = DEBUG_STATE.lock().unwrap_or_else(|e| e.into_inner());
-    guard.0 = state;
-    guard.1 = config.clone();
+/// Bring the host's session options, toast hold, sound scales and F3 text in line with the
+/// current power state, calling only what changed since the last pass.
+fn apply_host_effects(runtime: &Mutex<Runtime>, host: &mut dyn ClientHost) {
+    let (desired, previous) = {
+        let rt = lock_runtime(runtime);
+        let desired = desired_effects(rt.state, &rt.config, rt.smooth_volume.snapshot());
+        (desired, rt.applied.clone())
+    };
+    if desired == previous {
+        return;
+    }
+    let mut done = desired.clone();
+    if desired.vsync != previous.vsync {
+        host.set_session_vsync(desired.vsync);
+    }
+    if desired.clouds != previous.clouds {
+        host.set_session_clouds(desired.clouds);
+    }
+    if desired.view_bobbing != previous.view_bobbing {
+        host.set_session_view_bobbing(desired.view_bobbing);
+    }
+    if desired.toasts_held != previous.toasts_held && !host.set_toasts_held(desired.toasts_held) {
+        done.toasts_held = previous.toasts_held;
+    }
+    for source in SoundSource::ALL {
+        let idx = source.index();
+        if desired.sound_scales[idx] != previous.sound_scales[idx] {
+            host.set_sound_source_scale(source, desired.sound_scales[idx]);
+        }
+    }
+    if desired.sounds_paused != previous.sounds_paused {
+        host.set_sounds_paused(desired.sounds_paused);
+    }
+    if desired.debug_text != previous.debug_text
+        && !host.set_debug_fps_text(desired.debug_text.as_deref())
+    {
+        done.debug_text = previous.debug_text;
+    }
+    lock_runtime(runtime).applied = done;
 }
 
 #[mod_api::sunrise_mod]
@@ -301,7 +315,6 @@ impl Hooks for DynamicFps {
                 return;
             }
             rt.battery.configure(rt.config.battery);
-            publish_debug_state(rt.state, &rt.config);
             rt.config.to_toml()
         };
         persist_config_file(host, &text);
@@ -313,33 +326,10 @@ impl Hooks for DynamicFps {
         }
     }
 
-    fn client_setup(&self, _ctx: &mut dyn ClientSetupContext, _event: &mut ClientSetupEvent) {
-        let rt = self.lock();
-        publish_debug_state(rt.state, &rt.config);
-    }
+    fn client_setup(&self, _ctx: &mut dyn ClientSetupContext, _event: &mut ClientSetupEvent) {}
 
     fn client_stopping(&self, _host: &mut dyn ClientHost, _event: &mut ClientStoppingEvent) {
         self.lock().battery.stop();
-    }
-
-    fn register_debug_entries(
-        &self,
-        _ctx: &RegistrationContext,
-        event: &mut RegisterDebugEntriesEvent<'_>,
-    ) {
-        event.entries.push(
-            DebugEntry::text(
-                format!("{MOD_ID}:power_state"),
-                DebugGroup::Memory,
-                |_host, lines| {
-                    let guard = DEBUG_STATE.lock().unwrap_or_else(|e| e.into_inner());
-                    if let Some(line) = format_debug_line(guard.0, &guard.1) {
-                        lines.push(line);
-                    }
-                },
-            )
-            .with_reduced_debug_info(true),
-        );
     }
 
     fn framerate_limit(&self, host: &dyn ClientHost, event: &mut FramerateLimitEvent) {
@@ -355,6 +345,7 @@ impl Hooks for DynamicFps {
         }
         rt.focused = event.focused;
         rt.minimized = event.minimized;
+        rt.observe_window(host);
 
         let state = rt.update_state(now_ms);
 
@@ -372,7 +363,10 @@ impl Hooks for DynamicFps {
             rt.idle.on_activity(now_ms);
         }
         rt.focused = focused;
+        rt.observe_window(&*host);
         rt.has_rendered_first_frame = true;
+        drop(rt);
+        apply_host_effects(&self.runtime, host);
     }
 
     fn client_tick_pre(&self, host: &mut dyn ClientHost, _event: &mut ClientTickPreEvent) {
@@ -406,6 +400,7 @@ impl Hooks for DynamicFps {
             rt.idle.on_activity(now_ms);
         }
         rt.focused = focused;
+        rt.observe_window(&*host);
         rt.idle.observe_motion(now_ms, cursor, camera_pose);
         rt.poll_keybinds(host, now_ms);
 
@@ -416,39 +411,20 @@ impl Hooks for DynamicFps {
         let battery_toast = rt.prepare_battery_toast(host);
         drop(guard);
 
+        apply_host_effects(&self.runtime, host);
         if let Some(toast) = battery_toast {
             let _ = host.add_toast(toast);
         }
     }
 
     fn play_sound(&self, _host: &mut dyn ClientHost, event: &mut PlaySoundEvent<'_>) {
-        let Some(sound) = event.sound.as_mut() else {
+        // Live volume is the host's source scale (`apply_host_effects`); only a sound that
+        // would start at 0% is dropped.
+        let Some(sound) = event.sound.as_ref() else {
             return;
         };
-        let factor = VOLUME_TABLE.effective_factor(sound.source);
-        if factor <= 0.0 {
-            if event.starting {
-                *event.sound = None;
-            } else {
-                sound.volume = 0.0;
-            }
-        } else if (factor - 1.0).abs() > f32::EPSILON {
-            let scaled = sound.volume * factor;
-            if scaled.is_finite() {
-                sound.volume = scaled.max(0.0);
-            }
-        }
-    }
-
-    fn toast_add(&self, host: &dyn ClientHost, _event: &mut ToastAddEvent) -> Flow {
-        if !host.on(MOD_ID) {
-            return Flow::Continue;
-        }
-        let rt = self.lock();
-        if !rt.config.state(rt.state).show_toasts {
-            Flow::Cancel
-        } else {
-            Flow::Continue
+        if event.starting && VOLUME_TABLE.effective_factor(sound.source) <= 0.0 {
+            *event.sound = None;
         }
     }
 

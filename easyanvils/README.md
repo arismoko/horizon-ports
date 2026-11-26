@@ -12,12 +12,12 @@ A Sunrise 26.3 port of [Easy Anvils](https://github.com/Fuzss/easyanvils) by Fuz
 - **Reduced break chance & risk-free renaming**: 5% break chance by default (`anvil_break_chance = 0.05`) and zero break chance when only renaming (`risk_free_anvil_renaming = true`).
 - **Formatted item renaming**: supports `§` formatting codes directly in the anvil rename field (with live styled preview, 50 visible-character limit, and a top-right `?` formatting guide tooltip).
 - **Hopper & comparator support**: hoppers can insert items into anvils from the top or sides (no bottom extraction); redstone comparators read the anvil's fill level.
+- **Other mods' anvil recipes**: the custom anvil menu runs every mod's `anvil_update` listeners (`PlayerRef::anvil_update`, NeoForge's `CommonHooks.onAnvilUpdate`), so their recipes, cost changes and repair rules work in it.
 - **Data pack tag**: `easyanvils:unaltered_anvils` (block tag) to keep specific anvils on vanilla's anvil menu.
 
 ## Differences from the original
 
 - Items stored inside an anvil are not drawn on top of the anvil in the world (`render_anvil_contents`), because vanilla anvils do not expose a mod block-entity renderer and `WorldDrawContext` cannot yet draw an `ItemStack` in world space (gap: sunrise-org/sunrise#5609).
-- Other mods' custom `anvil_update` recipes are not invoked from Easy Anvils' custom anvil menu, because a mod menu cannot dispatch `anvil_update` to other mods' listeners (gap: sunrise-org/sunrise#5610).
 - Unaltered vanilla anvils (when `convert_vanilla_anvil_when_interacting = false` or listed in `#easyanvils:unaltered_anvils`) keep vanilla's 12% break chance, because `anvil_craft_pre` does not expose a break-chance modifier (gap: sunrise-org/sunrise#5500).
 
 ## Configuration

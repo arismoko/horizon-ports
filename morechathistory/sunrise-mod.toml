@@ -1,0 +1,14 @@
+# More Chat History for Sunrise: client-only native code in src/ using the typed mod API.
+id = "morechathistory"
+name = "More Chat History"
+version = "0.5.1"
+description = "Keeps up to 16,384 chat messages instead of vanilla's 100."
+authors = ["JackFred", "arismoko"]
+license = "CC0-1.0"
+credits = "Original mod by JackFred (CC0-1.0); ported to Sunrise by arismoko."
+homepage = "https://github.com/arismoko/sunrise-ports"
+side = "client"
+
+[native]
+game = "26.3"
+sunrise = "ba1f24e4ad41246b558230aa665539dc768b1287"

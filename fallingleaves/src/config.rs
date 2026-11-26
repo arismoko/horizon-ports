@@ -14,6 +14,12 @@ pub const CONFIG_FILE_NAME: &str = "fallingleaves-client.toml";
 pub const DEFAULT_SPAWN_CHANCE: f32 = 0.01;
 
 // Options > Mods setting keys.
+pub const CATEGORY_APPEARANCE: &str =
+    "text.autoconfig.fallingleaves2.category.fallingleaves.appearance";
+pub const CATEGORY_SPAWNING: &str =
+    "text.autoconfig.fallingleaves2.category.fallingleaves.spawning";
+pub const CATEGORY_WIND: &str = "text.autoconfig.fallingleaves2.category.fallingleaves.wind";
+pub const CATEGORY_DECAY: &str = "text.autoconfig.fallingleaves2.category.fallingleaves.decay";
 pub const SET_ENABLED: &str = "enabled";
 pub const SET_ALWAYS_USE_VANILLA_PARTICLES: &str = "always_use_vanilla_particles";
 pub const SET_USE_VANILLA_TEXTURES: &str = "use_vanilla_textures";
@@ -736,6 +742,27 @@ pub fn register_config(r: &mut dyn Registrar, listener: Arc<ConfigListener>) {
 
 /// Register all scalar settings on Sunrise's Options -> Mods -> Falling Leaves page,
 /// reusing the original mod's translation keys so all 12 bundled locales apply automatically.
+/// Translation key of the Options → Mods section a setting is listed under.
+pub fn setting_category(key: &str) -> Option<&'static str> {
+    match key {
+        SET_ENABLED
+        | SET_ALWAYS_USE_VANILLA_PARTICLES
+        | SET_USE_VANILLA_TEXTURES
+        | SET_LEAF_SIZE
+        | SET_LEAF_LIFESPAN => Some(CATEGORY_APPEARANCE),
+        SET_LEAF_SPAWN_RATE
+        | SET_CONIFER_LEAF_SPAWN_RATE
+        | SET_SNOWFLAKE_SPAWN_RATE
+        | SET_DROP_FROM_PLAYER_PLACED
+        | SET_LEAVES_ON_BLOCK_HIT
+        | SET_MIN_FREE_SPACE_BELOW
+        | SET_STARTING_SPAWN_RADIUS => Some(CATEGORY_SPAWNING),
+        SET_WIND_ENABLED => Some(CATEGORY_WIND),
+        SET_DECAY_SPAWN_RATE_FACTOR | SET_MAX_DECAY_LEAVES => Some(CATEGORY_DECAY),
+        _ => None,
+    }
+}
+
 pub fn register_settings(r: &mut dyn Registrar) {
     let specs = [
         SettingSpec::toggle(
@@ -818,12 +845,6 @@ pub fn register_settings(r: &mut dyn Registrar) {
             1.0,
         )
         .tooltip("text.autoconfig.fallingleaves2.option.minimumFreeSpaceBelow.@Tooltip"),
-        SettingSpec::toggle(
-            SET_WIND_ENABLED,
-            "text.autoconfig.fallingleaves2.option.windEnabled",
-            true,
-        )
-        .tooltip("text.autoconfig.fallingleaves2.option.windEnabled.@Tooltip"),
         SettingSpec::range(
             SET_STARTING_SPAWN_RADIUS,
             "text.autoconfig.fallingleaves2.option.startingSpawnRadius",
@@ -833,6 +854,12 @@ pub fn register_settings(r: &mut dyn Registrar) {
             0.0,
         )
         .tooltip("text.autoconfig.fallingleaves2.option.startingSpawnRadius.@Tooltip"),
+        SettingSpec::toggle(
+            SET_WIND_ENABLED,
+            "text.autoconfig.fallingleaves2.option.windEnabled",
+            true,
+        )
+        .tooltip("text.autoconfig.fallingleaves2.option.windEnabled.@Tooltip"),
         SettingSpec::range(
             SET_DECAY_SPAWN_RATE_FACTOR,
             "text.autoconfig.fallingleaves2.option.decaySpawnRateFactor",
@@ -857,6 +884,11 @@ pub fn register_settings(r: &mut dyn Registrar) {
     for spec in specs {
         let name = spec.key.clone();
         if let Ok(key) = r.register_setting(spec) {
+            // Group the page under section headings; headings follow registration order, so
+            // each category's settings are registered contiguously above.
+            if let Some(category) = setting_category(&name) {
+                let _ = r.categorize_setting(&name, category);
+            }
             keys.insert(name, key);
         }
     }
@@ -959,6 +991,36 @@ fn parse_string_array(raw: &str) -> Option<Vec<String>> {
 mod tests {
     use super::*;
 
+    #[test]
+    fn every_setting_has_a_category_and_categories_are_contiguous() {
+        let keys = [
+            SET_ENABLED,
+            SET_ALWAYS_USE_VANILLA_PARTICLES,
+            SET_USE_VANILLA_TEXTURES,
+            SET_LEAF_SIZE,
+            SET_LEAF_LIFESPAN,
+            SET_LEAF_SPAWN_RATE,
+            SET_CONIFER_LEAF_SPAWN_RATE,
+            SET_SNOWFLAKE_SPAWN_RATE,
+            SET_DROP_FROM_PLAYER_PLACED,
+            SET_LEAVES_ON_BLOCK_HIT,
+            SET_MIN_FREE_SPACE_BELOW,
+            SET_STARTING_SPAWN_RADIUS,
+            SET_WIND_ENABLED,
+            SET_DECAY_SPAWN_RATE_FACTOR,
+            SET_MAX_DECAY_LEAVES,
+        ];
+        let cats: Vec<_> = keys.iter().map(|k| setting_category(k)).collect();
+        assert!(cats.iter().all(Option::is_some));
+        let mut seen = Vec::new();
+        for c in cats {
+            if seen.last() != Some(&c) {
+                assert!(!seen.contains(&c), "category split into two headings");
+                seen.push(c);
+            }
+        }
+        assert_eq!(seen.len(), 4);
+    }
     #[test]
     fn toml_round_trip_preserves_scalar_and_per_block_settings() {
         let mut cfg = FallingLeavesConfig {

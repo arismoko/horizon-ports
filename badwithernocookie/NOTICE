@@ -1,0 +1,11 @@
+Bad Wither No Cookie - Reloaded for Sunrise 26.3 (version 0.5.0)
+
+A port of Bad Wither No Cookie - Reloaded (4.0.5, Minecraft 26.3 NeoForge) by Kreezxil and Eleksploded.
+Original source: https://gitlab.com/kreezxil/BadWitherNoCookie
+Original licence: MIT
+
+Ported to Sunrise by arismoko: all game logic, hooks, commands, configuration, and networking
+are implemented in Rust on Sunrise's typed mod API (no Java code is included). The original
+MIT-licensed data files (enchantments, recipes, item tags, mob/environment sound catalog),
+translations (en_us, es_ar, pt_br, ru_ru), and logo icon are carried unchanged under the
+original MIT licence. This port is distributed under the MIT licence; see LICENSE.

@@ -1,7 +1,7 @@
 # Accelerated Decay for Sunrise: native code in src/.
 id = "accelerateddecay"
 name = "Accelerated Decay"
-version = "0.5.3"
+version = "0.5.4"
 description = "Unsupported leaves decay quickly after a tree is cut, five blocks per tick, persisted across reloads."
 authors = ["ErrorMikey", "lavoide", "arismoko"]
 license = "GPL-3.0-only"
@@ -11,4 +11,4 @@ side = "server"
 
 [native]
 game = "26.3"
-sunrise = "6a02076f89cd189d74d63492dda5b023fa85a38f"
+sunrise = "ba1f24e4ad41246b558230aa665539dc768b1287"

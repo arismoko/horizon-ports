@@ -1,3 +1,4 @@
+#![deny(unsafe_code)]
 //! Universal Bone Meal by Fuzs for Sunrise: bone meal also grows cactus, sugar cane, vines,
 //! nether wart, chorus, lily pads, dead bushes, small flowers, mushrooms on mycelium, ferns and
 //! berry bushes on podzol, coral, spore blossoms, and turns dirt beside grass or mycelium into it.
@@ -6,18 +7,22 @@
 //! The original keeps its rules in a data map (`universalbonemeal:bonemealables`) and two data
 //! registries of behaviours and predicates. Here its default data is the code: [`behavior`] is the
 //! map, [`valid`] the predicates and [`perform`] the behaviours, with each random draw made from
-//! the level's random in the original's order. Data packs can't change these rules yet
-//! (sunrise-org/sunrise#5368).
+//! the level's random in the original's order. The spread rules (lily pad, dead bush, small
+//! flowers) are data: the `universalbonemeal:spread_rule` datapack registry, whose entries name
+//! their blocks with a vanilla `HolderSet` and may add a vanilla `BlockPredicate`
+//! (sunrise-org/sunrise#5368). A copied block survives where vanilla's `canSurvive` says it does
+//! (sunrise-org/sunrise#3596). The other behaviours stay code.
 use std::collections::HashMap;
 use std::ops::ControlFlow;
 use std::sync::{Mutex, OnceLock, PoisonError};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use mod_api::{
-    BlockClass, BlockKey, BlockShapeKind, BlockState, BlockUpdateFlags, BonemealEvent, Flow, Hooks,
-    Host, HostBlockStates, HostSide, IPayloadContext, ItemResource, ItemStack, LegacyRandomSource,
-    LevelRef, LightLayer, ParticleKey, ParticleOptions, PayloadId, RandomSource, Registrar,
-    RegistrationContext, ServerHost, TagKey, ToClient,
+    BlockClass, BlockKey, BlockPredicateValue, BlockShapeKind, BlockState, BlockUpdateFlags,
+    BonemealEvent, DatapackEntry, DatapackField, DatapackFieldKind, DatapackRegistrySync, Flow,
+    Hooks, Host, HostBlockStates, HostSide, IPayloadContext, ItemResource, ItemStack,
+    LegacyRandomSource, LevelRef, LightLayer, ParticleKey, ParticleOptions, PayloadId,
+    RandomSource, Registrar, RegistrationContext, ServerHost, TagKey, ToClient,
 };
 
 /// Blocks bone meal never works on, whatever another mod says (`DENY`).
@@ -61,39 +66,29 @@ const PODZOL_GROUND: [(&str, i32); 6] = [
     ("minecraft:dead_bush", 1),
 ];
 
+/// The datapack registry of spread rules, declared as `spread_rule` by this mod.
+const SPREAD_RULES: &str = "universalbonemeal:spread_rule";
+
 /// `ParticleTypes.HAPPY_VILLAGER`, requested once when the mod registers.
 static HAPPY_VILLAGER: OnceLock<ParticleKey> = OnceLock::new();
 static GROWTH: OnceLock<ToClient<Growth>> = OnceLock::new();
 
 /// Every tag the mod reads, by ID, resolved once when the mod registers.
-const TAG_IDS: [&str; 10] = [
+const TAG_IDS: [&str; 6] = [
     RESISTANT,
     "minecraft:dirt",
     "minecraft:small_flowers",
     "minecraft:overrides_mushroom_light_requirement",
-    "minecraft:supports_dry_vegetation",
-    "minecraft:supports_lily_pad",
     "minecraft:supports_melon_stem_fruit",
     "minecraft:supports_pumpkin_stem_fruit",
-    "minecraft:supports_vegetation",
-    "minecraft:supports_wither_rose",
 ];
-static TAGS: OnceLock<HashMap<&'static str, TagKey>> = OnceLock::new();
+static TAGS: OnceLock<HashMap<&'static str, TagKey<BlockKey>>> = OnceLock::new();
 
 /// `ClientboundGrowthParticlesMessage`: bone meal worked on a block that has no bone meal
 /// behaviour of its own, so the client draws the growth particles vanilla would have.
 #[derive(Clone, Debug, mod_api::Wire)]
 struct Growth {
     pos: [i32; 3],
-}
-
-/// What a copied plant needs below it to survive (`canSurvive`).
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-enum Soil {
-    /// `LilyPadBlock`: water, or a block that supports lily pads, with no fluid above it.
-    LilyPad,
-    /// `VegetationBlock` and its kinds: a block in this tag below.
-    Tag(&'static str),
 }
 
 /// One entry of the original's `bonemealables` data map.
@@ -113,8 +108,13 @@ enum Behavior {
     ChorusFlower,
     /// `chorus_plant`: a random tick on every flower the plant reaches.
     ChorusPlant,
-    /// `random_neighbor_spread`: copies of the block around it.
-    Spread { width: i32, most: i32, soil: Soil },
+    /// `random_neighbor_spread`: copies of the block around it, where each can survive and the
+    /// rule's predicate, if it has one, holds.
+    Spread {
+        width: i32,
+        most: i32,
+        place: Option<BlockPredicateValue>,
+    },
     /// `vegetation_scatter`: red and brown mushrooms.
     Mycelium,
     /// `vegetation_patch`: ferns, large ferns, sweet berry bushes and dead bushes.
@@ -135,8 +135,12 @@ impl Behavior {
 }
 
 /// The original's `bonemealables` data map: a block's entry by its ID, or else by its tags.
-fn behavior(id: &str, in_tag: impl Fn(&str) -> bool) -> Option<Behavior> {
-    let spread = |width, most, soil| Behavior::Spread { width, most, soil };
+/// A spread rule of the datapack registry, found by the block, comes after the blocks named here.
+fn behavior(
+    id: &str,
+    in_tag: impl Fn(&str) -> bool,
+    spread_rule: impl FnOnce() -> Option<Behavior>,
+) -> Option<Behavior> {
     let entry = match id {
         "minecraft:cactus" => Behavior::Cactus,
         "minecraft:sugar_cane" => Behavior::SugarCane,
@@ -146,8 +150,6 @@ fn behavior(id: &str, in_tag: impl Fn(&str) -> bool) -> Option<Behavior> {
         "minecraft:pumpkin_stem" => Behavior::Stem("minecraft:supports_pumpkin_stem_fruit"),
         "minecraft:chorus_flower" => Behavior::ChorusFlower,
         "minecraft:chorus_plant" => Behavior::ChorusPlant,
-        "minecraft:lily_pad" => spread(4, 3, Soil::LilyPad),
-        "minecraft:dead_bush" => spread(4, 2, Soil::Tag("minecraft:supports_dry_vegetation")),
         "minecraft:mycelium" => Behavior::Mycelium,
         "minecraft:podzol" => Behavior::Podzol,
         "minecraft:dirt_path" => Behavior::Dirt,
@@ -158,17 +160,42 @@ fn behavior(id: &str, in_tag: impl Fn(&str) -> bool) -> Option<Behavior> {
         "minecraft:tube_coral" => Behavior::Coral("universalbonemeal:tube_coral"),
         "minecraft:spore_blossom" => Behavior::SporeBlossom,
         _ if in_tag("minecraft:dirt") => Behavior::Dirt,
-        _ if in_tag("minecraft:small_flowers") => {
-            let soil = if id == "minecraft:wither_rose" {
-                "minecraft:supports_wither_rose"
-            } else {
-                "minecraft:supports_vegetation"
-            };
-            spread(3, 1, Soil::Tag(soil))
-        }
-        _ => return None,
+        _ => return spread_rule(),
     };
     Some(entry)
+}
+
+/// One entry of the spread rule registry as a behaviour, if its block set holds `block`.
+fn spread_rule_of(host: &dyn Host, entry: &DatapackEntry, block: BlockKey) -> Option<Behavior> {
+    entry
+        .get("blocks")?
+        .as_holder_set()?
+        .contains(host, block)
+        .ok()?
+        .then_some(())?;
+    Some(Behavior::Spread {
+        width: i32::try_from(entry.get("width")?.as_int()?).ok()?,
+        most: i32::try_from(entry.get("most")?.as_int()?).ok()?,
+        place: entry
+            .get("placeable")
+            .and_then(|value| value.as_block_predicate()),
+    })
+}
+
+/// The schema of a spread rule: the blocks it copies, how far and how many times, and an
+/// optional vanilla block predicate every copy's spot must pass.
+fn spread_rule_fields() -> Vec<DatapackField> {
+    vec![
+        DatapackField::required(
+            "blocks",
+            DatapackFieldKind::HolderSet {
+                registry: "minecraft:block".to_owned(),
+            },
+        ),
+        DatapackField::required("width", DatapackFieldKind::Int { min: 1, max: 16 }),
+        DatapackField::required("most", DatapackFieldKind::Int { min: 1, max: 64 }),
+        DatapackField::optional("placeable", DatapackFieldKind::BlockPredicate),
+    ]
 }
 
 /// `GrowingPlantTraverser.getMaxHeightAtPosition` with `uniform(12, 16)`: the column's height
@@ -364,20 +391,6 @@ impl<'a> Reads<'a> {
             .is_some_and(|boxes| is_full_block(&boxes))
     }
 
-    fn fluid_empty(self, pos: [i32; 3]) -> bool {
-        self.level
-            .fluid_state(self.host, pos)
-            .is_none_or(|fluid| fluid.is_empty())
-    }
-
-    fn fluid_in_tag(self, pos: [i32; 3], tag: &str) -> bool {
-        self.level
-            .fluid_state(self.host, pos)
-            .filter(|fluid| !fluid.is_empty())
-            .zip(tag_key(tag))
-            .is_some_and(|(fluid, key)| fluid.fluid.is_in_tag(self.host.tags(), key) == Some(true))
-    }
-
     /// `BlockState.propagatesSkylightDown`, the block's own answer.
     fn propagates_skylight_down(self, pos: [i32; 3]) -> bool {
         self.state(pos).is_some_and(|state| {
@@ -395,20 +408,44 @@ impl<'a> Reads<'a> {
         at
     }
 
-    /// `canSurvive` of a copied plant at `pos` (sunrise-org/sunrise#3596).
-    fn survives(self, soil: Soil, pos: [i32; 3]) -> bool {
-        let below = above(pos, -1);
-        let Some(ground) = self.state(below) else {
-            return false;
-        };
-        match soil {
-            Soil::LilyPad => {
-                (self.fluid_in_tag(below, "minecraft:supports_lily_pad")
-                    || self.tagged(ground, "minecraft:supports_lily_pad"))
-                    && self.fluid_empty(pos)
+    /// `BlockState.canSurvive` of the copied `state` at `pos` (sunrise-org/sunrise#3596), then
+    /// the rule's predicate, if it has one.
+    fn survives(
+        self,
+        state: BlockState,
+        place: Option<BlockPredicateValue>,
+        pos: [i32; 3],
+    ) -> bool {
+        self.level
+            .can_survive(self.host, pos, state)
+            .unwrap_or(false)
+            && place.is_none_or(|place| place.test(self.host, self.level, pos).unwrap_or(false))
+    }
+
+    /// The spread rule whose `blocks` holder set holds `block`: entries are read in lexical ID
+    /// order and the first match wins. A level without the registry (a client, which the
+    /// registry isn't synced to) has none.
+    fn spread_rule(self, block: BlockKey) -> Option<Behavior> {
+        let mut ids = Vec::new();
+        let _ = self
+            .level
+            .visit_datapack_entries(self.host, SPREAD_RULES, &mut |id| {
+                ids.push(id.to_owned());
+                ControlFlow::Continue(())
+            })
+            .ok()?;
+        for id in ids {
+            let mut found = None;
+            let read = self
+                .level
+                .datapack_read(self.host, SPREAD_RULES, &id, &mut |entry| {
+                    found = spread_rule_of(self.host, entry, block);
+                });
+            if read.is_ok() && found.is_some() {
+                return found;
             }
-            Soil::Tag(tag) => self.tagged(ground, tag),
         }
+        None
     }
 
     /// `MushroomBlock.canSurvive`.
@@ -563,7 +600,11 @@ fn decide(w: Reads<'_>, event: &BonemealEvent<'_>, pos: [i32; 3]) -> Decision {
         return Decision::Resist;
     }
     let id = state.block().id(w.host).unwrap_or("");
-    let Some(entry) = behavior(id, |tag| w.tagged(state, tag)) else {
+    let Some(entry) = behavior(
+        id,
+        |tag| w.tagged(state, tag),
+        || w.spread_rule(state.block()),
+    ) else {
         return Decision::Pass;
     };
     if bonemealable(w.host, event) && !entry.replaces() {
@@ -706,10 +747,10 @@ fn perform(
                 level.block_random_tick(host, flower);
             }
         }
-        Behavior::Spread { width, most, soil } => {
+        Behavior::Spread { width, most, place } => {
             let mut successes = 0;
             for spread in (0..(width + 1) * 16).rev() {
-                if spread_once(host, level, pos, spread, soil, min_y) {
+                if spread_once(host, level, pos, spread, place, min_y) {
                     successes += 1;
                     if successes >= most {
                         return;
@@ -831,7 +872,7 @@ fn spread_once(
     level: LevelRef,
     origin: [i32; 3],
     steps: i32,
-    soil: Soil,
+    place: Option<BlockPredicateValue>,
     min_y: i32,
 ) -> bool {
     let mut at = origin;
@@ -843,7 +884,10 @@ fn spread_once(
         at = offset(at, by);
         let w = Reads::server(&*host, level);
         copy = w.state(origin);
-        if copy.is_none() || !w.survives(soil, at) || w.full_collision(at) {
+        let Some(copied) = copy else {
+            return false;
+        };
+        if !w.survives(copied, place, at) || w.full_collision(at) {
             return false;
         }
     }
@@ -1033,7 +1077,7 @@ fn on_growth(growth: Growth, cx: &mut dyn IPayloadContext) -> Result<(), String>
     Ok(())
 }
 
-fn tag_key(id: &str) -> Option<TagKey> {
+fn tag_key(id: &str) -> Option<TagKey<BlockKey>> {
     TAGS.get()?.get(id).copied()
 }
 
@@ -1043,7 +1087,19 @@ struct Mod;
 #[mod_api::sunrise_mod]
 impl Hooks for Mod {
     fn register(&self, r: &mut dyn Registrar, _: &RegistrationContext) {
-        let _ = TAGS.set(TAG_IDS.into_iter().map(|id| (id, r.tag_key(id))).collect());
+        if let Err(error) = r.declare_datapack_registry(
+            "spread_rule",
+            DatapackRegistrySync::ServerOnly,
+            spread_rule_fields(),
+        ) {
+            eprintln!("[universalbonemeal] spread_rule registry refused: {error:?}");
+        }
+        let _ = TAGS.set(
+            TAG_IDS
+                .into_iter()
+                .map(|id| (id, r.tag_key(id).typed()))
+                .collect(),
+        );
         let _ = HAPPY_VILLAGER.set(r.particle_key("minecraft:happy_villager"));
         let growth = r
             .payload_handlers()
@@ -1072,39 +1128,36 @@ mod tests {
     #[test]
     fn the_map_names_blocks_before_their_tags() {
         let none = |_: &str| false;
-        assert_eq!(behavior("minecraft:cactus", none), Some(Behavior::Cactus));
-        assert_eq!(
-            behavior("minecraft:dead_bush", |_| true),
+        let no_rule = || None;
+        let rule = || {
             Some(Behavior::Spread {
                 width: 4,
                 most: 2,
-                soil: Soil::Tag("minecraft:supports_dry_vegetation")
+                place: None,
             })
+        };
+        assert_eq!(
+            behavior("minecraft:cactus", none, no_rule),
+            Some(Behavior::Cactus)
         );
         assert_eq!(
-            behavior("example:loam", |tag| tag == "minecraft:dirt"),
+            behavior("example:loam", |tag| tag == "minecraft:dirt", no_rule),
             Some(Behavior::Dirt)
         );
-        assert_eq!(
-            behavior("example:bloom", |tag| tag == "minecraft:small_flowers"),
-            Some(Behavior::Spread {
-                width: 3,
-                most: 1,
-                soil: Soil::Tag("minecraft:supports_vegetation")
-            })
-        );
-        assert_eq!(
-            behavior("minecraft:wither_rose", |tag| tag
-                == "minecraft:small_flowers"),
-            Some(Behavior::Spread {
-                width: 3,
-                most: 1,
-                soil: Soil::Tag("minecraft:supports_wither_rose")
-            })
-        );
-        assert_eq!(behavior("minecraft:stone", none), None);
-        assert!(behavior("minecraft:pumpkin_stem", none).is_some_and(Behavior::replaces));
-        assert!(!behavior("minecraft:cactus", none).is_some_and(Behavior::replaces));
+        // A block no code entry names asks the spread rules of the data packs.
+        assert_eq!(behavior("minecraft:dead_bush", none, rule), rule());
+        assert_eq!(behavior("minecraft:stone", none, no_rule), None);
+        assert!(behavior("minecraft:pumpkin_stem", none, no_rule).is_some_and(Behavior::replaces));
+        assert!(!behavior("minecraft:cactus", none, no_rule).is_some_and(Behavior::replaces));
+    }
+
+    #[test]
+    fn the_spread_rule_schema_names_its_four_fields() {
+        let names: Vec<_> = spread_rule_fields()
+            .into_iter()
+            .map(|field| field.name)
+            .collect();
+        assert_eq!(names, ["blocks", "width", "most", "placeable"]);
     }
 
     /// Expected values from an independent Java `Random` model of

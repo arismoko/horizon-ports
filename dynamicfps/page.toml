@@ -3,24 +3,22 @@ description = """
 Dynamic FPS lowers the game's frame rate and audio volume when you are not actively looking at it, cutting GPU, CPU, and battery use in the background:
 
 - **Per-state frame rate caps**: configure separate FPS targets for **Unfocused** (1 FPS default), **Invisible / Minimized** (0 / 1 FPS default), **Idle** (10 FPS default), **On Battery** (unlimited default), and **Hovered** (60 FPS default). A lower frame rate limit is never raised, and one frame renders immediately on entering a low-FPS state so HUD changes appear without delay.
-- **Per-source volume multipliers and smooth transitions**: scale Master and all 10 individual sound categories per state (`config/dynamicfps.toml`), cancel newly started sounds at 0%, and fade volume smoothly at configurable upward and downward speeds.
+- **Hover and occlusion detection**: an unfocused window under the pointer uses the **Hovered** state, and a fully hidden (occluded) window uses **Invisible**, as the window system reports them.
+- **Per-state VSync and graphics options**: each state can force VSync on or off and a **Graphics Options** preset (`Reduced`: fast clouds; `Minimal`: no clouds and no view bobbing) for the session only, never written to `options.txt`.
+- **Held toasts**: with **Show Toasts** off, incoming toasts wait in the queue and show once the state allows them.
+- **Per-source volume multipliers and smooth transitions**: scale Master and all 10 individual sound categories per state (`config/dynamicfps.toml`), including sounds already playing (music, records), pause every sound when Master reaches 0%, and fade volume smoothly at configurable upward and downward speeds.
 - **Toggle keybindings and HUD banner**: bind **Force Unfocused Mode (Toggle)** and **Disable Dynamic FPS (Toggle)** in **Options → Controls**, with a centered HUD banner while active.
 - **Idle detection**: automatically switch to the **Idle** state after a configurable period without keyboard, mouse, cursor, camera, or screen activity (always, or only while discharging on battery).
 - **Ignore initial click**: optionally discard accidental mouse clicks during the first 10 ms after refocusing the window (**Disabled**, **In World**, or **Constant**).
 - **Battery integration**: monitors system batteries on Linux (`/sys/class/power_supply`, plus a mock battery mode on all platforms), switches to **On Battery** when discharging, draws a corner HUD battery indicator, and shows charging, discharging, and low-battery toasts.
-- **F3 debug entry**: adds `dynamicfps:power_state` in debug options to display the active power state and target frame rate.
+- **F3 FPS line**: appends the active power state and target frame rate to the end of F3's frame rate line while not focused.
 - **Config screen & hot-reloaded config**: **Mods → Dynamic FPS → Config** opens Dynamic FPS's own paged screen with toggles, choices and sliders; full per-source volume multipliers live in `config/dynamicfps.toml` and reload automatically.
 
 Client-side only: works in single player and on any multiplayer server.
 
 Differences from the original:
 
-- Pointer hover over an unfocused window (`Hovered`) and non-minimized window occlusion (`Invisible` while occluded) are not detected yet (gap: [sunrise-org/sunrise#5549](https://github.com/sunrise-org/sunrise/issues/5549)).
 - The frame rate hook can only lower the engine's cap and ignores values below 1, so `0` FPS (default for Invisible) renders at 1 FPS instead of skipping frames completely, and **Uncap Menu FPS** / bypassing vanilla's built-in idle throttle cannot raise the cap (gap: [sunrise-org/sunrise#5550](https://github.com/sunrise-org/sunrise/issues/5550)).
-- Volume multipliers apply to newly started sounds and ticking sounds; already-playing non-ticking channels (such as active music tracks or jukebox records) are not updated or paused on state transitions (gap: [sunrise-org/sunrise#5551](https://github.com/sunrise-org/sunrise/issues/5551)).
-- When **Show Toasts** is off for a state, incoming toasts are cancelled rather than delayed until focus returns; Dynamic FPS's own battery toasts are delayed as in the original (gap: [sunrise-org/sunrise#5552](https://github.com/sunrise-org/sunrise/issues/5552)).
-- Per-state VSync and **Graphics Options** (`Reduced` / `Minimal`) are preserved in `config/dynamicfps.toml` but cannot override video options at runtime yet (gap: [sunrise-org/sunrise#5553](https://github.com/sunrise-org/sunrise/issues/5553)).
-- F3 debug status is registered as its own `dynamicfps:power_state` entry instead of appending inline to vanilla's FPS line (gap: [sunrise-org/sunrise#5554](https://github.com/sunrise-org/sunrise/issues/5554)).
 - World rendering behind an unfinished resource-reload overlay is not skipped (gap: [sunrise-org/sunrise#5555](https://github.com/sunrise-org/sunrise/issues/5555)).
 - Per-category sound multipliers beyond Master are edited in `config/dynamicfps.toml`, not on the config screen.
 - `run_garbage_collector` does not apply because Sunrise is native Rust with no JVM garbage collector.

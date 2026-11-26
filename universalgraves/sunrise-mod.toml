@@ -1,7 +1,7 @@
 # Universal Graves for Sunrise: native code in src/ with its data/ and assets/.
 id = "universalgraves"
 name = "Universal Graves"
-version = "0.5.2"
+version = "0.5.3"
 description = "When you die, your items wait in a grave where you died, until you or, after a while, anyone collects them."
 authors = ["Patbox", "arismoko"]
 license = "LGPL-3.0-only"
@@ -11,4 +11,4 @@ side = "both"
 
 [native]
 game = "26.3"
-sunrise = "6a02076f89cd189d74d63492dda5b023fa85a38f"
+sunrise = "ba1f24e4ad41246b558230aa665539dc768b1287"

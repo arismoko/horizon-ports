@@ -149,6 +149,27 @@ pub fn origin(style: &Style, text_width: f32, screen: [f32; 2]) -> [f32; 2] {
     ]
 }
 
+/// The title's text backdrop (`TitleRenderer.drawBackdrop`) as `[x, y, width, height]` in
+/// screen pixels: the text's box with two pixels of padding, scaled with the text.
+pub fn backdrop_rect(at: [f32; 2], text_width: f32, size: f32) -> [f32; 4] {
+    const LINE_HEIGHT: f32 = 9.0;
+    const PADDING: f32 = 2.0;
+    [
+        at[0] - PADDING * size,
+        at[1] - PADDING * size,
+        (text_width + 2.0 * PADDING) * size,
+        (LINE_HEIGHT + 2.0 * PADDING) * size,
+    ]
+}
+
+/// The backdrop colour: the game's text-background colour (`Options.getBackgroundColor`)
+/// with its alpha scaled by the title's fade (`opacity`, 0 to 255). Fully transparent
+/// when the player's Text Background option is limited to chat.
+pub fn backdrop_argb(background: u32, opacity: i32) -> u32 {
+    let alpha = (background >> 24) * opacity.clamp(0, 255) as u32 / 255;
+    (alpha << 24) | (background & 0xFF_FFFF)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -262,5 +283,22 @@ mod tests {
         left.centered = false;
         left.x = 5;
         assert_eq!(origin(&left, 40.0, [320.0, 240.0]), [10.0, -66.0]);
+    }
+
+    #[test]
+    fn the_backdrop_pads_the_text_box_and_scales_with_it() {
+        assert_eq!(
+            backdrop_rect([100.0, 50.0], 40.0, 2.0),
+            [96.0, 46.0, 88.0, 26.0]
+        );
+    }
+
+    #[test]
+    fn the_backdrop_alpha_follows_the_fade_and_keeps_the_colour() {
+        assert_eq!(backdrop_argb(0x40_000000, 255), 0x40_000000);
+        assert_eq!(backdrop_argb(0x40_102030, 0), 0x00_102030);
+        assert_eq!(backdrop_argb(0xFF_000000, 128), 0x80_000000);
+        assert_eq!(backdrop_argb(0x00_000000, 255), 0);
+        assert_eq!(backdrop_argb(0x40_000000, 999), 0x40_000000);
     }
 }

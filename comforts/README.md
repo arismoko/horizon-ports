@@ -1,6 +1,6 @@
 # Comforts for Sunrise
 
-A pure typed-API port of [Comforts](https://github.com/illusivesoulworks/comforts) (26.x, LGPL-3.0-or-later) by Illusive Soulworks to Sunrise (Minecraft Java 26.3, Dev 1 (`dev-2026-11-25-bdad86d`)), adding sleeping bags, hammocks, and rope & nail without changing your respawn point.
+A pure typed-API port of [Comforts](https://github.com/illusivesoulworks/comforts) (26.x, LGPL-3.0-or-later) by Illusive Soulworks to Sunrise (Minecraft Java 26.3, Dev 2), adding sleeping bags, hammocks, and rope & nail without changing your respawn point.
 
 ## Features
 
@@ -19,10 +19,10 @@ A pure typed-API port of [Comforts](https://github.com/illusivesoulworks/comfort
   - Server settings relevant to client UX (`autoUse`, `sleepingBagUse`, `hammockUse`) sync over `comforts:client_sync` on login and config reload.
 - **Assets & Localization:** All 16 colours of sleeping bags and hammocks, rope & nail (supporting and unsupporting models), block & item tags, timeline wake marker (`data/comforts/timeline/sleep_schedule.json`), loot tables, 66 conditional recipes, and all 17 upstream language files.
 
-## Known Differences on Dev 1 (`dev-2026-11-25-bdad86d`)
+## Known Differences on Dev 2
 
 - **Engine bed identification (`IBlockExtension.isBed`):** Player sleep on sleeping bags and hammocks runs through Comforts' sleep lifecycle and `can_continue_sleeping`, while engine-level bed checks (`Game::is_bed`, `LivingRef::start_sleeping`, `bed_wake_pose`) still match only `*_bed` block ids, so villagers do not claim sleeping bags or hammocks on their own (gap: sunrise-org/sunrise#5557).
-- **Daytime sleeping percentage below vanilla & live status line:** Raising `daySleepingPercentage` above `players_sleeping_percentage` blocks premature daytime skips via `sleep_skip_night`, while lowering it below `players_sleeping_percentage` awaits a `SleepStatus.sleepersNeeded` hook (gap: sunrise-org/sunrise#5558). The daytime sleep status action-bar line (`comforts.skipping_day`) is sent when skipping day rather than live on every sleep count update (gap: sunrise-org/sunrise#5376).
+- **Daytime sleeping percentage & live status line:** `daySleepingPercentage` (when set, `>= 0`) replaces `players_sleeping_percentage` for daytime naps through the `sleepers_needed` hook, above or below the vanilla value. The daytime action-bar line (`comforts.skipping_day`) is shown live on every sleep count change through the `sleep_status_announce` hook, in place of vanilla's line.
 - **Cat bed AI & hammock jump tweak:** Sleeping bags and hammocks report `PathType::Walkable`, while cat lie-on-bed / sit-on-bed / relax-on-owner goals and the hammock `WalkNodeEvaluator` jump tweak await cat AI hooks (gap: sunrise-org/sunrise#5559).
 - **Remote sleeper pose offset & auto-sleep arm swing:** Local sleepers are positioned directly onto the lowered sleeping bag (`0.1875`) and hammock (`0.0625`) surfaces; remote sleeper vertical model offset (`-0.375` / `-0.5`) and clearing the auto-sleep arm swing animation await client player-render and arm-swing hooks (gap: sunrise-org/sunrise#5560).
 - **Block item display names:** Sleeping bags, hammocks, and rope & nail show raw `block.comforts.<id>` names in-game because Sunrise gives a declared block's item the block's translation key while upstream Comforts' language files define `item.comforts.<id>` keys (gap: sunrise-org/sunrise#5574).

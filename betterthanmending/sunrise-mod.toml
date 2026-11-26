@@ -1,7 +1,7 @@
 # Better Than Mending for Sunrise: native code in src/.
 id = "betterthanmending"
 name = "Better Than Mending"
-version = "0.5.3"
+version = "0.5.4"
 description = "Sneak and use a damaged Mending item to repair it with your own experience."
 authors = ["legobmw99", "arismoko"]
 license = "GPL-3.0-only"
@@ -11,4 +11,4 @@ side = "both"
 
 [native]
 game = "26.3"
-sunrise = "6a02076f89cd189d74d63492dda5b023fa85a38f"
+sunrise = "ba1f24e4ad41246b558230aa665539dc768b1287"

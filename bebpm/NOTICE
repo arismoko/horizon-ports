@@ -1,0 +1,9 @@
+BEBPM for Sunrise (version 1.0.0)
+
+A port of BEBPM 1.0.0 by CozyStudios.
+Original source: https://www.curseforge.com/projects/1462757
+Original licence: CC0-1.0
+
+Ported to Sunrise by arismoko: the rules are re-implemented in Rust on Sunrise's mod API (no Java
+code is included). This port is distributed under the same licence as the original (CC0-1.0); the
+licence text is in LICENSE.

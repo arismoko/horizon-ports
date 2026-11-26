@@ -36,7 +36,7 @@ fn block_in_tag(host: &dyn Host, key: BlockKey, tag: &str) -> bool {
     Identifier::parse(tag)
         .ok()
         .and_then(|id| tags.key(&id))
-        .and_then(|tag| tags.block_in_tag(key, tag))
+        .and_then(|tag| tags.block_in_tag(key, tag.typed()))
         == Some(true)
 }
 

@@ -1,0 +1,12 @@
+{
+  "values": [
+    "#minecraft:leaves",
+    "#minecraft:fences",
+    "#minecraft:fence_gates",
+    "#minecraft:walls",
+    "#minecraft:doors",
+    "#minecraft:trapdoors",
+    "minecraft:glass",
+    "minecraft:iron_bars"
+  ]
+}

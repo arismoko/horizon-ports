@@ -1,3 +1,5 @@
+#![deny(unsafe_code)]
+
 //! Show Me What You Got by Apace for Sunrise: in an inventory, Left Ctrl and the chat key over an
 //! item open the chat with the item's name in it. Sending the line shows everyone the item's
 //! hoverable name in its place, as vanilla's `ItemStack.getDisplayName` shows it, and an item
@@ -121,6 +123,8 @@ struct Row {
     stack: ItemStack,
     text: Text,
     argb: u32,
+    /// The language reads right to left: the item follows its name.
+    rtl: bool,
 }
 
 impl TooltipComponentData for Row {}
@@ -135,10 +139,8 @@ impl ClientTooltipComponent for Row {
     }
 
     fn draw_text(&self, font: &dyn TooltipFont, x: i32, y: i32, draw: &mut dyn DrawContext) {
-        let at = [
-            (x + ICON + GAP) as f32,
-            (y + (self.height(font) - LINE) / 2) as f32,
-        ];
+        let text_x = if self.rtl { x } else { x + ICON + GAP };
+        let at = [text_x as f32, (y + (self.height(font) - LINE) / 2) as f32];
         let _ = draw.text_with_font(font.id(), &self.text, at, self.argb, true);
     }
 
@@ -153,7 +155,12 @@ impl ClientTooltipComponent for Row {
     ) {
         let count = self.stack.count();
         let label = (count > 1).then(|| count.to_string());
-        let at = [x as f32, (y + (self.height(font) - ICON) / 2) as f32];
+        let icon_x = if self.rtl {
+            x + font.width(&self.text).unwrap_or(0) + GAP
+        } else {
+            x
+        };
+        let at = [icon_x as f32, (y + (self.height(font) - ICON) / 2) as f32];
         draw.gui_draw_item_with(&self.stack, at, Some(label.as_deref().unwrap_or("")));
     }
 }
@@ -187,6 +194,7 @@ impl Hooks for Mod {
             stack: row.stack.clone(),
             text: row.text.clone(),
             argb: row.argb,
+            rtl: row.rtl,
         });
     }
 
@@ -302,6 +310,7 @@ impl Hooks for Mod {
                 stack: event.stack.clone(),
                 text: text.clone(),
                 argb,
+                rtl: host.language_right_to_left(),
             };
             event.elements[0] = TooltipElement::Component(TooltipComponent::custom(row));
         }

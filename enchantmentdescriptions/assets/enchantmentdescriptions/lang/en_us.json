@@ -209,5 +209,8 @@
   "enchdesc.config.display_activate_text": "Show Shift Hint",
   "enchdesc.config.display_activate_text.tooltip": "While Shift is required and not held, show a hint line to hold it.",
   "enchdesc.config.color": "Description Colour",
-  "enchdesc.config.color.tooltip": "The colour of description lines. Bold, italic, a prefix and a suffix are set in config/enchantmentdescriptions.toml."
+  "enchdesc.config.color.tooltip": "The colour of description lines. Bold, italic, a prefix and a suffix are set in config/enchantmentdescriptions.toml.",
+  "enchdesc.category.display": "Display",
+  "enchdesc.category.hint": "Shift Hint",
+  "enchdesc.category.style": "Style"
 }

@@ -1,3 +1,5 @@
+#![deny(unsafe_code)]
+
 //! Sooty Chimneys for Sunrise: seven chimneys, each clean and dirty, that smoke in the wind,
 //! get sooty while they work, and are scraped clean with an axe.
 //!
@@ -7,19 +9,21 @@
 mod model;
 
 use std::collections::BTreeMap;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, LazyLock, Mutex, MutexGuard, OnceLock};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use mod_api::{
     AddDestroyEffectsEvent, Block, BlockEntityClientTickEvent, BlockEntityPart, BlockKey,
     BlockMetadata, BlockPart, BlockProperties, BlockShapes, BlockState, BlockStateProperty,
-    BlocksEvent, BuildCreativeModeTabContentsEvent, ClientHost, ConfigEvent, ConfigKind,
-    ConfigSnapshot, ConfigSpec, CreativeTabPlacement, CreativeTabVisibility, EquipmentSlot, Flow,
-    Hand, Hooks, Host, HostBlockStates, HostSide, InteractionResult, ItemKey, ItemStack,
-    LegacyRandomSource, LevelHost, LevelRef, LevelTickPostEvent, LevelWriteHost, LivingRef,
-    NeighborChangedEvent, NoteInstrument, ParticleKey, ParticleOptions, RandomSource,
-    RandomTickEvent, RandomTicks, Registrar, RegistrationContext, ServerHost, SetPlacedByEvent,
-    SoundPlay, SoundSource, StatType, TagKey, Text, UseItemOnEvent, UseWithoutItemEvent,
+    BlocksEvent, BuildCreativeModeTabContentsEvent, ClientHost, ClientParticleAddEvent,
+    ConfigEvent, ConfigKind, ConfigSnapshot, ConfigSpec, CreativeTabPlacement,
+    CreativeTabVisibility, EquipmentSlot, Flow, Hand, Hooks, Host, HostBlockStates, HostSide,
+    InteractionResult, ItemKey, ItemStack, LegacyRandomSource, LevelHost, LevelRef,
+    LevelTickPostEvent, LevelWriteHost, LivingRef, NeighborChangedEvent, NoteInstrument,
+    OnPlaceEvent, ParticleKey, ParticleOptions, RandomSource, RandomTickEvent, RandomTicks,
+    Registrar, RegistrationContext, SoundPlay, SoundSource, StatType, TagKey, Text, UseItemOnEvent,
+    UseWithoutItemEvent,
 };
 use model::{
     CLEAN_HARDNESS, KINDS, RESISTANCE, ScrapingRecipe, Settings, TimeOfDay, Weather, Wind,
@@ -38,9 +42,9 @@ struct Keys {
     /// Each kind's clean and dirty block, in `KINDS` order.
     blocks: [[BlockKey; 2]; 7],
     items: [[ItemKey; 2]; 7],
-    scrapers: TagKey,
-    smoke_blocking: TagKey,
-    smoke_boosting: TagKey,
+    scrapers: TagKey<ItemKey>,
+    smoke_blocking: TagKey<BlockKey>,
+    smoke_boosting: TagKey<BlockKey>,
     cosy_smoke: ParticleKey,
     signal_smoke: ParticleKey,
     smoke: ParticleKey,
@@ -57,6 +61,9 @@ impl Keys {
         })
     }
 }
+
+/// Set while the chimneys add their own smoke, which the wind has already moved.
+static OWN_SMOKE: AtomicBool = AtomicBool::new(false);
 
 static KEYS: OnceLock<Keys> = OnceLock::new();
 
@@ -156,17 +163,15 @@ struct Chimney {
     dirty: bool,
 }
 
-#[mod_api::sunrise_part]
-impl BlockPart for Chimney {
+impl Chimney {
     /// `updateState`: stacked under another chimney, lit unless powered or over an unlit
     /// chimney. A dirty chimney with one put on top comes clean in a cloud of soot.
-    fn neighbor_changed(&self, level: &mut dyn LevelWriteHost, event: &mut NeighborChangedEvent) {
+    fn update_state(&self, level: &mut dyn LevelWriteHost, pos: [i32; 3], current: BlockState) {
         let keys = keys();
-        let pos = [event.pos.x, event.pos.y, event.pos.z];
         let stacked = level
             .block_state(offset_by(pos, 1))
             .is_some_and(|above| keys.chimney(above.block()).is_some());
-        let mut state = event.state;
+        let mut state = current;
         let cleaned = stacked && self.dirty;
         if cleaned {
             let Some(clean) = level.block_state_default(keys.blocks[self.kind][0]) else {
@@ -185,59 +190,26 @@ impl BlockPart for Chimney {
                 .with(&states, "lit", text(lit))
                 .and_then(|state| state.with(&states, "stacked", text(stacked)))
         };
-        if let Ok(next) = next {
+        // A write of the same state would only place again.
+        if let Ok(next) = next
+            && next != current
+        {
             level.set_block(pos, next, flags());
         }
     }
+}
 
-    /// `onPlace`'s `updateState`, for a chimney placed by an item or by a part
-    /// (`Block.setPlacedBy`): the game has no `onPlace` hook yet (sunrise-org/sunrise#5302), so
-    /// a chimney set by other code waits for its next neighbour change.
-    fn set_placed_by(&self, host: &mut dyn ServerHost, event: &mut SetPlacedByEvent<'_>) {
-        let keys = keys();
-        let (level, pos) = (event.level, event.pos);
-        let stacked = level
-            .block_state(&*host, offset_by(pos, 1))
-            .is_some_and(|above| keys.chimney(above.block()).is_some());
-        let mut state = event.state;
-        if stacked && self.dirty {
-            let Some(clean) = host.block_state_default(keys.blocks[self.kind][0]) else {
-                return;
-            };
-            state = clean;
-            let large_smoke = ParticleOptions::simple(keys.large_smoke);
-            let mut i = 0;
-            while level
-                .with_random(host, |random| random.next_int_range(12, 20))
-                .is_some_and(|bound| i < bound)
-            {
-                let _ = level.send_particles(
-                    host,
-                    &large_smoke,
-                    None,
-                    soot_spot(pos),
-                    [0.0; 3],
-                    0.0,
-                    1,
-                );
-                i += 1;
-            }
-        }
-        let unlit_below = level
-            .block_state(&*host, offset_by(pos, -1))
-            .is_some_and(|below| {
-                keys.chimney(below.block()).is_some() && !flag(&host.block_states(), below, "lit")
-            });
-        let lit = !level.has_neighbor_signal(&*host, pos) && !unlit_below;
-        let next = {
-            let states = host.block_states();
-            state
-                .with(&states, "lit", text(lit))
-                .and_then(|state| state.with(&states, "stacked", text(stacked)))
-        };
-        if let Ok(next) = next {
-            let _ = level.set_block(host, pos, next, flags());
-        }
+#[mod_api::sunrise_part]
+impl BlockPart for Chimney {
+    /// `updateState` after a neighbour changed.
+    fn neighbor_changed(&self, level: &mut dyn LevelWriteHost, event: &mut NeighborChangedEvent) {
+        self.update_state(level, [event.pos.x, event.pos.y, event.pos.z], event.state);
+    }
+
+    /// `onPlace`'s `updateState`, for every new chimney state: an item placement, a command,
+    /// a structure or a piston all set the chimney up at once.
+    fn on_place(&self, level: &mut dyn LevelWriteHost, event: &mut OnPlaceEvent) {
+        self.update_state(level, [event.pos.x, event.pos.y, event.pos.z], event.state);
     }
 
     /// `randomTick`: a working clean chimney gets dirty with the configured chance.
@@ -523,9 +495,11 @@ impl BlockEntityPart for Smoke {
         } else {
             keys.cosy_smoke
         });
+        OWN_SMOKE.store(true, Ordering::Relaxed);
         for puff in puffs {
             host.add_particle(&options, puff.at, puff.velocity);
         }
+        OWN_SMOKE.store(false, Ordering::Relaxed);
     }
 }
 
@@ -593,9 +567,9 @@ impl Hooks for Mod {
         let _ = KEYS.set(Keys {
             blocks,
             items,
-            scrapers: r.tag_key("sootychimneys:soot_scrapers"),
-            smoke_blocking: r.tag_key(SMOKE_BLOCKING),
-            smoke_boosting: r.tag_key(SMOKE_BOOSTING),
+            scrapers: r.tag_key("sootychimneys:soot_scrapers").typed(),
+            smoke_blocking: r.tag_key(SMOKE_BLOCKING).typed(),
+            smoke_boosting: r.tag_key(SMOKE_BOOSTING).typed(),
             cosy_smoke: r.particle_key("minecraft:campfire_cosy_smoke"),
             signal_smoke: r.particle_key("minecraft:campfire_signal_smoke"),
             smoke: r.particle_key("minecraft:smoke"),
@@ -670,6 +644,21 @@ impl Hooks for Mod {
                 lock(&WIND).update(state, &mut *lock(&CLIENT_RANDOM));
             }
         }
+    }
+
+    /// `WindAffectsCampfire`: the wind bends the smoke of campfires (not the chimneys' own,
+    /// which already follow it) as it is added.
+    fn client_particle_add(&self, event: &mut ClientParticleAddEvent<'_>) -> Flow {
+        let settings = settings();
+        if !(settings.wind && settings.wind_affects_campfire) || OWN_SMOKE.load(Ordering::Relaxed) {
+            return Flow::Continue;
+        }
+        let keys = keys();
+        if event.options.key() == keys.cosy_smoke || event.options.key() == keys.signal_smoke {
+            let wind = *lock(&WIND);
+            *event.velocity = model::campfire_velocity(*event.velocity, &wind, &settings);
+        }
+        Flow::Continue
     }
 
     /// The chimneys go at the end of Functional Blocks, each clean one before its dirty one.

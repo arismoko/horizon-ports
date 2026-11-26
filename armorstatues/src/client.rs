@@ -511,6 +511,9 @@ fn initial_tab_for(mode: SyncMode) -> Tab {
     }
 }
 
+/// Permission level `/data` and `/attribute` need (`Commands.LEVEL_GAMEMASTERS`).
+const COMMAND_PERMISSION_LEVEL: u8 = 2;
+
 /// Reads an armor stand's synced custom name on the client: `None` when it has none.
 fn read_client_custom_name(host: &dyn ClientHost, entity: EntityRef) -> Option<String> {
     let name = entity.custom_name(host).ok().flatten()?;
@@ -523,6 +526,16 @@ pub fn open_client_only_screen(host: &mut dyn ClientHost, entity_id: u32) -> boo
         return false;
     };
     if player.may_build(host) != Some(true) {
+        return false;
+    }
+    // The permission level the server last sent (`LocalPlayer.permissionLevel`); `None` before
+    // the server has sent one. The stand editor's commands (`/data merge`, `/attribute`) need
+    // the gamemaster level (2), so a player known to lack it is refused here instead of
+    // queueing commands the server would reject.
+    if player
+        .permission_level(host)
+        .is_some_and(|level| level < COMMAND_PERMISSION_LEVEL)
+    {
         return false;
     }
     let Some(entity) = host.entity(entity_id) else {
@@ -566,6 +579,24 @@ pub fn open_client_only_screen(host: &mut dyn ClientHost, entity_id: u32) -> boo
         });
     stand.entity_id = entity_id;
     stand.creative = creative;
+    if let (Some(pose), Some(flags)) = (
+        entity.armor_stand_pose(host),
+        entity.armor_stand_flags(host),
+    ) {
+        stand.apply_live(
+            [
+                pose.head,
+                pose.body,
+                pose.left_arm,
+                pose.right_arm,
+                pose.left_leg,
+                pose.right_leg,
+            ],
+            flags.small,
+            flags.show_arms,
+            flags.show_base_plate,
+        );
+    }
     stand.pos = pos;
     stand.yaw = yaw;
     stand.pitch = pitch;

@@ -9,13 +9,13 @@ A port of [Better Days](https://github.com/wendall911/BetterDays) 4.1.1.7 by wen
 - Sets the overworld clock's speed every tick from your settings: separate day and night ratios, lengths in real minutes, 12 real hours, or a day length by season and latitude, with the day beginning at `dayStart` and the night at `nightStart`.
 - Interpolated time: a list of `tick,speed` pairs with a smooth curve between them.
 - Sleeping speeds time up with the share of players in bed (a tunable curve between `sleepSpeedMin` and `sleepSpeedMax`, a fixed speed when all sleep, and a minimum share to start). Vanilla's night skip is held back while they sleep; at sunrise the morning notice goes out and everyone wakes up.
+- Hides vanilla's "players sleeping" line above the hotbar in the overworld while the sleep feature is on.
 - Notices when someone gets into or out of bed and when the morning comes, with `${player}`, `${totalPlayers}`, `${sleepingPlayers}` and `${sleepingPercentage}` and `§` colour codes, sent as a chat line or above the hotbar, to everyone, the dimension or the sleepers.
 - A clock on the in-bed screen, placed by `clockAlignment`, `clockScale` and `clockMargin`.
 - `config/betterdays-common.toml` and `config/betterdays-client.toml`, reloaded live.
 
 ## Differences from the original
 
-- In multiplayer, vanilla's "players sleeping" line above the hotbar still shows while players sleep (sunrise-org/sunrise#5376).
 - The weather, potion, hunger and block entity effects are not in this version (sunrise-org/sunrise#5281, sunrise-org/sunrise#5282).
 - The season mode uses the early-spring day, as the original does without a seasons mod.
 - There is no in-game config screen (sunrise-org/sunrise#1217).

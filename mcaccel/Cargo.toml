@@ -1,6 +1,6 @@
 [package]
 name = "mod-mcaccel"
-version = "0.5.3"
+version = "0.5.4"
 edition = "2024"
 license = "CC0-1.0"
 description = "Minecraft Accelerated for Sunrise: shears carve faces into pumpkins and jack o'lanterns"

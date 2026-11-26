@@ -1,0 +1,15 @@
+# Bad Wither No Cookie - Reloaded for Sunrise: server & client native code on the typed mod API.
+id = "badwithernocookie"
+name = "Bad Wither No Cookie - Reloaded"
+version = "0.5.2"
+description = "Silences loud global and mob sounds, with configurable toggles, Silence books for headwear, and operator commands."
+authors = ["Kreezxil", "Eleksploded", "arismoko"]
+license = "MIT"
+credits = "Original mod by Kreezxil and Eleksploded (MIT); ported to Sunrise by arismoko."
+homepage = "https://github.com/arismoko/sunrise-ports"
+side = "both"
+namespaces = ["bwncr"]
+
+[native]
+game = "26.3"
+sunrise = "ba1f24e4ad41246b558230aa665539dc768b1287"

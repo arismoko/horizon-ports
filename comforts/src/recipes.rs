@@ -56,7 +56,7 @@ impl BoundIngredient {
             return expected == item;
         }
         if let Some(tag) = self.tag_key {
-            return context.is_in_tag(item, tag) == Some(true);
+            return context.is_in_tag(item, tag.typed()) == Some(true);
         }
         if !self.choice_keys.is_empty() {
             return self.choice_keys.contains(&item);
@@ -326,7 +326,7 @@ fn condition_holds(context: &dyn LoopContext, condition: RecipeCondition) -> boo
     let common = common_config();
     let has_ropes = if condition == RecipeCondition::HammockAndRopes {
         context
-            .items_in_tag(keys().tag_ropes)
+            .items_in_tag(keys().tag_ropes.typed())
             .is_some_and(|items| !items.is_empty())
     } else {
         true

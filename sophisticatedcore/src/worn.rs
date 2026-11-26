@@ -11,7 +11,7 @@ use std::sync::{Arc, Mutex, OnceLock};
 use mod_api::{
     BlockEntityDrawContext, BlockState, EntityLayers, EntityRenderLayer, EntityRenderState,
     EquipmentSlot, FrameModel, Host, LayerTarget, LivingRef, PayloadBytes, PayloadId, PlayerModel,
-    ServerHost,
+    ServerHost, StockLayerDraw,
 };
 
 use crate::contents;
@@ -174,6 +174,7 @@ impl EntityRenderLayer for Backpack {
         entity: &EntityRenderState,
         model: Option<&dyn FrameModel>,
         draw: &mut dyn BlockEntityDrawContext,
+        _stock: &mut dyn StockLayerDraw,
     ) -> Result<(), String> {
         let Some(tier) = seen().get(&entity.id).copied() else {
             return Ok(());

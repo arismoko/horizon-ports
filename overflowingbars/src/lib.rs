@@ -45,6 +45,8 @@ struct Snapshot {
     /// The height of vanilla's right-hand status column as the current layer starts
     /// (`ClientHost::gui_status_heights`), only inside the HUD pass.
     status_right: Option<i32>,
+    /// The local player's exact damage cooldown (`EntityRef::damage_cooldown_time`).
+    damage_cooldown: Option<i32>,
     tick: i64,
     millis: u64,
 }
@@ -71,6 +73,7 @@ fn read_snapshot(host: &dyn ClientHost) -> Option<Snapshot> {
             .and_then(|level| level.is_hardcore(host))
             .unwrap_or(false),
         status_right: host.gui_status_heights().map(|[_, right]| right),
+        damage_cooldown: player.entity().damage_cooldown_time(host),
         tick: i64::from(host.gui_ticks()),
         millis: host.millis(),
     })
@@ -100,6 +103,9 @@ struct Heights {
     armor: i32,
     toughness_left: i32,
     toughness_right: i32,
+    /// The left status column once the health bar is drawn, and once the armor bar is.
+    left_after_health: i32,
+    left_after_armor: i32,
 }
 
 fn heights(cfg: &Config, snap: &Snapshot) -> Heights {
@@ -123,6 +129,8 @@ fn heights(cfg: &Config, snap: &Snapshot) -> Heights {
     let armor_base = BASE_HEIGHT + health_used;
     let armor = armor_base + cfg.armor.row_shift * logic::ROW_HEIGHT;
     Heights {
+        left_after_health: armor_base,
+        left_after_armor: armor_base + armor_used,
         health,
         armor,
         toughness_left: armor_base + armor_used + cfg.toughness.row_shift * logic::ROW_HEIGHT,
@@ -131,6 +139,17 @@ fn heights(cfg: &Config, snap: &Snapshot) -> Heights {
         toughness_right: snap.status_right.unwrap_or(BASE_HEIGHT + 10)
             + cfg.toughness.row_shift * logic::ROW_HEIGHT,
     }
+}
+
+/// Publish the status columns' heights after a bar replaced vanilla's row, as assigning
+/// NeoForge's `Hud.leftHeight` / `rightHeight` does, so the rows drawn after it (food, air, other
+/// mods' bars) stack above ours. `None` keeps a column as it is. Refused outside the HUD pass.
+fn publish_status_heights(host: &dyn ClientHost, left: Option<i32>, right: Option<i32>) {
+    let Some([current_left, current_right]) = host.gui_status_heights() else {
+        return;
+    };
+    let _ =
+        host.set_gui_status_heights([left.unwrap_or(current_left), right.unwrap_or(current_right)]);
 }
 
 /// One primitive of a bar, drawn together with the rest of its bar.
@@ -257,7 +276,7 @@ fn paint_health(draw: &mut dyn DrawContext, cfg: &Config, snap: &Snapshot) {
     let x = width / 2 - 91;
     let y = height - heights(cfg, snap).health;
     let current = snap.health.ceil().clamp(-1e6, 1e6) as i32;
-    let frame = tracker().update(current, snap.tick, snap.millis);
+    let frame = tracker().update(current, snap.tick, snap.millis, snap.damage_cooldown);
     let max_health = snap
         .max_health
         .max(frame.display as f32)
@@ -355,6 +374,7 @@ fn stacked(
     ctx: &mut dyn GuiLayerWrapContext,
     on: fn(&Config) -> bool,
     paint: fn(&mut dyn DrawContext, &Config, &Snapshot),
+    published_left: fn(&Heights) -> i32,
 ) {
     let cfg = Config::read(ctx.host());
     if !on(&cfg) {
@@ -369,6 +389,11 @@ fn stacked(
         return;
     };
     ctx.with_draw(&mut |draw| paint(draw, &cfg, &snap));
+    publish_status_heights(
+        ctx.host(),
+        Some(published_left(&heights(&cfg, &snap))),
+        None,
+    );
 }
 
 #[derive(Default)]
@@ -388,11 +413,25 @@ impl Hooks for OverflowingBars {
         let layers = &mut event.layers;
         layers.wrap_layer(
             LAYER_HEALTH,
-            Box::new(|ctx| stacked(ctx, |c| c.health.allow_layers, paint_health)),
+            Box::new(|ctx| {
+                stacked(
+                    ctx,
+                    |c| c.health.allow_layers,
+                    paint_health,
+                    |h| h.left_after_health,
+                )
+            }),
         );
         layers.wrap_layer(
             LAYER_ARMOR,
-            Box::new(|ctx| stacked(ctx, |c| c.armor.allow_layers, paint_armor)),
+            Box::new(|ctx| {
+                stacked(
+                    ctx,
+                    |c| c.armor.allow_layers,
+                    paint_armor,
+                    |h| h.left_after_armor,
+                )
+            }),
         );
         for (id, anchor, left) in [
             (LAYER_TOUGHNESS_LEFT, LAYER_ARMOR, true),
@@ -408,6 +447,14 @@ impl Hooks for OverflowingBars {
                     }
                     if let Some(snap) = read_snapshot(host) {
                         paint_toughness(draw, &cfg, &snap, left);
+                        if snap.toughness > 0 {
+                            let h = heights(&cfg, &snap);
+                            if left {
+                                publish_status_heights(host, Some(h.toughness_left + 10), None);
+                            } else {
+                                publish_status_heights(host, None, Some(h.toughness_right + 10));
+                            }
+                        }
                     }
                 }),
             );
@@ -434,5 +481,50 @@ impl Hooks for OverflowingBars {
             cfg.toughness_left,
         );
         event.y = event.y.saturating_sub(offset);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn snapshot(max_health: f32, absorption: f32, armor: i32) -> Snapshot {
+        Snapshot {
+            health: max_health,
+            max_health,
+            absorption,
+            armor,
+            toughness: 0,
+            regenerating: false,
+            poisoned: false,
+            withered: false,
+            hardcore: false,
+            status_right: Some(49),
+            damage_cooldown: None,
+            tick: 0,
+            millis: 0,
+        }
+    }
+
+    #[test]
+    fn published_columns_stack_the_rows_the_bars_take() {
+        let cfg = Config::default();
+        let one = heights(&cfg, &snapshot(20.0, 0.0, 10));
+        assert_eq!(one.left_after_health, 49);
+        assert_eq!(one.left_after_armor, 59);
+        assert_eq!(one.toughness_right, 49);
+        // Absorption makes a second health row, and no armor adds nothing.
+        let two = heights(&cfg, &snapshot(20.0, 4.0, 0));
+        assert_eq!(two.left_after_health, 59);
+        assert_eq!(two.left_after_armor, 59);
+    }
+
+    #[test]
+    fn a_row_shift_moves_the_published_height() {
+        let mut cfg = Config::default();
+        cfg.armor.row_shift = 1;
+        let h = heights(&cfg, &snapshot(20.0, 0.0, 10));
+        assert_eq!(h.left_after_armor, 69);
+        assert_eq!(h.armor, 49 + logic::ROW_HEIGHT);
     }
 }

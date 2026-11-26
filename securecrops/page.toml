@@ -3,15 +3,13 @@ description = """
 Jumping or falling onto farmland no longer has to turn it back to dirt. Three game rules, all off by default, decide what a trample does:
 
 - `securecrops:secure_farmland_and_crops`: farmland with a crop on it stays, and so does the crop.
-- `securecrops:secure_farmland_break_crops`: farmland with a crop on it stays, and the crop is meant to break and drop its items (see the differences below).
+- `securecrops:secure_farmland_break_crops`: farmland with a crop on it stays, and the crop breaks and drops its items.
 - `securecrops:secure_farmland_if_empty`: farmland with nothing on it stays.
 
 Turn them on with `/gamerule`, for example `/gamerule securecrops:secure_farmland_and_crops true`, or on the in-world game rules screen under "Secure Crops". A crop is anything vanilla keeps farmland moist for (`#minecraft:maintains_farmland`). Players and mobs are treated alike, and fall damage happens as usual. Install it on the server; clients need it only for the rule names in English and French.
 
 Differences from the original:
 
-- With "break crops", the farmland stays but the crop doesn't break yet: it stays too, as with "and crops" ([sunrise-org/sunrise#5372](https://github.com/sunrise-org/sunrise/issues/5372)).
-- The rules aren't on the Create World screen's Game Rules page yet; set them in the world ([sunrise-org/sunrise#5373](https://github.com/sunrise-org/sunrise/issues/5373)).
 - Rule names follow 26.3's game rule ids (`securecrops:secure_farmland_and_crops`), where the original's were `secureFarmlandAndCrops`.
 
 A port of Secure Crops by zekk051, under the MIT licence.

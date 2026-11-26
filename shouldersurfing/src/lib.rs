@@ -12,10 +12,10 @@ mod pick;
 
 use crate::camera::{OffsetCfg, OffsetCtx, Offsets, Rotation};
 use crate::config::{
-    CrosshairType, K, Lists, MOD_ID, Origin, TurningMode, Values, Visibility, register_mod_configs,
-    register_settings, write_bool, write_choice, write_f64,
+    CrosshairType, K, Lists, MOD_ID, Origin, TurningMode, Values, ViewBobbing, Visibility,
+    register_mod_configs, register_settings, write_bool, write_choice, write_f64,
 };
-use crate::crosshair::{Adaptive, MapLayout, Obstruction, StackFacts};
+use crate::crosshair::{Adaptive, AttackIndicator, MapLayout, Obstruction, StackFacts};
 use crate::math::V3;
 use crate::pattern::PatternList;
 use crate::persp::{Enabled, Perspective};
@@ -24,10 +24,10 @@ use mod_api::{
     BlockFace, BlockHit, BlockPos, CameraDistanceEvent, CameraPositionEvent, CameraType,
     CameraTypeCycleEvent, ClientHost, ClientPickEvent, ClientTickPreEvent, ClipBlock, ClipFluid,
     ComputeCameraAnglesEvent, ComputeFovEvent, CrosshairTarget, DrawContext, EntityRef, Flow,
-    GuiCanvas, GuiDrawError, Hand, Hooks, Host, HudMode, ItemStack, KeyConflictContext,
-    KeyRegistration, LevelRef, ModKeyMappingRef, MovementInputUpdateEvent, PlaySoundEvent,
-    PlayerTurnEvent, RegisterGuiLayersEvent, Registrar, RegistrationContext, RenderGuiPostEvent,
-    RenderPlayerPreEvent, SettingChangedEvent, VanillaKeyMappingRef,
+    GuiCanvas, GuiDrawError, GuiSpriteRegion, Hand, Hooks, Host, HudMode, ItemStack,
+    KeyConflictContext, KeyRegistration, LevelRef, ModKeyMappingRef, MovementInputUpdateEvent,
+    PlaySoundEvent, PlayerTurnEvent, RegisterGuiLayersEvent, Registrar, RegistrationContext,
+    RenderGuiPostEvent, RenderPlayerPreEvent, SettingChangedEvent, VanillaKeyMappingRef,
 };
 use std::sync::{LazyLock, Mutex, MutexGuard};
 
@@ -75,6 +75,9 @@ const VANILLA_FOOD_COMPONENT: &str = "minecraft:food";
 const FILLED_MAP: &str = "minecraft:filled_map";
 const OFFHAND_SLOT: u32 = 40;
 const SPRITE_CROSSHAIR: &str = "minecraft:hud/crosshair";
+const SPRITE_ATTACK_FULL: &str = "minecraft:hud/crosshair_attack_indicator_full";
+const SPRITE_ATTACK_BACKGROUND: &str = "minecraft:hud/crosshair_attack_indicator_background";
+const SPRITE_ATTACK_PROGRESS: &str = "minecraft:hud/crosshair_attack_indicator_progress";
 const SPRITE_OBSTRUCTION_INDICATOR: &str = "shouldersurfing:hud/obstruction_indicator";
 const SPRITE_OBSTRUCTED_CROSSHAIR: &str = "shouldersurfing:hud/obstructed_crosshair";
 const SPRITE_OBSTRUCTED_CROSS: &str = "shouldersurfing:hud/obstructed_crosshair_cross";
@@ -115,6 +118,8 @@ struct Runtime {
     /// Where the player's ray towards the camera's hit ends, for the obstruction indicator.
     obstruction_point: Option<V3>,
     climbing: bool,
+    /// The session view bobbing this mod last set (None while the player's own option applies).
+    bobbing: Option<bool>,
 }
 
 impl Runtime {
@@ -151,6 +156,7 @@ impl Runtime {
             player_point: None,
             obstruction_point: None,
             climbing: false,
+            bobbing: None,
         }
     }
 
@@ -434,6 +440,7 @@ struct Painted {
     crosshair: Option<[f32; 2]>,
     obstructed: bool,
     indicator: Option<[f32; 2]>,
+    attack: AttackIndicator,
 }
 
 enum Plan {
@@ -511,7 +518,29 @@ fn plan_crosshair(host: &dyn ClientHost) -> Plan {
     if p == Perspective::FirstPerson {
         return Plan::Vanilla;
     }
+    painted.attack = attack_indicator_for(host);
     Plan::Draw(painted)
+}
+
+/// The crosshair attack indicator of `Hud.extractCrosshair` for the local player.
+fn attack_indicator_for(host: &dyn ClientHost) -> AttackIndicator {
+    let mode = host.gui_options().attack_indicator;
+    let Some(player) = host.local_player() else {
+        return AttackIndicator::Hidden;
+    };
+    let (Some(scale), Some(delay)) = (
+        player.attack_strength_scale(host, 0.0),
+        player.current_item_attack_strength_delay(host),
+    ) else {
+        return AttackIndicator::Hidden;
+    };
+    let target_living = match host.crosshair_target() {
+        Some(CrosshairTarget::Entity { entity, .. }) => host
+            .living(entity)
+            .map(|l| l.health(host).is_some_and(|h| h > 0.0)),
+        _ => None,
+    };
+    crosshair::attack_indicator(mode, scale, delay, target_living)
 }
 
 fn blit(
@@ -552,6 +581,36 @@ fn paint_crosshair(d: &mut dyn DrawContext, p: &Painted) {
                 Blend::Crosshair,
                 at(Some(n)),
             )?;
+        }
+        // `Hud.extractCrosshair`: 16 pixels below the crosshair, one left of its top-left corner.
+        let (x, y) = (main[0] - 1, main[1] + 16);
+        match p.attack {
+            AttackIndicator::Hidden => {}
+            AttackIndicator::Full => canvas.blit_sprite(
+                SPRITE_ATTACK_FULL,
+                [x as f32, y as f32, 16.0, 16.0],
+                None,
+                0xFFFF_FFFF,
+                Blend::Crosshair,
+            )?,
+            AttackIndicator::Progress(width) => {
+                canvas.blit_sprite(
+                    SPRITE_ATTACK_BACKGROUND,
+                    [x as f32, y as f32, 16.0, 4.0],
+                    None,
+                    0xFFFF_FFFF,
+                    Blend::Crosshair,
+                )?;
+                if width > 0 {
+                    canvas.blit_sprite(
+                        SPRITE_ATTACK_PROGRESS,
+                        [x as f32, y as f32, width as f32, 4.0],
+                        Some(GuiSpriteRegion::new([width, 4], [0, 0])),
+                        0xFFFF_FFFF,
+                        Blend::Crosshair,
+                    )?;
+                }
+            }
         }
         Ok(())
     });
@@ -880,6 +939,9 @@ impl Hooks for ShoulderSurfing {
             rt.default_applied = false;
             rt.surfing = false;
             rt.lock = 0;
+            if rt.bobbing.take().is_some() {
+                host.set_session_view_bobbing(None);
+            }
             return;
         };
         if !rt.default_applied {
@@ -892,6 +954,13 @@ impl Hooks for ShoulderSurfing {
         }
         if rt.surfing && host.camera_type() != CameraType::ThirdPersonBack {
             rt.surfing = false;
+        }
+        // View bobbing for this session only, never written to options.txt (sunrise#5553).
+        let bobbing = ViewBobbing::from_index(rt.values.c(K::ViewBobbingMode))
+            .session_value(rt.is_surfing(&*host));
+        if bobbing != rt.bobbing {
+            host.set_session_view_bobbing(bobbing);
+            rt.bobbing = bobbing;
         }
 
         // Presses.

@@ -1,0 +1,18 @@
+summary = "Enchanting tables count bookshelves up to 16 blocks away, with optional line of sight."
+description = """
+Enchanting tables count bookshelves further away than vanilla's two-block ring.
+
+- **Wider search box**: the default radius is 10 in every direction; X, Z, up and down are set from 0 to 16 in Options → Mods (never below vanilla's ring).
+- **Line of sight**: Off, Decor only (solid blocks between table and shelf block it, except blocks in `#bebpm:power_permeable`) or On (every block between must transmit power).
+- **Particles** come from every shelf that counts.
+
+Install on both client and server. Settings take effect after a restart.
+
+Differences from the original:
+
+- Settings are in Options → Mods instead of Cloth Config; the extra blocking-block list is the `#bebpm:power_permeable` tag.
+- The sampling along the line of sight may differ from the original at diagonals.
+
+A port of BEBPM by CozyStudios, under the CC0-1.0 licence.
+"""
+categories = ["utility"]

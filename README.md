@@ -64,3 +64,6 @@ Mods on our radar that aren't being worked on now are in [RADAR.md](RADAR.md), w
 
 Bugs and requests go in this repository's issues.
 | [mousewheelie](mousewheelie/) | Scroll items between inventories, sort with the middle button, refill the hotbar. | [Mouse Wheelie](https://github.com/Siphalor/mouse-wheelie) by Siphalor | Apache-2.0 | Being ported |
+| [badwithernocookie](badwithernocookie/) | Wither, dragon and other loud sounds are heard only nearby; Books of Silence quiet chosen sounds for the wearer. | [Bad Wither No Cookie - Reloaded](https://gitlab.com/kreezxil/BadWitherNoCookie) by kreezxil | MIT | Ready to list |
+| [bebpm](bebpm/) | Enchanting tables count bookshelves further away. | [BEBPM](https://www.curseforge.com/projects/1462757) by CozyStudios | CC0-1.0 | Ready to list |
+| [morechathistory](morechathistory/) | Keeps more chat history than vanilla's 100 lines. | [More Chat History](https://github.com/JackFredMods/MoreChatHistory) by JackFred | CC0-1.0 | Ready to list |

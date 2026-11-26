@@ -1,7 +1,7 @@
 # Show Me What You Got for Sunrise: native code in src/.
 id = "smwyg"
 name = "Show Me What You Got"
-version = "0.5.2"
+version = "0.5.3"
 description = "Show the item under your cursor to everyone in chat, with its tooltip on hover."
 authors = ["Apace", "arismoko"]
 license = "MIT"
@@ -11,4 +11,4 @@ side = "both"
 
 [native]
 game = "26.3"
-sunrise = "6a02076f89cd189d74d63492dda5b023fa85a38f"
+sunrise = "ba1f24e4ad41246b558230aa665539dc768b1287"

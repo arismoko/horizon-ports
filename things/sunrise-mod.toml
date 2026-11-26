@@ -1,7 +1,7 @@
 # Things for Sunrise: native code in src/, items and blocks in data/, models and textures in assets/.
 id = "things"
 name = "Things"
-version = "0.5.1"
+version = "0.5.2"
 description = "Trinkets and gadgets: monocle, socks, gloves, an item magnet, an infernal scepter and more."
 authors = ["glisco", "lavoide", "arismoko"]
 license = "MIT"
@@ -11,7 +11,7 @@ side = "both"
 
 [native]
 game = "26.3"
-sunrise = "6a02076f89cd189d74d63492dda5b023fa85a38f"
+sunrise = "ba1f24e4ad41246b558230aa665539dc768b1287"
 
 # The trinkets are worn in Trinkets' slots (the G menu) and read from its `trinkets:worn` attachment.
 # Without it the tools, the Container Key, the Recall Potion and the Bater Wucket still work.

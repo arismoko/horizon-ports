@@ -13,15 +13,15 @@ use crate::config::{
     register_settings,
 };
 use crate::entries::{
-    ClientFallbackTracker, DisplayEntry, EntryCollector, ItemPickup, count_in_local_inventory,
-    is_arrow_item_id, is_stack_enchanted, max_entries_for_height, resolve_stack_rarity,
+    DisplayEntry, EntryCollector, ItemPickup, count_in_local_inventory, is_stack_enchanted,
+    max_entries_for_height, resolve_stack_rarity,
 };
 use crate::hud::render_entries;
 use crate::payloads::{
     Channels, TakeItemPayload, TakeXpPayload, channels, id_take_item, id_take_xp, init_channels,
 };
 use mod_api::{
-    ClientHost, ClientPacketEvent, ClientPlayerCloneEvent, ClientPlayerLoggingOutEvent,
+    ClientHost, ClientPlayerCloneEvent, ClientPlayerLoggingOutEvent, ClientTakeItemEntityEvent,
     ClientTickPostEvent, ConfigEvent, ConfigKind, ConfigSnapshot, Flow, GuiLayerPlacement, Hooks,
     Host, Identifier, ItemPickedUpEvent, ItemPickedUpPostEvent, ItemStack, PickupXpEvent,
     PlayerPickupArrowEvent, RegisterGuiLayersEvent, Registrar, RegistrationContext,
@@ -94,7 +94,6 @@ struct ClientState {
     config: ClientConfig,
     settings_synced: bool,
     collector: EntryCollector,
-    fallback: ClientFallbackTracker,
     server_payloads_seen: bool,
     pending_items: PendingQueue<TakeItemPayload>,
     pending_xp: PendingQueue<TakeXpPayload>,
@@ -110,7 +109,6 @@ impl Default for ClientState {
             config: ClientConfig::default(),
             settings_synced: false,
             collector: EntryCollector::default(),
-            fallback: ClientFallbackTracker::default(),
             server_payloads_seen: false,
             pending_items: PendingQueue::new(MAX_PENDING_ITEMS),
             pending_xp: PendingQueue::new(MAX_PENDING_XP),
@@ -142,6 +140,11 @@ fn set_server_config(cfg: ServerConfig) {
     *SERVER_CONFIG
         .write()
         .unwrap_or_else(PoisonError::into_inner) = cfg;
+}
+
+/// Arrow entities whose item shares their id (vanilla `AbstractArrow.getPickupItem`).
+fn is_arrow_entity_id(id: &str) -> bool {
+    matches!(id, "minecraft:arrow" | "minecraft:spectral_arrow")
 }
 
 fn gui_height_for(host: &dyn ClientHost) -> f32 {
@@ -389,14 +392,42 @@ impl Hooks for PickUpNotifier {
         drain_pending_payloads(&mut state, host);
     }
 
-    fn client_packet(&self, host: &mut dyn ClientHost, event: &mut ClientPacketEvent<'_>) {
+    /// Observes pickups straight from the client's own packet, so it works on servers without
+    /// this mod. Skipped on servers that send this mod's payloads, which carry exact counts.
+    fn client_take_item_entity(
+        &self,
+        host: &dyn ClientHost,
+        event: &mut ClientTakeItemEntityEvent,
+    ) {
         if !host.on(MOD_ID) {
             return;
         }
-        if event.packet.id.namespace() == "minecraft"
-            && event.packet.id.path() == "take_item_entity"
+        let Some(local) = host.local_player() else {
+            return;
+        };
+        if event.collector != Some(local.entity()) {
+            return;
+        }
+        let mut state = lock_client();
+        if !state.config.general.client_only && state.server_payloads_seen {
+            return;
+        }
+        let collected = event.collected;
+        let amount = u32::try_from(event.amount).unwrap_or(0);
+        if let Some(item) = host.item_entity(collected) {
+            if let Some(Some(stack)) = item.with_stack(host, |view| view.project()) {
+                add_item_entry(&mut state, host, stack, amount, false);
+            }
+            return;
+        }
+        let kind = collected
+            .kind(host)
+            .and_then(|key| key.id(host).map(|id| id.to_string()));
+        if let Some(id) = kind.as_deref().filter(|id| is_arrow_entity_id(id))
+            && let Ok(id) = Identifier::parse(id)
+            && let Some(key) = host.item_key(&id)
         {
-            lock_client().fallback.on_take_packet();
+            add_item_entry(&mut state, host, ItemStack::of(key), amount.max(1), true);
         }
     }
 
@@ -424,18 +455,6 @@ impl Hooks for PickUpNotifier {
 
         drain_pending_payloads(&mut state, host);
 
-        let use_fallback = state.config.general.client_only || !state.server_payloads_seen;
-        let (gained_items, gained_xp) = state.fallback.tick_and_diff(host, use_fallback);
-        if use_fallback {
-            for (stack, amount) in gained_items {
-                let is_arrow = stack.item().id(host).is_some_and(is_arrow_item_id);
-                add_item_entry(&mut state, host, stack, amount, is_arrow);
-            }
-            if gained_xp > 0 {
-                add_xp_entry(&mut state, host, gained_xp, 1);
-            }
-        }
-
         if !host.is_paused() {
             let display_time = state.config.behavior.display_time;
             state.collector.tick(display_time);
@@ -449,7 +468,6 @@ impl Hooks for PickUpNotifier {
     ) {
         let mut state = lock_client();
         state.collector.clear();
-        state.fallback.reset();
         state.pending_items.clear();
         state.pending_xp.clear();
         state.server_payloads_seen = false;
@@ -458,7 +476,6 @@ impl Hooks for PickUpNotifier {
     fn client_player_clone(&self, _host: &mut dyn ClientHost, _event: &mut ClientPlayerCloneEvent) {
         let mut state = lock_client();
         state.collector.clear();
-        state.fallback.reset();
     }
 
     #[listener(priority = -100)]
@@ -472,7 +489,7 @@ impl Hooks for PickUpNotifier {
         if event.item.pickup_delay(&*host) != Some(0) {
             return;
         }
-        let Some(Some(stack)) = event.item.with_stack(&*host, |view| view.project()) else {
+        let Some(Some(stack)) = event.item.with_stack(host, |view| view.project()) else {
             return;
         };
         let amount = stack.count();
@@ -561,6 +578,13 @@ impl Hooks for PickUpNotifier {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn arrow_entities_match_their_items() {
+        assert!(is_arrow_entity_id("minecraft:arrow"));
+        assert!(is_arrow_entity_id("minecraft:spectral_arrow"));
+        assert!(!is_arrow_entity_id("minecraft:trident"));
+    }
 
     #[test]
     fn default_config_uses_exclude_named_combining() {

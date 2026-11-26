@@ -1,0 +1,17 @@
+summary = "Scroll back through up to 16,384 chat messages instead of vanilla's 100."
+description = """
+More Chat History raises how much chat the game remembers. Vanilla keeps only the last 100 messages; this mod keeps up to 16,384, so you can scroll back through a long session.
+
+## What it does
+
+- Raises the received-message history, the wrapped display-line history and the sent-message (up-arrow) history to 16,384 each.
+- The limit is a setting under Options > Mods > More Chat History (100 to 16,384, default 16,384).
+
+## Differences from the original
+
+- The limit is configurable here; the original has it fixed.
+- The saved command history (`command_history.txt`) keeps vanilla's own cap of 50, as in the original.
+
+A port of More Chat History by JackFred, under the CC0-1.0 licence.
+"""
+categories = ["utility", "social"]

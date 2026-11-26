@@ -1,3 +1,5 @@
+#![deny(unsafe_code)]
+
 //! things: Things 0.3.3 (glisco, MIT), what the trinkets and tools do. The items are this
 //! package's data/ and assets/; the Bater Wucket is game-side (runtime.rs and its mixin).
 //!
@@ -810,16 +812,16 @@ impl Hooks for Mod {
         event: &mut LivingEntityUseItemFinishEvent<'_>,
     ) {
         let HostSide::Server(host) = host else { return };
-        // `event.entity` is `None` for a server-side finish, so the player is the one acting.
-        let player = match event.entity {
-            Some(id) => host
-                .players()
-                .server_players()
-                .into_iter()
-                .find(|p| p.entity().id() as i32 == id),
-            None => host.players().acting_player(),
+        // `event.entity` carries a player's entity id; a mob's finish is none of ours.
+        let Some(id) = event.entity else {
+            return;
         };
-        let Some(player) = player else {
+        let Some(player) = host
+            .players()
+            .server_players()
+            .into_iter()
+            .find(|p| p.entity().id() as i32 == id)
+        else {
             return;
         };
         let item = id_of(&*host, event.stack);

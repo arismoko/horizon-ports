@@ -502,6 +502,17 @@ fn update_tracked_entities_and_expire(host: &dyn ClientHost, cfg: &ClientConfig)
     state.pings.retain(|p| !p.is_expired(cfg));
 }
 
+/// Clip modes for a ping ray: standing uses the visual block shape (`ClipContext.Block.VISUAL`)
+/// and ignores fluids; sneaking uses block outlines and stops at any fluid
+/// (`ClipContext.Fluid.ANY`).
+fn clip_modes(sneaking: bool) -> (ClipBlock, ClipFluid) {
+    if sneaking {
+        (ClipBlock::Outline, ClipFluid::Any)
+    } else {
+        (ClipBlock::Visual, ClipFluid::None)
+    }
+}
+
 fn perform_ping_action(host: &mut dyn ClientHost, cfg: &ClientConfig) {
     let game_time = host.clock().map(|c| c.game_time).unwrap_or(0);
     let sequence = {
@@ -536,23 +547,27 @@ fn perform_ping_action(host: &mut dyn ClientHost, cfg: &ClientConfig) {
         start[2] + dir[2] * max_dist,
     ];
     let hit_translucent = cam_entity.is_shift_key_down(&*host).unwrap_or(false);
-    let clip_block = if hit_translucent {
-        ClipBlock::Outline
-    } else {
-        ClipBlock::Collider
-    };
+    let (clip_block, clip_fluid) = clip_modes(hit_translucent);
 
     let level = host.level(&camera.dimension);
 
     let block_hit_pos: Option<[f64; 3]> = level
-        .and_then(|lvl| lvl.clip(&*host, start, end, clip_block, ClipFluid::None))
+        .and_then(|lvl| lvl.clip(&*host, start, end, clip_block, clip_fluid))
         .and_then(|hit| (!hit.miss).then_some(hit.location))
         .or_else(|| host.raycast(max_dist as f32).map(|h| [h.x, h.y, h.z]));
 
     let entity_hit = level.and_then(|lvl| {
-        lvl.ray_trace_nearest_entity(&*host, start, end, 0.25, Some(cam_entity), &mut |_| true)
-            .ok()
-            .flatten()
+        lvl.ray_trace_nearest_entity(
+            &*host,
+            start,
+            end,
+            0.25,
+            Some(cam_entity),
+            // `Raycast.traceEntity` skips `Entity.isSpectator()` targets.
+            &mut |e| e.spectator(&*host) != Some(true),
+        )
+        .ok()
+        .flatten()
     });
 
     let (target_pos, target_entity_id) = match (block_hit_pos, entity_hit) {
@@ -959,6 +974,18 @@ fn colored(text: Text, color: &str) -> Text {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn clip_modes_match_original_raycast() {
+        assert!(matches!(
+            super::clip_modes(false),
+            (ClipBlock::Visual, ClipFluid::None)
+        ));
+        assert!(matches!(
+            super::clip_modes(true),
+            (ClipBlock::Outline, ClipFluid::Any)
+        ));
+    }
+
     use super::*;
 
     fn sample_packet(sequence: i32) -> PingLocationS2C {

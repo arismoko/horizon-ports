@@ -1,3 +1,4 @@
+#![deny(unsafe_code)]
 //! Comforts for Sunrise: sleeping bags, hammocks, and rope & nail.
 //!
 //! Pure rules, config parsing, sleep math, hammock geometry, and conditional recipe
@@ -24,9 +25,9 @@ use mod_api::{
     PayloadId, PlacementSource, PlayerBedEnterEvent, PlayerBedLeaveEvent, PlayerLoggedInEvent,
     PlayerRef, PlayerSetSpawnEvent, PlayerTickPostEvent, Registrar, RegistrationContext,
     ScreenKeyPressedPostEvent, ServerHost, SetPlacedByEvent, SleepFinishedTimeEvent, SleepProblem,
-    SleepSkipNightEvent, SoundSource, StatType, StateConstraint, StateForPlacementEvent,
-    SupportType, Tag, TagKey, Text, ToClient, TooltipEvent, UpdateShapeEvent, UseOnEvent,
-    UseWithoutItemEvent, Wire,
+    SleepStatusAnnounceEvent, SleepersNeededEvent, SoundSource, StatType, StateConstraint,
+    StateForPlacementEvent, SupportType, Tag, TagKey, Text, ToClient, TooltipEvent,
+    UpdateShapeEvent, UseOnEvent, UseWithoutItemEvent, Wire,
 };
 
 use recipes::{ConditionalShapedKind, ConditionalShapelessKind, SHAPED_ID, SHAPELESS_ID};
@@ -45,7 +46,6 @@ const OVERWORLD_WAKE_MARKER: &str = "minecraft:wake_up_from_sleep";
 const NAP_WAKE_MARKER: &str = "comforts:wake_up_from_nap";
 const TIME_SINCE_REST: &str = "minecraft:time_since_rest";
 const SLEEP_IN_BED: &str = "minecraft:sleep_in_bed";
-const PLAYERS_SLEEPING_PERCENTAGE: &str = "minecraft:players_sleeping_percentage";
 const KEY_TOGGLE_PERSPECTIVE: &str = "key.togglePerspective";
 
 const GRAY_COLOR: u32 = 0xFFAA_AAAA;
@@ -498,7 +498,7 @@ fn check_tired_restriction(host: &mut dyn ServerHost, player: PlayerRef, level: 
 
 /// Mark both halves occupied and place the player onto a Comforts bed with `sleep_timer = 0`.
 ///
-/// `LivingRef::start_sleeping` checks `name.ends_with("_bed")` on bdad86d
+/// `LivingRef::start_sleeping` checks `name.ends_with("_bed")` on Dev 2
 /// (gap: sunrise-org/sunrise#5557), so we position the player on the bed surface and set
 /// their sleeping position directly; `can_continue_sleeping` then sustains sleep.
 fn place_player_in_comforts_bed(
@@ -720,7 +720,7 @@ fn handle_comforts_wake_up(host: &mut dyn ServerHost, player: PlayerRef, bed_pos
     }
 
     // Free occupied flag and stand player up beside the bed (since engine `bed_wake_pose`
-    // only recognizes `_bed` ids on bdad86d). Guard on `block_kind.is_some()` so a bed
+    // only recognizes `_bed` ids on Dev 2). Guard on `block_kind.is_some()` so a bed
     // already broken by someone else while sleeping never duplicates an auto-used bag.
     if let Some(state) = state_at_bed
         && block_kind.is_some()
@@ -974,7 +974,7 @@ impl BlockPart for SleepingBagPart {
         }
         // Let survival break drop the item from the head half (loot table drops on part=head).
         if !head_here {
-            let _ = level.destroy_block(host, head, true, None, false);
+            let _ = level.destroy_block(host, head, true, None, None, false);
             clear_block_keeping_water(host, level, foot);
             return Some(true);
         }
@@ -1073,7 +1073,7 @@ impl BlockPart for HammockPart {
             return Some(true);
         }
         if !head_here {
-            let _ = level.destroy_block(host, head, true, None, false);
+            let _ = level.destroy_block(host, head, true, None, None, false);
             clear_block_keeping_water(host, level, foot);
             return Some(true);
         }
@@ -1246,7 +1246,7 @@ impl BlockPart for RopeAndNailPart {
                     head
                 };
                 let actual_foot = if actual_head == head { foot } else { head };
-                let _ = level.destroy_block(host, actual_head, true, None, false);
+                let _ = level.destroy_block(host, actual_head, true, None, None, false);
                 clear_block_keeping_water(host, level, actual_foot);
             }
         }
@@ -2098,13 +2098,29 @@ impl Hooks for ComfortsMod {
         }
     }
 
-    fn sleep_skip_night(
-        &self,
-        host: &mut dyn ServerHost,
-        event: &mut SleepSkipNightEvent<'_>,
-    ) -> Flow {
+    fn sleepers_needed(&self, host: &dyn Host, event: &mut SleepersNeededEvent<'_>) {
         let cfg = server_config();
         if cfg.day_sleeping_percentage < 0 {
+            return;
+        }
+        let Some(level) = host.level(event.dimension) else {
+            return;
+        };
+        if !level_is_bright(host, level) {
+            return;
+        }
+        // `needed` starts at vanilla's count for `players_sleeping_percentage`; daytime uses
+        // `daySleepingPercentage` instead, above or below it. The engine's night-skip check and
+        // sleep status line both read the answer, so no separate skip veto is needed.
+        event.needed = sleepers_needed(event.active, cfg.day_sleeping_percentage);
+    }
+
+    fn sleep_status_announce(
+        &self,
+        host: &mut dyn ServerHost,
+        event: &mut SleepStatusAnnounceEvent<'_>,
+    ) -> Flow {
+        if event.active <= 1 {
             return Flow::Continue;
         }
         let Some(level) = host.level(event.dimension) else {
@@ -2113,13 +2129,17 @@ impl Hooks for ComfortsMod {
         if !level_is_bright(host, level) {
             return Flow::Continue;
         }
-        // If daySleepingPercentage is higher than vanilla's percentage, block premature day skip.
-        // (Lowering below players_sleeping_percentage is tracked in sunrise-org/sunrise#5558.)
-        let needed = sleepers_needed(event.active, cfg.day_sleeping_percentage);
-        if event.sleeping < needed {
-            return Flow::Cancel;
+        // Daytime: replace vanilla's line with Comforts' `comforts.skipping_day` for everyone.
+        let mut recipients = Vec::new();
+        let _ = level.visit_online_players(host, &mut |p| {
+            recipients.push(p);
+            ControlFlow::Continue(())
+        });
+        let msg = Text::translate("comforts.skipping_day", vec![]);
+        for p in recipients {
+            let _ = p.action_bar(host, msg.clone());
         }
-        Flow::Continue
+        Flow::Cancel
     }
 
     fn sleep_finished_time(
@@ -2167,30 +2187,6 @@ impl Hooks for ComfortsMod {
             *event.adjustment = ClockAdjustment::Absolute(target);
         }
 
-        // Update daytime sleep status message to players if day-skipping in multiplayer.
-        if wake_from_nap {
-            let pct = if cfg.day_sleeping_percentage >= 0 {
-                cfg.day_sleeping_percentage
-            } else {
-                match level.game_rule(host, PLAYERS_SLEEPING_PERCENTAGE) {
-                    Ok(Some(mod_api::GameRuleValue::Int(v))) => v,
-                    _ => 100,
-                }
-            };
-            if pct <= 100 {
-                let mut recipients = Vec::new();
-                let _ = level.visit_online_players(host, &mut |p| {
-                    recipients.push(p);
-                    ControlFlow::Continue(())
-                });
-                if recipients.len() > 1 {
-                    let msg = Text::translate("comforts.skipping_day", vec![]);
-                    for p in recipients {
-                        let _ = p.action_bar(host, msg.clone());
-                    }
-                }
-            }
-        }
         Flow::Continue
     }
 

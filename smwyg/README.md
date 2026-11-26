@@ -10,4 +10,3 @@ A port of [Show Me What You Got](https://github.com/apace100/show-me-what-you-go
 ## Differences from the original
 
 - The item's name in the chat box is ordinary text: it can be edited like any other text, and the chat history recalls the line as text, not as the item (sunrise-org/sunrise#5353).
-- In a right-to-left language the item still comes before its name in the tooltip (sunrise-org/sunrise#5354).

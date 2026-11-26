@@ -421,6 +421,9 @@
   "shouldersurfing.option.visibility.when_aiming": "When aiming",
   "shouldersurfing.option.visibility.when_in_range": "When in range",
   "shouldersurfing.option.visibility.when_aiming_or_in_range": "When aiming or in range",
+  "shouldersurfing.option.view_bobbing_mode.inherit": "Inherit",
+  "shouldersurfing.option.view_bobbing_mode.on": "On",
+  "shouldersurfing.option.view_bobbing_mode.off": "Off",
   "shouldersurfing.option.map_overlay_anchor.top": "Top",
   "shouldersurfing.option.map_overlay_anchor.bottom": "Bottom"
 }

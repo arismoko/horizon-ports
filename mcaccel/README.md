@@ -12,9 +12,6 @@ A port of [Minecraft Accelerated](https://github.com/Cookieglue/PumpkinsAccelera
 
 ## Differences from the original
 
-- A carved face or its lantern on top of a golem's body doesn't build the golem (sunrise-org/sunrise#5397).
-- A snow golem doesn't wear or drop the face it was built with (sunrise-org/sunrise#5398).
-- Mobs can spawn on the jack o'lanterns, as on vanilla's; the original's can't be spawned on (sunrise-org/sunrise#5399).
+- A carved face or its lantern on top of a golem's body doesn't build the golem, so no snow golem wears or drops a face (sunrise-org/sunrise#5397).
 - Wearing a carved face doesn't blur the view through it (sunrise-org/sunrise#5405).
-- A carved face equips with a right-click in the air, and a dispenser puts it on a player's head; the original's can't be swapped on and dispensers drop it (sunrise-org/sunrise#5404).
 - Shears used on a plain soul jack o'lantern do nothing; the original plays the carving sound and then crashes the server.

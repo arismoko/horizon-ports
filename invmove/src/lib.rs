@@ -25,6 +25,38 @@ use mod_api::{
     VanillaKeyMappingRef,
 };
 
+/// Posted on the client for each screen InvMove has decided about, so another mod can allow or
+/// veto walking in it: `allowed` holds InvMove's answer and a listener may change it.
+#[derive(mod_api::Event)]
+#[event(id = "invmove:screen_movement", side = client)]
+#[non_exhaustive]
+pub struct ScreenMovementEvent {
+    /// The screen's id as the game names it.
+    pub screen: String,
+    /// The menu type behind the screen, if it is a container screen.
+    pub menu: Option<String>,
+    /// The screen's mod id, if a mod owns it.
+    pub mod_screen: Option<String>,
+    /// Whether the player may move in this screen.
+    pub allowed: bool,
+}
+
+impl ScreenMovementEvent {
+    pub fn new(
+        screen: String,
+        menu: Option<String>,
+        mod_screen: Option<String>,
+        allowed: bool,
+    ) -> Self {
+        Self {
+            screen,
+            menu,
+            mod_screen,
+            allowed,
+        }
+    }
+}
+
 const KEY_TOGGLE_MOVE: &str = "toggle_move";
 const UNBOUND: &str = "key.keyboard.unknown";
 
@@ -86,6 +118,8 @@ struct Runtime {
     mappings: HashMap<String, VanillaKeyMappingRef>,
     /// Extra mappings this mod holds down inside a screen.
     held_extras: Vec<VanillaKeyMappingRef>,
+    /// The screen other mods last ruled on, InvMove's own answer there and theirs.
+    vetted: Option<(String, bool, bool)>,
 }
 
 impl Runtime {
@@ -166,7 +200,7 @@ impl Runtime {
     }
 
     /// `InvMove.allowMovementInScreen`.
-    fn allow_movement(
+    fn allow_movement_base(
         &mut self,
         host: &dyn ClientHost,
         keys: &Keys,
@@ -193,6 +227,24 @@ impl Runtime {
             Class::Fixed | Class::BookEdit => false,
             Class::GameMode => true,
             Class::Unrecognized(key) => self.unrecognized(true, &key, opts.unrecognized_movement),
+        }
+    }
+
+    /// `InvMove.allowMovement` with the verdict other mods gave the current screen on this
+    /// client tick (`ScreenMovementEvent` can only be posted from a hook that holds a mutable
+    /// host, so the other hooks read the last verdict, kept while InvMove's own answer is
+    /// unchanged).
+    fn allow_movement(
+        &mut self,
+        host: &dyn ClientHost,
+        keys: &Keys,
+        opts: &Options,
+        screen: &Screen,
+    ) -> bool {
+        let allowed = self.allow_movement_base(host, keys, opts, screen);
+        match &self.vetted {
+            Some((id, base, verdict)) if *id == screen.id && *base == allowed => *verdict,
+            _ => allowed,
         }
     }
 
@@ -412,6 +464,24 @@ impl Hooks for InvMove {
             let _ = host.set_setting(keys.movement, SettingValue::Toggle(enabled));
         }
         let opts = Options::read(host, &keys);
+        // Other mods may allow or veto movement; InvMove's own screen stays fixed.
+        let screen = self.lock().current_screen(&*host);
+        match screen.filter(|screen| !screen.is_own()) {
+            Some(screen) => {
+                let base = self
+                    .lock()
+                    .allow_movement_base(&*host, &keys, &opts, &screen);
+                let mut event = ScreenMovementEvent::new(
+                    screen.id.clone(),
+                    screen.menu.clone(),
+                    screen.mod_screen.clone(),
+                    base,
+                );
+                host.post(&mut event);
+                self.lock().vetted = Some((screen.id, base, event.allowed));
+            }
+            None => self.lock().vetted = None,
+        }
         let mut wanted: Vec<(VanillaKeyMappingRef, bool)> = Vec::new();
         let write;
         {

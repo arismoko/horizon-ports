@@ -11,7 +11,7 @@ A Sunrise 26.3 client-only port of [Cut Through](https://github.com/Fuzss/cut-th
 ## Differences from the original
 
 - Targeting alive entities only cannot be enforced: the mod API reads liveness only on the server and for the local player, so a mob in its death animation can still be targeted and absorb hits. **Target Alive Only** therefore only controls the mining delay below (gap: sunrise-org/sunrise#5498).
-- After you attack a mob, vanilla's block-mining delay is not reset by this mod; instead held attacks on a block are cancelled for 5 ticks after an entity attack, which has the same effect but also suppresses a swing (gap: sunrise-org/sunrise#5328).
+- After you attack a mob, this mod reads vanilla's block-mining delay but cannot reset it (the API reads it only); held attacks on a block are cancelled for 5 ticks after an entity attack once that delay has run out, which has the same effect but also suppresses a swing.
 - Collision shapes along the pick ray are read with an empty collision context, so blocks whose shape depends on the player (such as powder snow or scaffolding) can differ from the original's `ClipContext` (gap: sunrise-org/sunrise#5083).
 - Settings are one toggle in **Options → Mods → Cut Through** and `config/cutthrough-client.toml`; the original's Puzzles Lib config screen and `cutthrough-client.toml` layout are not reproduced. The original ships no translations, so only `en_us` is provided.
 
