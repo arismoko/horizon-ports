@@ -1,3 +1,4 @@
+#![deny(unsafe_code)]
 //! Secure Crops for Sunrise: three game rules, all off by default as in Secure Crops 2.0.1
 //! (zekk051), decide what happens when a landing would trample farmland.
 //!
