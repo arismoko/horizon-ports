@@ -1,7 +1,7 @@
 # Preferred Gamerules for Sunrise: native code in src/.
 id = "preferredgamerules"
 name = "Preferred Gamerules"
-version = "0.5.4"
+version = "0.5.5"
 description = "New worlds start with the game rules you prefer, set once in a config file."
 authors = ["Estecka", "arismoko"]
 license = "MIT"
