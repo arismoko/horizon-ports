@@ -14,7 +14,6 @@ What it does:
 
 Differences from the original:
 
-- In multiplayer, vanilla's "players sleeping" line above the hotbar still shows while players sleep.
 - The weather, potion, hunger and block entity effects are not in this version.
 - There is no in-game config screen.
 """

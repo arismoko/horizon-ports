@@ -7,6 +7,7 @@
 //! | `level_load`, `level_unload` | this module | the overworld's sleep state (`TimeServiceManager`) |
 //! | `level_tick_post` | [`tick_overworld`] | sets the clock's rate: day, night or sleep speed; the morning at sunrise |
 //! | `sleep_skip_night` | this module | holds vanilla's night skip back until the morning (`SleepStatus`) |
+//! | `sleep_status_announce` | this module | hides vanilla's "players sleeping" line above the hotbar |
 //! | `player_bed_enter`, `player_bed_leave` | this module | the "is now sleeping" and "has left their bed" notices |
 //! | `screen_render_post` | this module | the clock drawn on the in-bed screen |
 //! | `register` | this module | notes whether SleepWarp or Sleep Tight is loaded, which turns sleep off |
@@ -22,7 +23,7 @@ use mod_api::{
     ConfigEvent, ConfigKind, ConfigSnapshot, ConfigSpec, Flow, GameRuleValue, Hooks, HostSide,
     Identifier, LevelLoadEvent, LevelRef, LevelTickPostEvent, LevelUnloadEvent,
     PlayerBedEnterEvent, PlayerBedLeaveEvent, PlayerRef, Registrar, RegistrationContext,
-    ScreenRenderPostEvent, ServerHost, SleepSkipNightEvent, Text,
+    ScreenRenderPostEvent, ServerHost, SleepSkipNightEvent, SleepStatusAnnounceEvent, Text,
 };
 use rules::{Client, Common, Interpolator, Message, Target};
 
@@ -311,6 +312,20 @@ impl Hooks for Mod {
             && with_common(|common, _| sleep_feature(common))
             && with_service(|service| !service.morning_handled) == Some(true)
         {
+            event.cancelled = true;
+        }
+        Flow::Continue
+    }
+
+    /// `ServerLevel.announceSleepStatus`: with the sleep feature on, vanilla's action-bar line
+    /// is hidden in the overworld, as the original's `SleepStatus.update` did; the mod's own
+    /// notices tell the players instead.
+    fn sleep_status_announce(
+        &self,
+        _: &mut dyn ServerHost,
+        event: &mut SleepStatusAnnounceEvent<'_>,
+    ) -> Flow {
+        if event.dimension == OVERWORLD && with_common(|common, _| sleep_feature(common)) {
             event.cancelled = true;
         }
         Flow::Continue
