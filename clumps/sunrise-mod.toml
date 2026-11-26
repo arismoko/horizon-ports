@@ -1,7 +1,7 @@
 # Clumps for Sunrise: server-only native code in src/ using the typed mod API.
 id = "clumps"
 name = "Clumps"
-version = "0.5.3"
+version = "0.6.0"
 description = "Groups nearby experience orbs into a single orb carrying their summed value and removes the pickup delay."
 authors = ["Jaredlll08", "arismoko"]
 license = "MIT"
