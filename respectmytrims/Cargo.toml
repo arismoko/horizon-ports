@@ -1,6 +1,6 @@
 [package]
 name = "mod-respectmytrims"
-version = "0.5.4"
+version = "0.5.5"
 edition = "2024"
 license = "LGPL-2.1-only"
 description = "Respect My Trims for Sunrise: gold trims calm piglins"
