@@ -16,3 +16,7 @@ Differences from the original:
 A port of BEBPM by CozyStudios, under the CC0-1.0 licence.
 """
 categories = ["utility"]
+
+[[screenshots]]
+path = "page/world.png"
+caption = "Enchanting table receiving power and particles from bookshelves 4 blocks away in Sunrise Dev 2"
