@@ -1,6 +1,6 @@
 [package]
 name = "mod-universalbonemeal"
-version = "0.5.4"
+version = "0.5.5"
 edition = "2024"
 license = "MPL-2.0"
 description = "Universal Bone Meal for Sunrise: bone meal grows more plants"
