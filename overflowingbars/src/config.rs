@@ -167,6 +167,18 @@ fn icon_row_specs(prefix: &str, d: IconRow, specs: &mut Vec<SettingSpec>) {
     );
 }
 
+/// The Options > Mods section a setting is listed under (a translation key).
+fn category_of(name: &str) -> Option<&'static str> {
+    let prefix = name.split('_').next()?;
+    match prefix {
+        "health" => Some("overflowingbars.category.health"),
+        "armor" => Some("overflowingbars.category.armor"),
+        "toughness" => Some("overflowingbars.category.toughness"),
+        "count" => Some("overflowingbars.category.count"),
+        _ => None,
+    }
+}
+
 /// Register every setting on Options > Mods > Overflowing Bars.
 pub fn register_settings(r: &mut dyn Registrar) {
     let d = Config::default();
@@ -201,6 +213,9 @@ pub fn register_settings(r: &mut dyn Registrar) {
     for spec in specs {
         let name = spec.key.clone();
         if let Ok(key) = r.register_setting(spec) {
+            if let Some(category) = category_of(&name) {
+                let _ = r.categorize_setting(key, category);
+            }
             keys.insert(name, key);
         }
     }
@@ -227,6 +242,27 @@ mod tests {
         assert_eq!(shift(99.0), 5);
         assert_eq!(shift(-99.0), -5);
         assert_eq!(shift(2.4), 2);
+    }
+
+    #[test]
+    fn every_setting_lands_in_a_category_with_a_label() {
+        assert_eq!(
+            category_of("health_row_shift"),
+            Some("overflowingbars.category.health")
+        );
+        assert_eq!(
+            category_of("armor_move_chat"),
+            Some("overflowingbars.category.armor")
+        );
+        assert_eq!(
+            category_of("toughness_left_side"),
+            Some("overflowingbars.category.toughness")
+        );
+        assert_eq!(
+            category_of("count_x"),
+            Some("overflowingbars.category.count")
+        );
+        assert_eq!(category_of("unknown"), None);
     }
 
     #[test]

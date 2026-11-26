@@ -72,19 +72,36 @@ pub struct HealthFrame {
 }
 
 impl HealthTracker {
-    /// Vanilla's `extractPlayerHealth` bookkeeping. The client cannot read the player's damage
-    /// cooldown, so a drop starts the blink and a rise blinks only within 20 ticks of a drop.
-    pub fn update(&mut self, current: i32, tick: i64, millis: u64) -> HealthFrame {
+    /// Vanilla's `extractPlayerHealth` bookkeeping. With the player's exact damage cooldown
+    /// (`EntityRef::damage_cooldown_time`), a drop or a rise while it runs starts the blink as
+    /// vanilla does; with `None` (a host that cannot read it) a drop starts the blink and a
+    /// rise blinks only within 20 ticks of a drop.
+    pub fn update(
+        &mut self,
+        current: i32,
+        tick: i64,
+        millis: u64,
+        damage_cooldown: Option<i32>,
+    ) -> HealthFrame {
         let blink = self.blink_time > tick && (self.blink_time - tick) / 3 % 2 == 1;
-        if current < self.last_health {
+        let (hurt, healed) = match damage_cooldown {
+            Some(cooldown) => (
+                current < self.last_health && cooldown > 0,
+                current > self.last_health && cooldown > 0,
+            ),
+            None => (
+                current < self.last_health,
+                current > self.last_health
+                    && self
+                        .last_damage_tick
+                        .is_some_and(|t| tick - t < 20 && tick >= t),
+            ),
+        };
+        if hurt {
             self.last_health_time = millis;
             self.blink_time = tick + 20;
             self.last_damage_tick = Some(tick);
-        } else if current > self.last_health
-            && self
-                .last_damage_tick
-                .is_some_and(|t| tick - t < 20 && tick >= t)
-        {
+        } else if healed {
             self.last_health_time = millis;
             self.blink_time = tick + 10;
         }
@@ -750,19 +767,40 @@ mod tests {
     #[test]
     fn tracker_blinks_after_a_hit_and_never_panics_on_clock_jumps() {
         let mut t = HealthTracker::default();
-        t.update(20, 0, 5000);
-        let f = t.update(14, 1, 5050);
+        t.update(20, 0, 5000, None);
+        let f = t.update(14, 1, 5050, None);
         assert!(!f.blink);
         assert_eq!(f.display, 20);
         // 20 ticks of blink time, in steps of three ticks.
-        assert!(t.update(14, 4, 5100).blink);
+        assert!(t.update(14, 4, 5100, None).blink);
         // A clock that runs backwards is not a panic.
-        t.update(14, 5, 1);
+        t.update(14, 5, 1, None);
         // A rise long after the hit does not blink.
         let mut t = HealthTracker::default();
-        t.update(10, 0, 5000);
-        t.update(11, 100, 6000);
-        assert!(!t.update(11, 101, 6050).blink);
+        t.update(10, 0, 5000, None);
+        t.update(11, 100, 6000, None);
+        assert!(!t.update(11, 101, 6050, None).blink);
+    }
+
+    #[test]
+    fn exact_damage_cooldown_drives_the_blink() {
+        // A drop with no cooldown running (void-style or already past the window) never blinks.
+        let mut t = HealthTracker::default();
+        t.update(20, 0, 5000, Some(0));
+        t.update(14, 1, 5050, Some(0));
+        assert!(!t.update(14, 4, 5100, Some(0)).blink);
+        // A drop inside the cooldown blinks, and a rise inside it restarts a shorter blink.
+        let mut t = HealthTracker::default();
+        t.update(20, 0, 5000, Some(0));
+        t.update(14, 1, 5050, Some(20));
+        assert!(t.update(14, 4, 5100, Some(17)).blink);
+        t.update(15, 30, 5200, Some(5));
+        assert!(t.update(15, 35, 5300, Some(0)).blink);
+        // A rise long after a hit, with the cooldown over, does not blink.
+        let mut t = HealthTracker::default();
+        t.update(10, 0, 5000, Some(0));
+        t.update(11, 100, 6000, Some(0));
+        assert!(!t.update(11, 101, 6050, Some(0)).blink);
     }
 
     #[test]
