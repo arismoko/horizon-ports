@@ -110,7 +110,7 @@ fn plain(text: &Text) -> String {
 
 /// A description component as the player reads it: a translation filled with its arguments,
 /// or the literal.
-fn rendered(host: &dyn Host, text: &Text) -> String {
+fn rendered(host: &dyn ClientHost, text: &Text) -> String {
     match &text.content {
         TextContent::Translatable {
             key,
@@ -192,7 +192,7 @@ impl Hooks for EnchantmentDescriptions {
                 SettingSpec::toggle(key, &label, default).tooltip(format!("{label}.tooltip"));
             if let Ok(setting) = r.register_setting(spec) {
                 if let Some(category) = category_of(key) {
-                    let _ = r.categorize_setting(setting, category);
+                    let _ = r.categorize_setting(key, category);
                 }
                 KEYS.lock()
                     .unwrap_or_else(PoisonError::into_inner)
@@ -204,7 +204,7 @@ impl Hooks for EnchantmentDescriptions {
                 .tooltip("enchdesc.config.color.tooltip"),
         ) {
             if let Some(category) = category_of(COLOR) {
-                let _ = r.categorize_setting(setting, category);
+                let _ = r.categorize_setting(COLOR, category);
             }
             KEYS.lock()
                 .unwrap_or_else(PoisonError::into_inner)

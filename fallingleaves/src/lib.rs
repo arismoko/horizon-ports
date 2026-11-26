@@ -706,7 +706,11 @@ impl Hooks for FallingLeaves {
         let Some(leaves) = LEAVES_TAG.get() else {
             return;
         };
-        if !event.old.is_in_tag(host.tags(), *leaves).unwrap_or(false) {
+        if !event
+            .old
+            .is_in_tag(host.tags(), leaves.typed())
+            .unwrap_or(false)
+        {
             return;
         }
         let serialized = host.block_state_string(event.old).unwrap_or_default();

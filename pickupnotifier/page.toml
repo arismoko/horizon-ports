@@ -11,7 +11,7 @@ Pick Up Notifier adds a clean, customizable HUD feed showing everything you have
 
 Client-side only: works in single player and on any multiplayer server.
 
-Differences from the original: none known.
+Differences from the original: on a server without Pick Up Notifier, experience orb pick-ups are not listed, because a client cannot read an orb's value from the take-item packet.
 
 A port of Pick Up Notifier by Fuzs, under the MPL-2.0 licence.
 """

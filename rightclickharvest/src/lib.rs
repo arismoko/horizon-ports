@@ -17,6 +17,7 @@ pub mod rules;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, OnceLock};
 
+use mod_api::BlockKey;
 use mod_api::text::TextStyle;
 use mod_api::{
     BlockClick, ClientHost, ClientTickPostEvent, ConfigEvent, ConfigKind, ConfigSnapshot,
@@ -158,7 +159,7 @@ fn register_settings(r: &mut dyn Registrar) {
         .tooltip(tooltip(name));
         match r.register_setting(spec) {
             Ok(key) => {
-                if let Err(error) = r.categorize_setting(key, rules::category(name)) {
+                if let Err(error) = r.categorize_setting(name, rules::category(name)) {
                     eprintln!("rightclickharvest: setting {name} not categorized: {error}");
                 }
                 keys.push((name, key));
@@ -198,10 +199,10 @@ fn save_warned(host: &dyn mod_api::Host) {
 
 /// The block tags the harvester reads, resolved once in `register` and kept across reloads.
 struct BlockTags {
-    blacklist: TagKey,
-    hoe_never_required: TagKey,
-    radius_blacklist: TagKey,
-    crops: TagKey,
+    blacklist: TagKey<BlockKey>,
+    hoe_never_required: TagKey<BlockKey>,
+    radius_blacklist: TagKey<BlockKey>,
+    crops: TagKey<BlockKey>,
 }
 
 static BLOCK_TAGS: OnceLock<BlockTags> = OnceLock::new();
@@ -259,7 +260,7 @@ impl Cell {
             .map_or(text.as_str(), |(id, _)| id)
             .to_owned();
         let key = state.block();
-        let in_tag = |pick: fn(&BlockTags) -> TagKey| {
+        let in_tag = |pick: fn(&BlockTags) -> TagKey<BlockKey>| {
             BLOCK_TAGS
                 .get()
                 .and_then(|tags| host.tags().block_in_tag(key, pick(tags)))
@@ -696,10 +697,12 @@ impl Hooks for Mod {
     fn register(&self, r: &mut dyn Registrar, _cx: &RegistrationContext) {
         register_settings(r);
         let _ = BLOCK_TAGS.set(BlockTags {
-            blacklist: r.tag_key("rightclickharvest:blacklist"),
-            hoe_never_required: r.tag_key("rightclickharvest:hoe_never_required"),
-            radius_blacklist: r.tag_key("rightclickharvest:radius_harvest_blacklist"),
-            crops: r.tag_key("minecraft:crops"),
+            blacklist: r.tag_key("rightclickharvest:blacklist").typed(),
+            hoe_never_required: r.tag_key("rightclickharvest:hoe_never_required").typed(),
+            radius_blacklist: r
+                .tag_key("rightclickharvest:radius_harvest_blacklist")
+                .typed(),
+            crops: r.tag_key("minecraft:crops").typed(),
         });
         let listener = |event: ConfigEvent<'_>, snapshot: &ConfigSnapshot| -> Result<(), String> {
             match event {

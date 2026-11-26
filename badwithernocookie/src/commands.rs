@@ -4,8 +4,8 @@ use crate::config::{
     persist_config_file, split_sound_list, update_local_settings, validate_sound,
 };
 use mod_api::{
-    ClientHost, Command, CommandArgumentValue, CommandInvocation, CommandRegistration,
-    CommandSource, ServerHost, Text,
+    ClientCommandRegistration, ClientHost, Command, CommandArgumentValue, CommandInvocation,
+    CommandRegistration, CommandSource, ServerHost, Text,
 };
 use std::collections::HashSet;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -361,52 +361,50 @@ fn server_add_sound(
     Ok(1)
 }
 
-pub fn register_client_commands(commands: &mut Vec<Command>) {
-    commands.push(Command::new("bwncr listen"));
-    commands.push(Command::new("bwncr listen mute <sound:text>"));
-}
-
-/// Handles client-side `/bwncr listen` and `/bwncr listen mute <sound>`.
-/// Returns `true` when the command was handled.
-pub fn handle_client_command(host: &mut dyn ClientHost, raw_command: &str) -> bool {
-    let trimmed = raw_command.trim();
-    if trimmed == "bwncr listen" {
-        let prev = CLIENT_LISTENING.load(Ordering::Relaxed);
-        let next = !prev;
-        CLIENT_LISTENING.store(next, Ordering::Relaxed);
+pub fn register_client_commands(commands: &mut Vec<ClientCommandRegistration>) {
+    commands.push(Command::new("bwncr listen").executes_client(|host, _| {
+        let next = !CLIENT_LISTENING.fetch_xor(true, Ordering::Relaxed);
         let state = if next { "on" } else { "off" };
         let _ = host.chat_line(Text::literal(format!("Event Listening is now {state}")));
-        return true;
-    }
-    if let Some(rest) = trimmed.strip_prefix("bwncr listen mute ") {
-        let sound = rest.trim();
-        if let Err(problem) = validate_sound(sound) {
-            let _ = host.chat_line(Text::literal(format!(
-                "Invalid sound \"{sound}\": {problem}. Nothing was changed."
-            )));
-            return true;
-        }
-        let added = update_local_settings(|s| {
-            if s.silence_us.iter().any(|e| e == sound) {
-                None
-            } else {
-                s.silence_us.push(sound.to_owned());
-                Some(s.clone())
-            }
-        });
-        let Some(settings) = added else {
-            let _ = host.chat_line(Text::literal(format!(
-                "\"{sound}\" is already in silenceUs. Nothing was changed."
-            )));
-            return true;
-        };
-        persist_config_file(&*host, &settings);
+        Some(1)
+    }));
+    commands.push(
+        Command::new("bwncr listen mute <sound:text>").executes_client(|host, invocation| {
+            let Some(CommandArgumentValue::String(sound)) = invocation.argument("sound") else {
+                return None;
+            };
+            mute_sound(host, sound.trim());
+            Some(1)
+        }),
+    );
+}
+
+/// `/bwncr listen mute <sound>`: adds the sound to this client's `silenceUs`.
+fn mute_sound(host: &mut dyn ClientHost, sound: &str) {
+    if let Err(problem) = validate_sound(sound) {
         let _ = host.chat_line(Text::literal(format!(
-            "Added \"{sound}\" to silenceUs in this client's config."
+            "Invalid sound \"{sound}\": {problem}. Nothing was changed."
         )));
-        return true;
+        return;
     }
-    false
+    let added = update_local_settings(|s| {
+        if s.silence_us.iter().any(|e| e == sound) {
+            None
+        } else {
+            s.silence_us.push(sound.to_owned());
+            Some(s.clone())
+        }
+    });
+    let Some(settings) = added else {
+        let _ = host.chat_line(Text::literal(format!(
+            "\"{sound}\" is already in silenceUs. Nothing was changed."
+        )));
+        return;
+    };
+    persist_config_file(&*host, &settings);
+    let _ = host.chat_line(Text::literal(format!(
+        "Added \"{sound}\" to silenceUs in this client's config."
+    )));
 }
 
 fn usage_text(name: &str) -> String {

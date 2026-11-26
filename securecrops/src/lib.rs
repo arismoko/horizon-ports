@@ -12,6 +12,7 @@
 //! where the original's mixin cancels `turnToBaseBlock`; fall damage happens either way.
 use std::sync::OnceLock;
 
+use mod_api::BlockKey;
 use mod_api::{
     BoolGameRuleKey, FarmlandTrampleEvent, Flow, Hooks, Host, LevelRef, Registrar,
     RegistrationContext, ServerHost, TagKey,
@@ -24,7 +25,7 @@ struct Rules {
     and_crops: BoolGameRuleKey,
     break_crops: BoolGameRuleKey,
     if_empty: BoolGameRuleKey,
-    maintains_farmland: TagKey,
+    maintains_farmland: TagKey<BlockKey>,
 }
 
 static RULES: OnceLock<Rules> = OnceLock::new();
@@ -69,7 +70,7 @@ impl Hooks for Mod {
                 and_crops: r.game_rule_bool("secure_farmland_and_crops", &category, false)?,
                 break_crops: r.game_rule_bool("secure_farmland_break_crops", &category, false)?,
                 if_empty: r.game_rule_bool("secure_farmland_if_empty", &category, false)?,
-                maintains_farmland: r.tag_key(MAINTAINS_FARMLAND),
+                maintains_farmland: r.tag_key(MAINTAINS_FARMLAND).typed(),
             })
         })();
         if let Ok(rules) = declared {

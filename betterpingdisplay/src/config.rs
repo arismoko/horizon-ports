@@ -254,9 +254,9 @@ pub fn register_settings(r: &mut dyn Registrar) -> Option<SettingKeys> {
         .ok()?;
     // A failed grouping only leaves the setting in the flat list.
     for (key, category) in [
-        (auto_color, CATEGORY_TEXT),
-        (ping_text_color, CATEGORY_TEXT),
-        (render_ping_bars, CATEGORY_BARS),
+        (SET_AUTO_COLOR, CATEGORY_TEXT),
+        (SET_PING_TEXT_COLOR, CATEGORY_TEXT),
+        (SET_RENDER_PING_BARS, CATEGORY_BARS),
     ] {
         let _ = r.categorize_setting(key, category);
     }

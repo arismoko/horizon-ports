@@ -624,7 +624,7 @@ fn rule_matches(
             let Some(key) = tags.key(&id) else {
                 return false;
             };
-            tags.is_in_tag(item, key).unwrap_or(false)
+            tags.is_in_tag(item, key.typed()).unwrap_or(false)
         }
     }
 }

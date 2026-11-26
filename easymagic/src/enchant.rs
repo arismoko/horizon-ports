@@ -417,7 +417,7 @@ pub fn block_in_tag(host: &dyn Host, block: BlockKey, tag: &str) -> bool {
     let Some(key) = tags.key(&id) else {
         return false;
     };
-    block.is_in_tag(tags, key).unwrap_or(false)
+    block.is_in_tag(tags, key.typed()).unwrap_or(false)
 }
 
 pub fn item_in_tag_id(host: &dyn Host, item_id: &str, tag: &str) -> bool {

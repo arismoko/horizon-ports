@@ -9,14 +9,14 @@ A Sunrise 26.3 port of [Pick Up Notifier](https://github.com/Fuzss/pickupnotifie
 - **Smooth animations**: supports **Move Out** (`NONE`, `HORIZONTAL`, `VERTICAL`, `ALL`) over **Move Out Time** ticks, **Fade Out** opacity transitions, and item pick-up pop scaling.
 - **Full display customization**: 9 screen anchor positions (`TOP_LEFT` through `BOTTOM_RIGHT`), X/Y border offsets, `display_scale` (1–24), item rarity colors (or custom default color + `ignore_rarity`), `CHAT` (matching vanilla's text background opacity) / `TOOLTIP` (vanilla 9-slice tooltip frame) / `NONE` backgrounds, `OFF` / `SPRITE` (shortened `K`/`M`/`B` counts) / `TEXT` (`xN` / `Nx`) / `BOTH` count modes, `display_single_count`, `display_item_name`, `draw_sprite`, and total `inventory_count`.
 - **Filtering & creative toggle**: hide specific items, `#tags`, `namespace:*` wildcards, or `!exclusions` via `hidden_items` in `config/pickupnotifier-client.toml`; optionally disable logging in creative mode (`disable_in_creative`).
-- **Single-player, modded-server, and vanilla-server support**: uses optional typed server payloads (`pickupnotifier:take_item`, `pickupnotifier:take_xp`) in single player and on servers with Pick Up Notifier installed (including `partial_pick_ups` and `backpack_integration` via low-priority `item_picked_up`), and on unmodded servers or when `client_only = true` observes item, arrow, and experience orb pick-ups directly from the client's own take-item packet (`client_take_item_entity`), with exact item stacks and orb values/counts.
+- **Single-player, modded-server, and vanilla-server support**: uses optional typed server payloads (`pickupnotifier:take_item`, `pickupnotifier:take_xp`) in single player and on servers with Pick Up Notifier installed (including `partial_pick_ups` and `backpack_integration` via low-priority `item_picked_up`), and on unmodded servers or when `client_only = true` observes item and arrow pick-ups directly from the client's own take-item packet (`client_take_item_entity`), with exact item stacks.
 - **In-game settings & hot-reloaded configs**: all client options are available in **Options → Mods → Pick Up Notifier** and synced with `config/pickupnotifier-client.toml`; server options live in `config/pickupnotifier-server.toml`.
 
 Client-side only (`side = "client"`): joins any vanilla or modded multiplayer server without requiring the server to install it.
 
 ## Differences from the original
 
-- None beyond cosmetic: the mod API leaves no known gaps for this port.
+- On a server without Pick Up Notifier (or with `client_only = true`), experience orb pick-ups are not listed: a client cannot read an orb's value from the take-item packet, so XP entries need the mod on the server.
 
 ## Configuration
 

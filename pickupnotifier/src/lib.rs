@@ -396,8 +396,8 @@ impl Hooks for PickUpNotifier {
     /// this mod. Skipped on servers that send this mod's payloads, which carry exact counts.
     fn client_take_item_entity(
         &self,
-        host: &mut dyn ClientHost,
-        event: &mut ClientTakeItemEntityEvent<'_>,
+        host: &dyn ClientHost,
+        event: &mut ClientTakeItemEntityEvent,
     ) {
         if !host.on(MOD_ID) {
             return;
@@ -415,20 +415,14 @@ impl Hooks for PickUpNotifier {
         let collected = event.collected;
         let amount = u32::try_from(event.amount).unwrap_or(0);
         if let Some(item) = host.item_entity(collected) {
-            if let Some(Some(stack)) = item.with_stack(&*host, |view| view.project()) {
+            if let Some(Some(stack)) = item.with_stack(host, |view| view.project()) {
                 add_item_entry(&mut state, host, stack, amount, false);
             }
             return;
         }
-        if let Ok(Some(orb)) = host.experience_orb(collected) {
-            if let (Ok(value), Ok(count)) = (orb.value(&*host), orb.count(&*host)) {
-                add_xp_entry(&mut state, host, value.max(0) as u32, count.max(0) as u32);
-            }
-            return;
-        }
-        let kind = host
-            .entity_kind(collected)
-            .and_then(|key| key.id(&*host).map(|id| id.to_string()));
+        let kind = collected
+            .kind(host)
+            .and_then(|key| key.id(host).map(|id| id.to_string()));
         if let Some(id) = kind.as_deref().filter(|id| is_arrow_entity_id(id))
             && let Ok(id) = Identifier::parse(id)
             && let Some(key) = host.item_key(&id)
@@ -495,7 +489,7 @@ impl Hooks for PickUpNotifier {
         if event.item.pickup_delay(&*host) != Some(0) {
             return;
         }
-        let Some(Some(stack)) = event.item.with_stack(&*host, |view| view.project()) else {
+        let Some(Some(stack)) = event.item.with_stack(host, |view| view.project()) else {
             return;
         };
         let amount = stack.count();

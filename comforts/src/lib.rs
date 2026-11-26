@@ -25,9 +25,9 @@ use mod_api::{
     PayloadId, PlacementSource, PlayerBedEnterEvent, PlayerBedLeaveEvent, PlayerLoggedInEvent,
     PlayerRef, PlayerSetSpawnEvent, PlayerTickPostEvent, Registrar, RegistrationContext,
     ScreenKeyPressedPostEvent, ServerHost, SetPlacedByEvent, SleepFinishedTimeEvent, SleepProblem,
-    SleepersNeededEvent, SoundSource, StatType, StateConstraint, StateForPlacementEvent,
-    SupportType, Tag, TagKey, Text, ToClient, TooltipEvent, UpdateShapeEvent, UseOnEvent,
-    UseWithoutItemEvent, Wire,
+    SleepStatusAnnounceEvent, SleepersNeededEvent, SoundSource, StatType, StateConstraint,
+    StateForPlacementEvent, SupportType, Tag, TagKey, Text, ToClient, TooltipEvent,
+    UpdateShapeEvent, UseOnEvent, UseWithoutItemEvent, Wire,
 };
 
 use recipes::{ConditionalShapedKind, ConditionalShapelessKind, SHAPED_ID, SHAPELESS_ID};
@@ -974,7 +974,7 @@ impl BlockPart for SleepingBagPart {
         }
         // Let survival break drop the item from the head half (loot table drops on part=head).
         if !head_here {
-            let _ = level.destroy_block(host, head, true, None, false);
+            let _ = level.destroy_block(host, head, true, None, None, false);
             clear_block_keeping_water(host, level, foot);
             return Some(true);
         }
@@ -1073,7 +1073,7 @@ impl BlockPart for HammockPart {
             return Some(true);
         }
         if !head_here {
-            let _ = level.destroy_block(host, head, true, None, false);
+            let _ = level.destroy_block(host, head, true, None, None, false);
             clear_block_keeping_water(host, level, foot);
             return Some(true);
         }
@@ -1246,7 +1246,7 @@ impl BlockPart for RopeAndNailPart {
                     head
                 };
                 let actual_foot = if actual_head == head { foot } else { head };
-                let _ = level.destroy_block(host, actual_head, true, None, false);
+                let _ = level.destroy_block(host, actual_head, true, None, None, false);
                 clear_block_keeping_water(host, level, actual_foot);
             }
         }
@@ -2098,7 +2098,7 @@ impl Hooks for ComfortsMod {
         }
     }
 
-    fn sleepers_needed(&self, host: &mut dyn ServerHost, event: &mut SleepersNeededEvent<'_>) {
+    fn sleepers_needed(&self, host: &dyn Host, event: &mut SleepersNeededEvent<'_>) {
         let cfg = server_config();
         if cfg.day_sleeping_percentage < 0 {
             return;
@@ -2112,20 +2112,18 @@ impl Hooks for ComfortsMod {
         // `needed` starts at vanilla's count for `players_sleeping_percentage`; daytime uses
         // `daySleepingPercentage` instead, above or below it. The engine's night-skip check and
         // sleep status line both read the answer, so no separate skip veto is needed.
-        *event.needed = sleepers_needed(event.active, cfg.day_sleeping_percentage);
+        event.needed = sleepers_needed(event.active, cfg.day_sleeping_percentage);
     }
 
     fn sleep_status_announce(
         &self,
         host: &mut dyn ServerHost,
-        dimension: &str,
-        _sleeping: i64,
-        active: i64,
+        event: &mut SleepStatusAnnounceEvent<'_>,
     ) -> Flow {
-        if active <= 1 {
+        if event.active <= 1 {
             return Flow::Continue;
         }
-        let Some(level) = host.level(dimension) else {
+        let Some(level) = host.level(event.dimension) else {
             return Flow::Continue;
         };
         if !level_is_bright(host, level) {

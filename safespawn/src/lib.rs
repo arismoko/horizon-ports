@@ -10,6 +10,7 @@ use std::collections::HashSet;
 use std::ops::ControlFlow;
 use std::sync::{Mutex, OnceLock};
 
+use mod_api::BlockKey;
 use mod_api::{
     BlockPos, BlockShapeKind, Compound, GlobalPos, Heightmap, Hooks, Host, HostSide, Identifier,
     JavaString, LevelRef, PlayerLoggedInEvent, PlayerRef, PlayerRespawnConfig, PlayerTickPostEvent,
@@ -59,7 +60,7 @@ pub fn parse_blocked(text: &str) -> Blocked {
 /// The blocked list with its tag names resolved to keys.
 struct Loaded {
     list: Blocked,
-    tags: Vec<TagKey>,
+    tags: Vec<TagKey<BlockKey>>,
 }
 
 /// The list in `config/safespawn/blocked_blocks.txt`, written with the defaults when missing; read once.
@@ -86,7 +87,7 @@ fn blocked(host: &dyn Host) -> &'static Loaded {
             .tags
             .iter()
             .filter_map(|t| Identifier::parse(t).ok())
-            .filter_map(|id| tags_host.key(&id))
+            .filter_map(|id| tags_host.key(&id).map(TagKey::typed))
             .collect();
         Loaded { list, tags }
     })

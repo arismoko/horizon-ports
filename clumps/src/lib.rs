@@ -11,6 +11,7 @@ use mod_api::{
 /// A listener may change `value`; a result outside `1..=`[`MAX_ORB_VALUE`] is ignored.
 #[derive(mod_api::Event)]
 #[event(id = "clumps:value", side = server)]
+#[non_exhaustive]
 pub struct ValueEvent {
     /// The entity id of the orb the clump is written into.
     pub orb: u32,
@@ -22,6 +23,7 @@ pub struct ValueEvent {
 /// change `points`, or cancel the event to skip the repair so all points go to the player.
 #[derive(mod_api::Event)]
 #[event(id = "clumps:repair", side = server, cancellable)]
+#[non_exhaustive]
 pub struct RepairEvent {
     /// The picking-up player's uuid.
     pub player: u128,
@@ -155,10 +157,14 @@ impl Hooks for Mod {
     /// clump's whole XP (honouring `xp_repair_ratio` and `player_item_mend`), then the rest
     /// goes to the player. Anything unreadable leaves vanilla's pickup untouched.
     fn pickup_xp(&self, host: &mut dyn ServerHost, event: &mut PickupXpEvent<'_>) -> Flow {
-        let Some(points) = pickup_points(event.value, event.count) else {
+        let orb = event.orb;
+        let (Ok(value), Ok(count)) = (orb.value(&*host), orb.count(&*host)) else {
             return Flow::Continue;
         };
-        let (Some(player), Some(orb)) = (host.player(event.player), host.entity(event.orb)) else {
+        let Some(points) = pickup_points(value, count) else {
+            return Flow::Continue;
+        };
+        let Some(player) = host.player(event.player) else {
             return Flow::Continue;
         };
         let mut repair = RepairEvent {
@@ -175,7 +181,7 @@ impl Hooks for Mod {
                 .repair_items_with_xp(host, offered)
                 .map(|left| left + (points - offered))
         };
-        let _ = orb.kill(host);
+        let _ = orb.entity().kill(host);
         let rest = points_after_repair(points, repaired);
         if rest > 0 {
             let _ = player.give_experience_points(host, rest);

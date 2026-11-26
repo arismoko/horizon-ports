@@ -394,7 +394,7 @@ impl Shared {
                 let Some(level) = player.entity().level(&*host) else {
                     return;
                 };
-                let Some(hit) = player.entity().pick(&*host, 5.0).filter(|h| !h.miss) else {
+                let Some(hit) = player.entity().pick(&*host, 5.0, false).filter(|h| !h.miss) else {
                     return;
                 };
                 let face = match hit.face {

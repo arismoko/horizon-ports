@@ -652,23 +652,23 @@ impl Hooks for Mod {
         &self,
         host: &mut dyn HitHost,
         event: &mut LivingDeathProtectionEvent<'_>,
-    ) -> Flow {
+    ) {
         if event.protector.is_some() {
-            return Flow::Continue;
+            return;
         }
         let Some(totem) = lock(&self.shared.totems).remove(&event.entity) else {
-            return Flow::Continue;
+            return;
         };
         let Some(key) = worn_key() else {
-            return Flow::Continue;
+            return;
         };
         let holder = Holder::Player(totem.uuid);
         let Some(mut c) = key
-            .get_existing(host.attachments(), holder, |c| c.cloned())
+            .get_existing_in(host, holder, |c| c.cloned())
             .ok()
             .flatten()
         else {
-            return Flow::Continue;
+            return;
         };
         let slot = SLOTS[totem.slot].0;
         let left = totem.stack.count().saturating_sub(1);
@@ -690,11 +690,10 @@ impl Hooks for Mod {
                 c.remove(&slot.into());
             }
         }
-        if key.set(host.attachments(), holder, c).is_err() {
-            return Flow::Continue;
+        if key.set_in(host, holder, c).is_err() {
+            return;
         }
         *event.protector = with_count(&totem.stack, 1);
-        Flow::Continue
     }
 
     /// The Trinkets key, while playing or in the player's own inventory: asks the server for the menu.

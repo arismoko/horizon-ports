@@ -6,6 +6,7 @@ Easy Anvils overhauls vanilla anvils without breaking balance:
 - **Configurable costs & prior work penalty**: removes the "Too Expensive!" cap by default (`too_expensive_limit = -1`), caps prior work penalty growth (`LIMITED`, `VANILLA`, or `NONE`), makes renames free (`ALL_ITEMS`, `NAME_TAGS_ONLY`, or `NEVER`), halves enchanted book costs, and lets you tune repair costs and durability bonuses.
 - **Iron block anvil repair**: right-click or dispense an iron block onto a chipped or damaged anvil to repair it by one damage stage.
 - **Formatted renaming**: use `§` colour and style codes in the anvil rename field, with a `?` formatting guide tooltip in the top-right corner.
+- **Works with other mods' anvil recipes**: their `anvil_update` listeners run in Easy Anvils' anvil menu.
 - **Lower break chance & risk-free renaming**: reduces anvil wear to 5% by default and prevents breakage when only renaming.
 
 Server options are configured in `config/easyanvils-server.toml` and synced to clients. Client options are available in **Options → Mods → Easy Anvils**.
@@ -15,7 +16,6 @@ Needed on both the server and the client.
 Differences from the original:
 
 - Items stored inside an anvil are not drawn on top of the anvil in the world (`render_anvil_contents`), because vanilla anvils cannot yet attach a world-space item renderer on the mod API (gap: sunrise-org/sunrise#5609).
-- Other mods' custom `anvil_update` recipes are not invoked inside Easy Anvils' custom anvil menu, because a mod menu cannot dispatch `anvil_update` to other mods (gap: sunrise-org/sunrise#5610).
 - Unaltered vanilla anvils (`convert_vanilla_anvil_when_interacting = false` or `#easyanvils:unaltered_anvils`) keep vanilla's 12% break chance, because `anvil_craft_pre` does not expose a break-chance modifier (gap: sunrise-org/sunrise#5500).
 
 A port of Easy Anvils by Fuzs, under the MPL-2.0 licence.

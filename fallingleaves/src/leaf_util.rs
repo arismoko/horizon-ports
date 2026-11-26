@@ -172,7 +172,7 @@ pub fn base_texture_rgb(block_id: &str, is_tinted: bool) -> [f32; 3] {
 pub fn average_opaque_rgb(rgba: &[u8]) -> Option<[f32; 3]> {
     let mut sum = [0u64; 3];
     let mut count = 0u64;
-    for px in rgba.chunks_exact(4) {
+    for px in rgba.as_chunks::<4>().0 {
         if px[3] == 0 {
             continue;
         }
@@ -219,7 +219,7 @@ fn sprite_average_rgb(host: &dyn ClientHost, sprite: SpriteRef) -> Option<[f32; 
     if let Some(hit) = cache.by_sprite.get(&key) {
         return *hit;
     }
-    let average = match host.atlas_sprite_pixels(sprite) {
+    let average = match host.render_assets().atlas_sprite_pixels(sprite) {
         Ok(pixels) => average_opaque_rgb(&pixels.rgba),
         // Not ready (resources still loading): do not cache, ask again next time.
         Err(AtlasSpriteError::NotReady) => return None,
@@ -282,7 +282,9 @@ pub fn has_room_for_leaf_particle(
     let below = [pos[0], pos[1] - 1, pos[2]];
     if let Some(below_block) = level.block(host, below)
         && let Some(leaves) = LEAVES_TAG.get()
-        && below_block.is_in_tag(host.tags(), *leaves).unwrap_or(false)
+        && below_block
+            .is_in_tag(host.tags(), leaves.typed())
+            .unwrap_or(false)
     {
         return false;
     }

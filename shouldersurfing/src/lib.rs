@@ -940,7 +940,7 @@ impl Hooks for ShoulderSurfing {
             rt.surfing = false;
             rt.lock = 0;
             if rt.bobbing.take().is_some() {
-                let _ = host.set_session_view_bobbing(None);
+                host.set_session_view_bobbing(None);
             }
             return;
         };
@@ -959,7 +959,7 @@ impl Hooks for ShoulderSurfing {
         let bobbing = ViewBobbing::from_index(rt.values.c(K::ViewBobbingMode))
             .session_value(rt.is_surfing(&*host));
         if bobbing != rt.bobbing {
-            let _ = host.set_session_view_bobbing(bobbing);
+            host.set_session_view_bobbing(bobbing);
             rt.bobbing = bobbing;
         }
 

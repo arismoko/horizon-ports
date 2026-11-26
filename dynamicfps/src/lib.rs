@@ -223,7 +223,7 @@ fn adopt_config_text(runtime: &Mutex<Runtime>, text: &str) -> DynamicFpsConfig {
 /// current power state, calling only what changed since the last pass.
 fn apply_host_effects(runtime: &Mutex<Runtime>, host: &mut dyn ClientHost) {
     let (desired, previous) = {
-        let mut rt = lock_runtime(runtime);
+        let rt = lock_runtime(runtime);
         let desired = desired_effects(rt.state, &rt.config, rt.smooth_volume.snapshot());
         (desired, rt.applied.clone())
     };
@@ -326,9 +326,7 @@ impl Hooks for DynamicFps {
         }
     }
 
-    fn client_setup(&self, _ctx: &mut dyn ClientSetupContext, _event: &mut ClientSetupEvent) {
-        let rt = self.lock();
-    }
+    fn client_setup(&self, _ctx: &mut dyn ClientSetupContext, _event: &mut ClientSetupEvent) {}
 
     fn client_stopping(&self, _host: &mut dyn ClientHost, _event: &mut ClientStoppingEvent) {
         self.lock().battery.stop();

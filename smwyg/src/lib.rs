@@ -194,6 +194,7 @@ impl Hooks for Mod {
             stack: row.stack.clone(),
             text: row.text.clone(),
             argb: row.argb,
+            rtl: row.rtl,
         });
     }
 

@@ -19,11 +19,10 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use mod_api::{
     BlockClass, BlockKey, BlockPredicateValue, BlockShapeKind, BlockState, BlockUpdateFlags,
-    BonemealEvent, DatapackEntry, DatapackField, DatapackFieldKind,
-    DatapackRegistriesRegistrar as _, DatapackRegistrySync, Flow, Hooks, Host, HostBlockStates,
-    HostSide, IPayloadContext, ItemResource, ItemStack, LegacyRandomSource, LevelRef, LightLayer,
-    ParticleKey, ParticleOptions, PayloadId, RandomSource, Registrar, RegistrationContext,
-    ServerHost, TagKey, ToClient,
+    BonemealEvent, DatapackEntry, DatapackField, DatapackFieldKind, DatapackRegistrySync, Flow,
+    Hooks, Host, HostBlockStates, HostSide, IPayloadContext, ItemResource, ItemStack,
+    LegacyRandomSource, LevelRef, LightLayer, ParticleKey, ParticleOptions, PayloadId,
+    RandomSource, Registrar, RegistrationContext, ServerHost, TagKey, ToClient,
 };
 
 /// Blocks bone meal never works on, whatever another mod says (`DENY`).
@@ -83,7 +82,7 @@ const TAG_IDS: [&str; 6] = [
     "minecraft:supports_melon_stem_fruit",
     "minecraft:supports_pumpkin_stem_fruit",
 ];
-static TAGS: OnceLock<HashMap<&'static str, TagKey>> = OnceLock::new();
+static TAGS: OnceLock<HashMap<&'static str, TagKey<BlockKey>>> = OnceLock::new();
 
 /// `ClientboundGrowthParticlesMessage`: bone meal worked on a block that has no bone meal
 /// behaviour of its own, so the client draws the growth particles vanilla would have.
@@ -428,7 +427,8 @@ impl<'a> Reads<'a> {
     /// registry isn't synced to) has none.
     fn spread_rule(self, block: BlockKey) -> Option<Behavior> {
         let mut ids = Vec::new();
-        self.level
+        let _ = self
+            .level
             .visit_datapack_entries(self.host, SPREAD_RULES, &mut |id| {
                 ids.push(id.to_owned());
                 ControlFlow::Continue(())
@@ -1077,7 +1077,7 @@ fn on_growth(growth: Growth, cx: &mut dyn IPayloadContext) -> Result<(), String>
     Ok(())
 }
 
-fn tag_key(id: &str) -> Option<TagKey> {
+fn tag_key(id: &str) -> Option<TagKey<BlockKey>> {
     TAGS.get()?.get(id).copied()
 }
 
@@ -1094,7 +1094,12 @@ impl Hooks for Mod {
         ) {
             eprintln!("[universalbonemeal] spread_rule registry refused: {error:?}");
         }
-        let _ = TAGS.set(TAG_IDS.into_iter().map(|id| (id, r.tag_key(id))).collect());
+        let _ = TAGS.set(
+            TAG_IDS
+                .into_iter()
+                .map(|id| (id, r.tag_key(id).typed()))
+                .collect(),
+        );
         let _ = HAPPY_VILLAGER.set(r.particle_key("minecraft:happy_villager"));
         let growth = r
             .payload_handlers()

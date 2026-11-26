@@ -580,8 +580,8 @@ pub fn open_client_only_screen(host: &mut dyn ClientHost, entity_id: u32) -> boo
     stand.entity_id = entity_id;
     stand.creative = creative;
     if let (Some(pose), Some(flags)) = (
-        entity.armor_stand_pose(host).ok().flatten(),
-        entity.armor_stand_flags(host).ok().flatten(),
+        entity.armor_stand_pose(host),
+        entity.armor_stand_flags(host),
     ) {
         stand.apply_live(
             [

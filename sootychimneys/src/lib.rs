@@ -42,9 +42,9 @@ struct Keys {
     /// Each kind's clean and dirty block, in `KINDS` order.
     blocks: [[BlockKey; 2]; 7],
     items: [[ItemKey; 2]; 7],
-    scrapers: TagKey,
-    smoke_blocking: TagKey,
-    smoke_boosting: TagKey,
+    scrapers: TagKey<ItemKey>,
+    smoke_blocking: TagKey<BlockKey>,
+    smoke_boosting: TagKey<BlockKey>,
     cosy_smoke: ParticleKey,
     signal_smoke: ParticleKey,
     smoke: ParticleKey,
@@ -567,9 +567,9 @@ impl Hooks for Mod {
         let _ = KEYS.set(Keys {
             blocks,
             items,
-            scrapers: r.tag_key("sootychimneys:soot_scrapers"),
-            smoke_blocking: r.tag_key(SMOKE_BLOCKING),
-            smoke_boosting: r.tag_key(SMOKE_BOOSTING),
+            scrapers: r.tag_key("sootychimneys:soot_scrapers").typed(),
+            smoke_blocking: r.tag_key(SMOKE_BLOCKING).typed(),
+            smoke_boosting: r.tag_key(SMOKE_BOOSTING).typed(),
             cosy_smoke: r.particle_key("minecraft:campfire_cosy_smoke"),
             signal_smoke: r.particle_key("minecraft:campfire_signal_smoke"),
             smoke: r.particle_key("minecraft:smoke"),
@@ -648,17 +648,13 @@ impl Hooks for Mod {
 
     /// `WindAffectsCampfire`: the wind bends the smoke of campfires (not the chimneys' own,
     /// which already follow it) as it is added.
-    fn client_particle_add(
-        &self,
-        _host: &mut dyn ClientHost,
-        event: &mut ClientParticleAddEvent<'_>,
-    ) -> Flow {
+    fn client_particle_add(&self, event: &mut ClientParticleAddEvent<'_>) -> Flow {
         let settings = settings();
         if !(settings.wind && settings.wind_affects_campfire) || OWN_SMOKE.load(Ordering::Relaxed) {
             return Flow::Continue;
         }
         let keys = keys();
-        if event.options.ty == keys.cosy_smoke || event.options.ty == keys.signal_smoke {
+        if event.options.key() == keys.cosy_smoke || event.options.key() == keys.signal_smoke {
             let wind = *lock(&WIND);
             *event.velocity = model::campfire_velocity(*event.velocity, &wind, &settings);
         }

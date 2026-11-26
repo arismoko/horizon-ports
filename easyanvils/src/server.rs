@@ -12,6 +12,7 @@ use crate::storage::{
     AnvilSlots, comparator_signal, drop_and_clear_anvil_slots, read_anvil_slots,
     read_anvil_slots_in, write_anvil_slots,
 };
+use mod_api::item::menu::{AnvilUpdateInputs, StackResult};
 use mod_api::{
     AnalogOutputEvent, BlockKey, BlockPart, BlockState, BlockUpdateFlags, DispenseMethodEvent,
     Dispensed, GameMode, HasAnalogOutputEvent, Host, HostSide, HostTransaction, IPayloadContext,
@@ -248,6 +249,43 @@ fn can_player_pickup(player: PlayerRef, host: &dyn ServerHost, result: &AnvilRes
     level >= result.cost
 }
 
+/// Runs every mod's `anvil_update` listeners over this menu's own result, as NeoForge's
+/// `CommonHooks.onAnvilUpdate` does for a menu that is not vanilla's `AnvilMenu`, and applies
+/// what they left: a replaced output, a changed level cost and material cost, or a cleared
+/// result when one canceled.
+fn apply_anvil_update(
+    host: &mut dyn ServerHost,
+    player: PlayerRef,
+    pos: [i32; 3],
+    inputs: &[Option<ItemStack>; 2],
+    item_name: Option<&str>,
+    result: AnvilResult,
+) -> AnvilResult {
+    let Some(left) = inputs[0].as_ref() else {
+        return result;
+    };
+    let vanilla = AnvilUpdateInputs {
+        left,
+        right: inputs[1].as_ref(),
+        name: item_name,
+        vanilla_output: result.output.as_ref(),
+        vanilla_xp_cost: result.cost.max(0),
+        vanilla_material_cost: i32::try_from(result.repair_item_count_cost).unwrap_or(i32::MAX),
+    };
+    let Some(edits) = player.anvil_update(host, pos, &vanilla) else {
+        return AnvilResult::empty(0);
+    };
+    AnvilResult {
+        output: match edits.output {
+            StackResult::Keep => result.output,
+            StackResult::Set(stack) => stack,
+        },
+        cost: edits.xp_cost.max(0),
+        repair_item_count_cost: edits.material_cost.max(0).unsigned_abs(),
+        only_renaming: result.only_renaming,
+    }
+}
+
 fn recompute_viewer(
     host: &mut dyn ServerHost,
     player_uuid: u128,
@@ -273,6 +311,8 @@ fn recompute_viewer(
         creative,
         &cfg,
     );
+    let pos = viewer_of(player_uuid).map_or([0; 3], |v| v.pos);
+    let result = apply_anvil_update(host, player, pos, inputs, item_name.as_deref(), result);
     let pickup = can_player_pickup(player, &*host, &result);
 
     if write_inputs {
@@ -496,6 +536,7 @@ impl BlockPart for AnvilBlockPart {
             creative,
             &cfg,
         );
+        let initial = apply_anvil_update(host, player, pos, &inputs, None, initial);
         let pickup = can_player_pickup(player, &*host, &initial);
 
         let title = Text::translate("container.repair", Vec::new());

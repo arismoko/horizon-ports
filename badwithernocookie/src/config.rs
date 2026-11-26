@@ -158,15 +158,13 @@ impl SilenceSettings {
                         settings.set_bool(key, parsed);
                     }
                 }
-                "silenceUs" => {
-                    if val.starts_with('[') {
-                        if contains_unquoted_char(val, ']') {
-                            if let Some(entries) = parse_toml_string_array(val) {
-                                settings.silence_us = entries;
-                            }
-                        } else {
-                            pending_array = Some(val.to_owned());
+                "silenceUs" if val.starts_with('[') => {
+                    if contains_unquoted_char(val, ']') {
+                        if let Some(entries) = parse_toml_string_array(val) {
+                            settings.silence_us = entries;
                         }
+                    } else {
+                        pending_array = Some(val.to_owned());
                     }
                 }
                 _ => {}

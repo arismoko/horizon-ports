@@ -34,6 +34,7 @@ fn wanted_limit(value: Option<SettingValue>) -> u32 {
     }
 }
 
+#[derive(Default)]
 struct MoreChatHistory;
 
 #[mod_api::sunrise_mod]

@@ -226,7 +226,7 @@ pub fn register_settings(r: &mut dyn Registrar) {
     for (name, spec) in specs {
         match r.register_setting(spec) {
             Ok(setting) => {
-                if let Err(error) = r.categorize_setting(setting, category(&name)) {
+                if let Err(error) = r.categorize_setting(&name, category(&name)) {
                     eprintln!("travelerstitles: setting {name} not categorized: {error}");
                 }
                 keys.insert(name, setting);

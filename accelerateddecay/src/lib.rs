@@ -11,6 +11,7 @@
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::sync::{Mutex, OnceLock, RwLock};
 
+use mod_api::BlockKey;
 use mod_api::{
     AttachmentCodec, AttachmentDescriptor, AttachmentError, AttachmentKey, BlockChangedEvent,
     Compound, GameEventContext, Holder, Hooks, HostSide, JavaString, LevelHost, LevelRef,
@@ -20,7 +21,7 @@ use mod_api::{
 /// Block tag identifying leaves eligible for accelerated decay.
 pub const LEAVES_TAG: &str = "minecraft:leaves";
 /// `LEAVES_TAG` resolved once at registration (`BlockState.is(BlockTags.LEAVES)`).
-static LEAVES: OnceLock<TagKey> = OnceLock::new();
+static LEAVES: OnceLock<TagKey<BlockKey>> = OnceLock::new();
 /// Distance value vanilla sets on a leaf with no supporting log within range.
 pub const DECAY_DISTANCE: &str = "7";
 /// Maximum queued leaf positions processed per level per server tick.
@@ -157,7 +158,7 @@ fn break_decaying_leaf(
     // block_destroy game event.
     if sound_and_particles {
         return level
-            .destroy_block(host, pos, true, None, false)
+            .destroy_block(host, pos, true, None, None, false)
             .is_ok_and(|broke| broke.is_some());
     }
     // The others: the loot alone, since the mod API can't run `Block.dropResources` without the
@@ -224,7 +225,7 @@ impl Mod {
 #[mod_api::sunrise_mod]
 impl Hooks for Mod {
     fn register(&self, r: &mut dyn Registrar, _cx: &RegistrationContext) {
-        let _ = LEAVES.set(r.tag_key(LEAVES_TAG));
+        let _ = LEAVES.set(r.tag_key(LEAVES_TAG).typed());
         match r.register_attachment_type(break_data_descriptor()) {
             Ok(key) => {
                 *self.break_data.write().unwrap_or_else(|e| e.into_inner()) = Some(key);

@@ -4,22 +4,26 @@
 //!
 //! | Moment | Where | What it does |
 //! |---|---|---|
-//! | `random_tick` | [`Rain`] | remembers the block that ticked, and stops the game's own growth when the debug switch says so |
-//! | `crop_grow_pre` | this module | remembers a bamboo stalk that is about to grow |
-//! | `level_tick_post` | [`grow_queued`] | rolls each remembered block's extra growth and applies it |
-//! | `register` (config listener: loading, reloading) | this module | `config/cropsloverain-common.toml` |
+//! | `random_tick` | [`Rain`] | rolls and applies the block's extra growth inside the tick, and stops the game's own growth when the debug switch says so |
+//! | `crop_grow_pre` | this module | rolls a bamboo stalk that is about to grow and queues its writes |
+//! | `level_tick_post` | [`apply_queued`] | applies the queued bamboo writes and bone meal |
+//! | `register` (config listener: loading, reloading) | this module | `config/cropsloverain-common.toml` and its settings page |
+//! | `setting_changed` | this module | a setting changed in the game goes to the live config and the file |
 
 pub mod rules;
 
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard, OnceLock};
 
 use mod_api::{
-    BlockPart, BlockUpdateFlags, ConfigEvent, ConfigKind, ConfigSnapshot, ConfigSpec,
-    CropGrowPreEvent, Flow, Hooks, HostBlockStates, HostSide, LevelRandomHost, LevelRef,
-    LevelTickPostEvent, LevelWriteHost, LightLayer, RandomTickEvent, Registrar,
-    RegistrationContext, ServerHost, TagKey, TriState,
+    BlockKey, BlockPart, BlockUpdateFlags, ConfigEvent, ConfigKind, ConfigSnapshot, ConfigSpec,
+    CropGrowPreEvent, Flow, Hooks, Host, HostSide, LevelRandomHost, LevelRef, LevelTickPostEvent,
+    LevelWriteHost, RandomTickEvent, Registrar, RegistrationContext, ServerHost,
+    SettingChangedEvent, SettingKey, SettingSpec, SettingValue, TagKey, TriState,
 };
 use rules::{Config, CropType, Leaves};
+
+const MOD_ID: &str = "cropsloverain";
 
 static SETTINGS: Mutex<Config> = Mutex::new(Config {
     use_rain_growth_speed: true,
@@ -39,17 +43,28 @@ static SETTINGS: Mutex<Config> = Mutex::new(Config {
 });
 
 /// The `minecraft:dirt` block tag, resolved once at registration (`BlockState.is(BlockTags.DIRT)`).
-static DIRT: OnceLock<TagKey> = OnceLock::new();
+static DIRT: OnceLock<TagKey<BlockKey>> = OnceLock::new();
 
 fn settings() -> Config {
     *SETTINGS.lock().unwrap_or_else(|e| e.into_inner())
 }
 
-/// How many positions one level may keep queued between its random ticks and the end of the tick.
+/// How many writes one level may keep queued between its random ticks and the end of the tick.
 const MAX_QUEUED: usize = 65_536;
 
-/// A remembered block: its dimension, its position, and whether it grows whatever the weather.
-type Queue = Vec<(&'static str, [i32; 3], bool)>;
+/// A write the growth needs the server host for.
+enum Edit {
+    Set {
+        pos: [i32; 3],
+        text: String,
+        flags: BlockUpdateFlags,
+    },
+    /// `LevelRef::bone_meal`, which only the server host runs.
+    BoneMeal([i32; 3]),
+}
+
+/// The queued writes: their dimension and the write.
+type Queue = Vec<(&'static str, Edit)>;
 
 fn queue() -> MutexGuard<'static, Queue> {
     static QUEUE: Mutex<Queue> = Mutex::new(Vec::new());
@@ -58,15 +73,17 @@ fn queue() -> MutexGuard<'static, Queue> {
         .expect("the growth queue lock is never held across a panic")
 }
 
-fn enqueue(dimension: &'static str, pos: [i32; 3], always: bool) {
+fn enqueue(dimension: &'static str, edits: Vec<Edit>) {
     let mut queue = queue();
-    if queue.len() < MAX_QUEUED {
-        queue.push((dimension, pos, always));
+    for edit in edits {
+        if queue.len() < MAX_QUEUED {
+            queue.push((dimension, edit));
+        }
     }
 }
 
-/// A block that grows faster in the rain: it remembers the random tick, and under the debug
-/// switch (`debugMode` and `haltRegularGrowth`) takes the game's own growth away.
+/// A block that grows faster in the rain: its random tick rolls and applies the extra growth,
+/// and under the debug switch (`debugMode` and `haltRegularGrowth`) takes the game's own growth away.
 pub struct Rain {
     /// A bamboo sapling grows on every random tick, rain or not, as in the original.
     always: bool,
@@ -74,10 +91,31 @@ pub struct Rain {
 
 #[mod_api::sunrise_part]
 impl BlockPart for Rain {
-    fn random_tick(&self, _level: &mut dyn LevelWriteHost, event: &mut RandomTickEvent) -> Flow {
+    fn random_tick(&self, level: &mut dyn LevelWriteHost, event: &mut RandomTickEvent) -> Flow {
+        let config = settings();
         let p = event.pos;
-        enqueue(event.dimension.key().id(), [p.x, p.y, p.z], self.always);
-        if settings().halts_regular_growth() {
+        let pos = [p.x, p.y, p.z];
+        if self.always || (config.use_rain_growth_speed && level.is_raining() == Some(true)) {
+            let mut grower = Grower {
+                level: &mut *level,
+                config,
+                edits: Vec::new(),
+            };
+            grower.grow(pos);
+            let mut queued = Vec::new();
+            for edit in grower.edits {
+                match edit {
+                    Edit::Set { pos, text, flags } => {
+                        if let Some(state) = level.block_state_id(&text) {
+                            level.set_block(pos, state, flags);
+                        }
+                    }
+                    edit => queued.push(edit),
+                }
+            }
+            enqueue(event.dimension.key().id(), queued);
+        }
+        if config.halts_regular_growth() {
             Flow::Cancel
         } else {
             Flow::Continue
@@ -117,54 +155,48 @@ fn with(text: &str, key: &str, value: &str) -> Option<String> {
     found.then(|| format!("{block}[{}]", props.join(",")))
 }
 
-/// The level of one growth, with the rules' draws behind it.
+/// The level of one growth, with the rules' draws behind it. It reads the level and collects
+/// the writes, which the caller applies where it can.
 struct Grower<'a> {
-    host: &'a mut dyn ServerHost,
-    level: LevelRef,
+    level: &'a mut dyn LevelRandomHost,
     config: Config,
+    edits: Vec<Edit>,
 }
 
 impl Grower<'_> {
     fn text(&self, pos: [i32; 3]) -> Option<String> {
-        let state = self.level.block_state(&*self.host, pos)?;
-        self.host.block_state_string(state)
+        let state = self.level.block_state(pos)?;
+        self.level.state_string(state)
     }
 
     /// `CropsLoveRain.shouldGrowExtra` for the block at `pos`.
     fn roll(&mut self, kind: CropType, pos: [i32; 3]) -> bool {
-        let raining_at = self.level.is_raining_at(&*self.host, pos).unwrap_or(false);
-        let raining = self.level.is_raining(&*self.host).unwrap_or(false);
-        let level = self.level;
-        let host = &mut *self.host;
+        let raining_at = self.level.is_raining_at(pos);
+        let raining = self.level.is_raining().unwrap_or(false);
+        let level = &mut *self.level;
         rules::should_grow_extra(&self.config, kind, raining_at, raining, |bound| {
             level
-                .with_random(host, |random| random.next_int_bound(bound))
+                .with_random(|random| random.next_int_bound(bound))
                 .unwrap_or(1)
         })
     }
 
     fn set(&mut self, pos: [i32; 3], text: &str, flags: BlockUpdateFlags) {
-        if let Some(state) = self.host.block_state_id(text) {
-            let _ = self.level.set_block(self.host, pos, state, flags);
-        }
+        self.edits.push(Edit::Set {
+            pos,
+            text: text.to_owned(),
+            flags,
+        });
     }
 
+    /// `getRawBrightness(pos, darken) >= 9`.
     fn lit(&self, pos: [i32; 3], sky_darken: i32) -> bool {
-        // `getRawBrightness`: the brighter of the block light and the sky light less the darkening.
-        let block = self
-            .level
-            .brightness(&*self.host, LightLayer::Block, pos)
-            .unwrap_or(0);
-        let sky = self
-            .level
-            .brightness(&*self.host, LightLayer::Sky, pos)
-            .unwrap_or(0);
-        block.max(sky - sky_darken) >= 9
+        self.level.raw_brightness(pos, sky_darken) >= 9
     }
 
     fn max_age(&self, pos: [i32; 3]) -> Option<i32> {
-        let key = self.level.block(&*self.host, pos)?;
-        self.host
+        let key = self.level.block_state(pos)?.block();
+        self.level
             .block_states()
             .definition(key)?
             .iter()
@@ -272,7 +304,7 @@ impl Grower<'_> {
 
     /// `SaplingGrowthSpeedup`: `SaplingBlock.advanceTree`, a stage first, then the tree.
     fn grow_sapling(&mut self, pos: [i32; 3], text: &str) {
-        let darken = self.level.get_sky_darken(&*self.host).unwrap_or(0);
+        let darken = self.level.sky_darken().unwrap_or(0);
         let above = [pos[0], pos[1] + 1, pos[2]];
         if !self.lit(above, darken) || !self.roll(CropType::Sapling, pos) {
             return;
@@ -282,7 +314,7 @@ impl Grower<'_> {
                 self.set(pos, &next, BlockUpdateFlags::CLIENTS);
             }
         } else {
-            let _ = self.level.bone_meal(self.host, pos);
+            self.edits.push(Edit::BoneMeal(pos));
         }
     }
 
@@ -305,7 +337,7 @@ impl Grower<'_> {
         }
         let direction = self
             .level
-            .with_random(self.host, |random| random.next_int_bound(4))
+            .with_random(|random| random.next_int_bound(4))
             .unwrap_or(0);
         let (name, dx, dz) = [
             ("north", 0, -1),
@@ -316,12 +348,11 @@ impl Grower<'_> {
         let target = [pos[0] + dx, pos[1], pos[2] + dz];
         let ground = [target[0], target[1] - 1, target[2]];
         let farmland = self.text(ground).is_some_and(|t| {
-            let block = block_of(&t).to_owned();
-            block == "minecraft:farmland"
+            block_of(&t) == "minecraft:farmland"
                 || DIRT.get().is_some_and(|&tag| {
                     self.level
-                        .block(&*self.host, ground)
-                        .and_then(|key| key.is_in_tag(self.host.tags(), tag))
+                        .block_state(ground)
+                        .and_then(|state| state.block().is_in_tag(self.level.tags(), tag))
                         .unwrap_or(false)
                 })
         });
@@ -379,7 +410,7 @@ impl Grower<'_> {
             .map(|t| Leaves::of(prop(t, "leaves").unwrap_or("none")));
         let unit = self
             .level
-            .with_random(self.host, |random| random.next_float())
+            .with_random(|random| random.next_float())
             .unwrap_or(1.0);
         let own_age = u8::from(prop(text, "age") == Some("1"));
         let plan = rules::grow_bamboo(height, own_age, below_leaves, below2.is_some(), unit);
@@ -412,34 +443,28 @@ impl Grower<'_> {
     }
 }
 
-/// Roll and apply the extra growth of every block remembered for the level that just ticked.
-pub fn grow_queued(host: &mut dyn ServerHost, level: LevelRef) {
+/// Apply the writes queued for the level that just ticked.
+pub fn apply_queued(host: &mut dyn ServerHost, level: LevelRef) {
     let Some(dimension) = level.dimension().id(&*host) else {
         return;
     };
-    let config = settings();
-    // Only rain makes a roll succeed, so in dry weather, or with the master switch off, only the
-    // blocks that grow whatever the weather are looked at.
-    let wet = config.use_rain_growth_speed && level.is_raining(&*host).unwrap_or(false);
-    let waiting: Vec<[i32; 3]> = {
+    let waiting: Vec<Edit> = {
         let mut queue = queue();
-        let (ours, rest): (Queue, Queue) = queue.drain(..).partition(|(d, _, _)| *d == dimension);
+        let (ours, rest): (Queue, Queue) = queue.drain(..).partition(|(d, _)| *d == dimension);
         *queue = rest;
-        ours.into_iter()
-            .filter(|(_, _, always)| wet || *always)
-            .map(|(_, pos, _)| pos)
-            .collect()
+        ours.into_iter().map(|(_, edit)| edit).collect()
     };
-    if waiting.is_empty() {
-        return;
-    }
-    let mut grower = Grower {
-        host,
-        level,
-        config,
-    };
-    for pos in waiting {
-        grower.grow(pos);
+    for edit in waiting {
+        match edit {
+            Edit::Set { pos, text, flags } => {
+                if let Some(state) = host.block_state_id(&text) {
+                    let _ = level.set_block(host, pos, state, flags);
+                }
+            }
+            Edit::BoneMeal(pos) => {
+                let _ = level.bone_meal(host, pos);
+            }
+        }
     }
 }
 
@@ -458,6 +483,70 @@ fn declare(r: &mut dyn Registrar) {
     r.block_part(sapling, Rain { always: true });
 }
 
+/// The handles of the registered settings, by the file's key.
+static SETTING_KEYS: OnceLock<Vec<(&'static str, SettingKey)>> = OnceLock::new();
+
+/// Whether the settings were given the file's values since the game started.
+static SYNCED: AtomicBool = AtomicBool::new(false);
+
+/// The config file `register` declares (`ConfigKind::Common`).
+const CONFIG_FILE: &str = "cropsloverain-common.toml";
+
+/// Registers the settings on Options > Mods, each under its file's section.
+fn register_settings(r: &mut dyn Registrar) {
+    let defaults = Config::default();
+    let mut keys = Vec::new();
+    for (name, section, is_flag) in rules::SETTINGS {
+        let label = format!("cropsloverain.configuration.{name}");
+        let tooltip = format!("{label}.tooltip");
+        let mut config = defaults;
+        let spec = if is_flag {
+            SettingSpec::toggle(name, &label, config.flag(name).copied().unwrap_or(false))
+        } else {
+            let default = f64::from(config.number(name).copied().unwrap_or(0));
+            SettingSpec::range(name, &label, 0.0, 100.0, 1.0, default)
+        };
+        let has_tooltip = matches!(
+            name,
+            "rain_growth_speed"
+                | "use_individual_speeds"
+                | "separate_stem_speed"
+                | "halt_regular_growth"
+        );
+        let spec = if has_tooltip {
+            spec.tooltip(tooltip)
+        } else {
+            spec
+        };
+        match r.register_setting(spec) {
+            Ok(key) => {
+                let category = format!("cropsloverain.configuration.{section}");
+                if let Err(error) = r.categorize_setting(name, &category) {
+                    eprintln!("cropsloverain: setting {name} not categorized: {error}");
+                }
+                keys.push((name, key));
+            }
+            Err(error) => eprintln!("cropsloverain: setting {name} not registered: {error}"),
+        }
+    }
+    let _ = SETTING_KEYS.set(keys);
+}
+
+/// Shows the config's values on the settings page. A changed value notifies `setting_changed`,
+/// which finds the live config already equal and writes nothing.
+fn mirror_settings(host: &mut dyn ServerHost, mut config: Config) {
+    let Some(keys) = SETTING_KEYS.get() else {
+        return;
+    };
+    for (name, key) in keys {
+        let value = match config.flag(name) {
+            Some(flag) => SettingValue::Toggle(*flag),
+            None => SettingValue::Range(f64::from(config.number(name).copied().unwrap_or(0))),
+        };
+        let _ = host.set_setting(*key, value);
+    }
+}
+
 #[derive(Default)]
 struct Mod;
 
@@ -465,11 +554,17 @@ struct Mod;
 impl Hooks for Mod {
     fn register(&self, r: &mut dyn Registrar, _: &RegistrationContext) {
         declare(r);
-        let _ = DIRT.set(r.tag_key("minecraft:dirt"));
+        register_settings(r);
+        let _ = DIRT.set(r.tag_key("minecraft:dirt").typed());
         let spec = ConfigSpec::new(ConfigKind::Common, rules::DEFAULT_CONFIG);
         let listener = |event: ConfigEvent<'_>, snapshot: &ConfigSnapshot| -> Result<(), String> {
-            if matches!(event, ConfigEvent::Loading(_) | ConfigEvent::Reloading(_)) {
-                *SETTINGS.lock().unwrap_or_else(|e| e.into_inner()) = Config::parse(&snapshot.text);
+            if let ConfigEvent::Loading(_) | ConfigEvent::Reloading(_) = event {
+                let parsed = Config::parse(&snapshot.text);
+                *SETTINGS.lock().unwrap_or_else(|e| e.into_inner()) = parsed;
+                // Written with the lock released: a changed value notifies `setting_changed`.
+                if let ConfigEvent::Reloading(HostSide::Server(host)) = event {
+                    mirror_settings(host, parsed);
+                }
             }
             Ok(())
         };
@@ -477,22 +572,55 @@ impl Hooks for Mod {
         let _ = r.register_config(spec, Some(Arc::new(listener)));
     }
 
-    /// A bamboo stalk the game is about to grow: the extra growth follows its own roll.
+    /// A bamboo stalk the game is about to grow: the extra growth follows its own roll, and its
+    /// writes wait for the end of the tick (the hook's level view cannot write).
     fn crop_grow_pre(&self, level: &mut dyn LevelRandomHost, event: &mut CropGrowPreEvent<'_>) {
         let bamboo = level.state_block(event.state) == Some("minecraft:bamboo");
         if !bamboo {
             return;
         }
         let p = event.pos;
-        enqueue(event.dimension.key().id(), [p.x, p.y, p.z], false);
-        if settings().halts_regular_growth() {
+        let config = settings();
+        let mut grower = Grower {
+            level,
+            config,
+            edits: Vec::new(),
+        };
+        grower.grow([p.x, p.y, p.z]);
+        enqueue(event.dimension.key().id(), grower.edits);
+        if config.halts_regular_growth() {
             *event.result = TriState::False;
         }
     }
 
     fn level_tick_post(&self, host: HostSide<'_>, event: &mut LevelTickPostEvent) {
         if let HostSide::Server(host) = host {
-            grow_queued(host, event.level);
+            if !SYNCED.swap(true, Ordering::Relaxed) {
+                mirror_settings(host, settings());
+            }
+            apply_queued(host, event.level);
+        }
+    }
+
+    fn setting_changed(&self, host: &dyn Host, event: &mut SettingChangedEvent<'_>) {
+        if event.mod_id != MOD_ID {
+            return;
+        }
+        let changed = {
+            let mut config = SETTINGS.lock().unwrap_or_else(|e| e.into_inner());
+            match event.value {
+                SettingValue::Toggle(on) => config
+                    .flag(event.key)
+                    .is_some_and(|slot| std::mem::replace(slot, on) != on),
+                SettingValue::Range(number) => config.number(event.key).is_some_and(|slot| {
+                    std::mem::replace(slot, number.round() as i32) != number.round() as i32
+                }),
+                _ => false,
+            }
+        };
+        if changed {
+            let path = host.config_dir().join(CONFIG_FILE);
+            let _ = std::fs::write(path, settings().to_text());
         }
     }
 }

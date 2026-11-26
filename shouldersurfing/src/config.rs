@@ -824,7 +824,7 @@ mod tests {
             );
             sections.insert(category);
         }
-        assert_eq!(sections.len(), 7);
+        assert_eq!(sections.len(), 8);
     }
 
     #[test]

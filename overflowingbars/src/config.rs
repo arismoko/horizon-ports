@@ -214,7 +214,7 @@ pub fn register_settings(r: &mut dyn Registrar) {
         let name = spec.key.clone();
         if let Ok(key) = r.register_setting(spec) {
             if let Some(category) = category_of(&name) {
-                let _ = r.categorize_setting(key, category);
+                let _ = r.categorize_setting(&name, category);
             }
             keys.insert(name, key);
         }

@@ -362,8 +362,14 @@ mod tests {
         let Tag::Compound(tag) = equippable("x") else {
             panic!("not a compound");
         };
-        assert_eq!(tag.get("dispensable"), Some(&Tag::Byte(0)));
-        assert_eq!(tag.get("swappable"), Some(&Tag::Byte(0)));
+        assert_eq!(
+            tag.get(&mod_api::JavaString::from("dispensable")),
+            Some(&Tag::Byte(0))
+        );
+        assert_eq!(
+            tag.get(&mod_api::JavaString::from("swappable")),
+            Some(&Tag::Byte(0))
+        );
     }
 
     #[test]

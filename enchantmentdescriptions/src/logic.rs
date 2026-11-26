@@ -371,7 +371,7 @@ mod tests {
         assert_eq!(fill_template("%2$s %1$s", &args), "B A");
         assert_eq!(fill_template("100%% %s %s %s", &args), "100% A B ");
         assert_eq!(fill_template("%", &args), "%");
-        assert_eq!(fill_template("%9$s %0$s %12", &args), " %12");
+        assert_eq!(fill_template("%9$s %0$s %12", &args), "  %12");
         assert_eq!(fill_template("%é", &[]), "%é");
     }
 

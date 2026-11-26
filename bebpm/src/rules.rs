@@ -229,8 +229,8 @@ mod tests {
     fn box_covers_vanillas_offsets_and_skips_the_table() {
         let config = settings(&[(KEY_X, "0"), (KEY_Z, "0"), (KEY_UP, "0"), (KEY_DOWN, "0")]);
         let offsets = config.offsets();
-        for x in -2..=2 {
-            for z in -2..=2 {
+        for x in -2_i32..=2 {
+            for z in -2_i32..=2 {
                 if x.abs() == 2 || z.abs() == 2 {
                     for y in 0..=1 {
                         assert!(offsets.contains(&[x, y, z]));

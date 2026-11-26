@@ -11,8 +11,8 @@ use std::ops::ControlFlow;
 use std::sync::OnceLock;
 
 use mod_api::{
-    BlockShapeKind, Hooks, Host, IsValidBookShelfEvent, LevelRef, Registrar, RegistrationContext,
-    SettingKey, SettingSpec, TagKey,
+    BlockKey, BlockShapeKind, Hooks, Host, IsValidBookShelfEvent, LevelRef, Registrar,
+    RegistrationContext, SettingKey, SettingSpec, TagKey,
 };
 
 use crate::rules::{Cell, Config, LineOfSight};
@@ -24,13 +24,13 @@ const PERMEABLE_TAG: &str = "bebpm:power_permeable";
 /// The settings as they were when registration began; offsets are fixed at startup, so the
 /// line-of-sight test reads the same values and a change takes a restart.
 static CONFIG: OnceLock<Config> = OnceLock::new();
-static TAGS: OnceLock<(TagKey, TagKey)> = OnceLock::new();
+static TAGS: OnceLock<(TagKey<BlockKey>, TagKey<BlockKey>)> = OnceLock::new();
 
 #[derive(Default)]
 struct Mod;
 
 fn read_setting(cx: &RegistrationContext, key: &str) -> Option<String> {
-    cx.setting(MOD_ID, key).ok().flatten()
+    cx.setting(MOD_ID, key).map(str::to_owned)
 }
 
 fn register_setting(r: &mut dyn Registrar, spec: SettingSpec) -> Option<SettingKey> {
@@ -65,7 +65,7 @@ impl Hooks for Mod {
                     "setting.bebpm.line_of_sight.decor_only",
                     "setting.bebpm.line_of_sight.on",
                 ],
-                LineOfSight::default().index(),
+                LineOfSight::default().index() as usize,
             )
             .tooltip("setting.bebpm.line_of_sight.tooltip"),
         );
@@ -73,7 +73,10 @@ impl Hooks for Mod {
         let config = Config::from_settings(|key| read_setting(cx, key));
         r.add_enchanting_table_offsets(&config.offsets());
         let _ = CONFIG.set(config);
-        let _ = TAGS.set((r.tag_key(TRANSMITTER_TAG), r.tag_key(PERMEABLE_TAG)));
+        let _ = TAGS.set((
+            r.tag_key(TRANSMITTER_TAG).typed(),
+            r.tag_key(PERMEABLE_TAG).typed(),
+        ));
     }
 
     fn is_valid_book_shelf(&self, host: &dyn Host, event: &mut IsValidBookShelfEvent) {
@@ -118,10 +121,11 @@ fn is_valid(
         let mut full = None;
         if config.los == LineOfSight::DecorOnly {
             let mut boxes = Vec::new();
-            level.visit_block_shape(host, state, pos, BlockShapeKind::Collision, &mut |b| {
-                boxes.push(b);
-                ControlFlow::Continue(())
-            })?;
+            let _ =
+                level.visit_block_shape(host, state, pos, BlockShapeKind::Collision, &mut |b| {
+                    boxes.push(b);
+                    ControlFlow::Continue(())
+                })?;
             full = Some(rules::is_full_block(&boxes));
         }
         Some(Cell {

@@ -10,9 +10,8 @@ mod config;
 mod rules;
 
 use crate::commands::{
-    clear_server_listeners, client_listening, handle_client_command, register_client_commands,
-    register_server_commands, remove_server_listener, server_listeners_snapshot,
-    set_client_listening,
+    clear_server_listeners, client_listening, register_client_commands, register_server_commands,
+    remove_server_listener, server_listeners_snapshot, set_client_listening,
 };
 use crate::config::{
     MOD_ID, SYNCING, SilenceSettings, config_spec, local_settings, persist_config_file,
@@ -23,12 +22,12 @@ use crate::rules::{
     SilenceProfile, TooltipFlags, gray_translate, listen_message, silence_reason, sound_parts,
 };
 use mod_api::{
-    ClientDisconnectingEvent, ClientHost, ClientPlayerLoggingOutEvent, ClientTickPostEvent,
-    CommandEvent, ConfigEvent, ConfigSnapshot, EquipmentSlot, Flow, Hooks, Host, HostSide,
-    ItemTooltipEvent, PayloadId, PlayLevelSoundAtEntityEvent, PlayLevelSoundAtPositionEvent,
-    PlaySoundEvent, PlayerLoggedInEvent, PlayerLoggedOutEvent, RegisterClientCommandsEvent,
-    RegisterCommandsEvent, Registrar, RegistrationContext, ServerHost, ServerStoppingEvent,
-    SettingChangedEvent, SoundSource, ToClient,
+    ClientHost, ClientPlayerLoggingOutEvent, ClientTickPostEvent, ConfigEvent, ConfigSnapshot,
+    EquipmentSlot, Flow, Hooks, Host, HostSide, ItemTooltipEvent, PayloadId,
+    PlayLevelSoundAtEntityEvent, PlayLevelSoundAtPositionEvent, PlaySoundEvent,
+    PlayerLoggedInEvent, PlayerLoggedOutEvent, RegisterClientCommandsEvent, RegisterCommandsEvent,
+    Registrar, RegistrationContext, ServerHost, ServerStoppingEvent, SettingChangedEvent,
+    SoundSource, ToClient,
 };
 use std::collections::VecDeque;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -171,17 +170,6 @@ impl Hooks for BadWitherNoCookie {
         register_client_commands(event.commands);
     }
 
-    fn command(&self, host: &mut dyn ClientHost, event: &mut CommandEvent<'_>) -> Flow {
-        if !host.on(MOD_ID) {
-            return Flow::Continue;
-        }
-        if handle_client_command(host, event.command) {
-            Flow::Cancel
-        } else {
-            Flow::Continue
-        }
-    }
-
     fn player_logged_in(&self, host: &mut dyn ServerHost, event: &mut PlayerLoggedInEvent<'_>) {
         if !host.on(MOD_ID) {
             return;
@@ -320,10 +308,6 @@ impl Hooks for BadWitherNoCookie {
         _host: &mut dyn ClientHost,
         _event: &mut ClientPlayerLoggingOutEvent,
     ) {
-        reset_client_state();
-    }
-
-    fn client_disconnecting(&self, _host: &dyn ClientHost, _event: &mut ClientDisconnectingEvent) {
         reset_client_state();
     }
 

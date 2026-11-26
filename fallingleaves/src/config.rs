@@ -1021,8 +1021,6 @@ mod tests {
         }
         assert_eq!(seen.len(), 4);
     }
-    use super::*;
-
     #[test]
     fn toml_round_trip_preserves_scalar_and_per_block_settings() {
         let mut cfg = FallingLeavesConfig {

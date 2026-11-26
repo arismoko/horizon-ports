@@ -870,7 +870,9 @@ impl Mod {
             let (Some(block), Ok(id)) = (block_key, Identifier::parse(tag)) else {
                 return false;
             };
-            tags.key(&id).and_then(|key| block.is_in_tag(tags, key)) == Some(true)
+            tags.key(&id)
+                .and_then(|key| block.is_in_tag(tags, key.typed()))
+                == Some(true)
         };
         let lists = Lists::get(reader);
         if block == "minecraft:air"
