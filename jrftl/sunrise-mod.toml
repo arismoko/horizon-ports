@@ -1,0 +1,9 @@
+id = "jrftl"
+name = "Just Another Rotten Flesh to Leather"
+version = "0.1.0"
+description = "Turn rotten flesh into leather in a furnace or smoker."
+authors = ["Alexander Daum", "arismoko"]
+license = "MIT"
+credits = "Original Fabric mod by Alexander Daum (456Xander); Sunrise port by arismoko."
+homepage = "https://github.com/arismoko/sunrise-ports/tree/sunrise/jrftl"
+side = "both"

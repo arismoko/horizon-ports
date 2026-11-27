@@ -1,0 +1,9 @@
+summary = "Turn rotten flesh into leather in a furnace or smoker."
+description = """
+Cook one rotten flesh to make one leather and earn 0.2 XP. It takes 200 ticks in a furnace or 100 ticks in a smoker. Getting rotten flesh in your inventory unlocks both recipes.
+
+Upstream Fabric 1.10.0 still references Prepared Flesh and hard-mode recipes in its data, but doesn't provide that item or those recipes. The Sunrise port omits those inactive references and keeps both working recipes.
+
+Originally by Alexander Daum (456Xander), ported to Sunrise by arismoko.
+"""
+categories = ["game-mechanics"]
