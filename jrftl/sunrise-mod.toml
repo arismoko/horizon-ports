@@ -1,6 +1,6 @@
 id = "jrftl"
 name = "Just Another Rotten Flesh to Leather"
-version = "0.1.0"
+version = "0.1.1"
 description = "Turn rotten flesh into leather in a furnace or smoker."
 authors = ["Alexander Daum", "arismoko"]
 license = "MIT"
