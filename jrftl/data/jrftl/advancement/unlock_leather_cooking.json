@@ -1,0 +1,17 @@
+{
+  "parent": "minecraft:recipes/root",
+  "criteria": {
+    "have_rotten_flesh": {
+      "trigger": "minecraft:inventory_changed",
+      "conditions": {
+        "items": [{ "items": "minecraft:rotten_flesh" }]
+      }
+    }
+  },
+  "rewards": {
+    "recipes": [
+      "jrftl:normal_leather_smelting",
+      "jrftl:normal_leather_smoking"
+    ]
+  }
+}
