@@ -9,6 +9,12 @@
 //! - The menu (TrinketInventoryScreen's slots) is a vanilla chest menu the mod fills (`open_chest_menu`),
 //!   opened by the Trinkets key (G, `key.trinkets.open` in Controls): the client sends `trinkets:open` and the
 //!   server opens it on its next tick. A click on an inventory item wears it, a click on a worn one takes it off.
+//! - The player's inventory screen shows the groups too (head, chest, legs, feet, offhand, hand, charm): hovering an
+//!   armour or offhand slot fans its group out to the left of it, hand and charm have a small anchor left of the panel;
+//!   an empty slot shows its slot-type icon. The pinned API cannot add slots to the player inventory menu
+//!   (`set_screen_slot` only moves slots of an open mod menu), so `screen_render_post` draws them and
+//!   `screen_mouse_button_pressed_pre` takes the clicks, which go to the server as `trinkets:slot` (a click with a
+//!   stack on the cursor first parks that stack in a free inventory slot with `MenuRef::click`).
 //! - A right click with a trinket wears it in the first empty slot that takes it (TrinketItem.use).
 //! - The tooltip names the slots an item fits.
 //! - A worn Totem of Undying saves the player: `living_death_protection` hands the engine the worn totem as the
@@ -21,18 +27,23 @@ use std::collections::HashMap;
 use std::sync::{Arc, Mutex, RwLock};
 
 use mod_api::{
-    AttachmentCodec, AttachmentDescriptor, AttachmentKey, ClientHost, Compound, Flow, Hand,
-    HitHost, Holder, Hooks, Host, HostSide, IPayloadContext, IPayloadHandler, Identifier,
-    InputKeyEvent, InteractionResult, ItemResource, ItemStack, ItemTooltipEvent, KeyAction,
-    KeyRegistration, LivingDeathEvent, LivingDeathProtectionEvent, MenuClickedEvent, MenuPart,
-    MenuRef, MenuRemovedEvent, MenuReplace, PayloadBytes, PayloadHandleError, PayloadId,
-    PlayerLoggedInEvent, PlayerRef, PlayerRespawnedEvent, Registrar, RegistrationContext,
-    RightClickItemEvent, ServerHost, ServerTickEvent, ServerTickPhase, Tag, Text,
+    AttachmentCodec, AttachmentDescriptor, AttachmentKey, ClientHost, ClientTickPostEvent,
+    Compound, Flow, Hand, HitHost, Holder, Hooks, Host, HostSide, IPayloadContext, IPayloadHandler,
+    Identifier, InputKeyEvent, InteractionResult, ItemResource, ItemStack, ItemTooltipEvent,
+    KeyAction, KeyRegistration, LivingDeathEvent, LivingDeathProtectionEvent, MenuClick,
+    MenuClickedEvent, MenuPart, MenuRef, MenuRemovedEvent, MenuReplace, MouseButton, PayloadBytes,
+    PayloadHandleError, PayloadId, PlayerLoggedInEvent, PlayerRef, PlayerRespawnedEvent, Registrar,
+    RegistrationContext, RightClickItemEvent, ScreenMouseButtonPressedPreEvent,
+    ScreenRenderPostEvent, ScreenView, ServerHost, ServerTickEvent, ServerTickPhase, Tag, Text,
 };
 
 /// The id of the worn-stacks attachment other packages look up.
 pub const WORN_ID: &str = "trinkets:worn";
 const OPEN: &str = "trinkets:open";
+/// A click on a trinket slot of the inventory screen: [kind, trinket slot, inventory slot].
+const SLOT: &str = "trinkets:slot";
+const TAKE: u8 = 0;
+const WEAR: u8 = 1;
 const KEY: &str = "open";
 const MENU: &str = "minecraft:generic_9x2";
 
@@ -151,7 +162,7 @@ fn worn(host: &mut dyn Host, uuid: u128) -> Vec<Option<ItemStack>> {
 }
 
 /// Writes the worn stacks. Entries under ids that aren't slots of this table are kept as they are.
-fn set_worn(host: &mut dyn Host, uuid: u128, stacks: &[Option<ItemStack>]) -> bool {
+fn set_worn(host: &mut dyn ServerHost, uuid: u128, stacks: &[Option<ItemStack>]) -> bool {
     let Some(key) = worn_key() else {
         return false;
     };
@@ -171,7 +182,14 @@ fn set_worn(host: &mut dyn Host, uuid: u128, stacks: &[Option<ItemStack>]) -> bo
             c.insert(s.0.into(), Tag::Compound(t));
         }
     }
-    key.set(host, Holder::Player(uuid), c).is_ok()
+    let ok = key.set(host, Holder::Player(uuid), c).is_ok();
+    let _ = key.sync_data(host, Holder::Player(uuid));
+    ok
+}
+
+/// The GUI sprite of slot `i`'s slot-type icon.
+fn icon(i: usize) -> String {
+    SLOTS[i].2.to_owned()
 }
 
 fn item_id(host: &dyn Host, stack: &ItemStack) -> String {
@@ -339,6 +357,13 @@ struct Shared {
     opens: Mutex<Vec<u128>>,
     /// The open trinket menu's window of each player.
     menus: Mutex<HashMap<u128, i32>>,
+    /// Slot clicks of the inventory screen to do on the next server tick: (player, kind, trinket slot, inventory slot).
+    slots: Mutex<Vec<(u128, u8, usize, usize)>>,
+    /// Client: the local player's worn stacks, read each tick while the inventory screen is open (the screen's
+    /// hooks cannot read attachments).
+    view: Mutex<Vec<Option<ItemStack>>>,
+    /// Client: trinket slots clicked on the inventory screen, handled on the next client tick.
+    clicks: Mutex<Vec<usize>>,
 }
 
 /// A worn totem: whose it is, the slot it sits in and the stack.
@@ -416,8 +441,27 @@ impl Shared {
         }
     }
 
+    /// A click on the inventory screen's trinket slot `i`: takes its stack off, or wears the stack in inventory slot
+    /// `inv` there. The inventory menu is not the trinket menu, so no window is refreshed.
+    fn slot(&self, host: &mut dyn ServerHost, uuid: u128, kind: u8, i: usize, inv: usize) {
+        let size = rows() as usize * 9;
+        if kind == TAKE {
+            self.click(host, uuid, -1, i as i32, None);
+        } else {
+            let rel = if inv >= 9 { inv - 9 } else { inv + 27 };
+            self.click(host, uuid, -1, (size + rel) as i32, Some(i));
+        }
+    }
+
     /// A click in the player's trinket menu.
-    fn click(&self, host: &mut dyn ServerHost, uuid: u128, window: i32, slot: i32) {
+    fn click(
+        &self,
+        host: &mut dyn ServerHost,
+        uuid: u128,
+        window: i32,
+        slot: i32,
+        only: Option<usize>,
+    ) {
         let Some(player) = host.player(uuid) else {
             return;
         };
@@ -459,7 +503,11 @@ impl Shared {
             };
             let id = item_id(&*host, &stack);
             let fits: Vec<usize> = (0..SLOTS.len())
-                .filter(|&i| accepts(i, &id) && !worn[i].as_ref().is_some_and(is_unknown))
+                .filter(|&i| {
+                    only.is_none_or(|o| o == i)
+                        && accepts(i, &id)
+                        && !worn[i].as_ref().is_some_and(is_unknown)
+                })
                 .collect();
             let occupied: Vec<bool> = worn.iter().map(Option::is_some).collect();
             match plan_wear(&fits, &occupied, stack.count(), room, s) {
@@ -517,7 +565,8 @@ impl MenuPart for TrinketMenu {
         }
         // PICKUP and QUICK_MOVE; drags, swaps and throws do nothing, and nothing moves on its own.
         if matches!(event.mode, 0 | 1) {
-            self.0.click(host, event.uuid, event.window, event.slot);
+            self.0
+                .click(host, event.uuid, event.window, event.slot, None);
         }
         Flow::Cancel
     }
@@ -547,6 +596,145 @@ impl IPayloadHandler for OpenHandler {
             }
         }
         Ok(())
+    }
+}
+
+struct SlotHandler(Arc<Shared>);
+
+impl IPayloadHandler for SlotHandler {
+    fn handle(
+        &self,
+        payload: PayloadBytes,
+        context: &mut dyn IPayloadContext,
+    ) -> Result<(), PayloadHandleError> {
+        if let (Ok(p), [kind @ (TAKE | WEAR), i, inv]) = (context.player(), payload.0.as_slice())
+            && (*i as usize) < SLOTS.len()
+            && *inv < 36
+        {
+            lock(&self.0.slots).push((p.uuid(), *kind, *i as usize, *inv as usize));
+        }
+        Ok(())
+    }
+}
+
+// ---- the inventory screen ----
+
+/// The groups of `SLOTS` (the first part of a slot id): name, and the anchor, `[x, y, size]` in the inventory panel.
+/// The armour and offhand groups hang off the vanilla slot itself (16 pixels, nothing drawn: hovering it opens
+/// the group, as in the original); hand and charm have no vanilla slot, so they get a small drawn anchor left of
+/// the panel.
+const GROUPS: &[(&str, &str, [f32; 3])] = &[
+    ("head", "Head", [8.0, 8.0, 16.0]),
+    ("chest", "Chest", [8.0, 26.0, 16.0]),
+    ("legs", "Legs", [8.0, 44.0, 16.0]),
+    ("feet", "Feet", [8.0, 62.0, 16.0]),
+    ("offhand", "Offhand", [77.0, 62.0, 16.0]),
+    ("hand", "Hand", [-12.0, 83.0, 10.0]),
+    ("charm", "Charm", [-12.0, 101.0, 10.0]),
+];
+/// A slot's box: the 18 pixel square round a 16 pixel item.
+const CELL: f32 = 18.0;
+
+/// The indices of `SLOTS` in group `g`.
+fn group_slots(g: usize) -> Vec<usize> {
+    let prefix = format!("{}/", GROUPS[g].0);
+    (0..SLOTS.len())
+        .filter(|&i| SLOTS[i].0.starts_with(&prefix))
+        .collect()
+}
+
+fn inside(rect: [f32; 4], p: [f32; 2]) -> bool {
+    p[0] >= rect[0] && p[0] < rect[0] + rect[2] && p[1] >= rect[1] && p[1] < rect[1] + rect[3]
+}
+
+/// Group `g`'s anchor box, and its slots' boxes (slot index, box) as fanned out to the left of it, for the
+/// inventory panel `panel`.
+fn group_boxes(panel: [f32; 4], g: usize) -> ([f32; 4], Vec<(usize, [f32; 4])>) {
+    let [x, y, size] = GROUPS[g].2;
+    let (x, y) = (panel[0] + x, panel[1] + y);
+    let edge = (size - CELL) / 2.0;
+    let cells = group_slots(g)
+        .into_iter()
+        .enumerate()
+        .map(|(k, i)| (i, [x + edge - CELL * (k + 1) as f32, y + edge, CELL, CELL]))
+        .collect();
+    ([x, y, size, size], cells)
+}
+
+/// The group whose anchor or fanned-out slots the pointer is over (it stays open over the whole row).
+fn open_group(panel: [f32; 4], mouse: [f32; 2]) -> Option<usize> {
+    (0..GROUPS.len()).find(|&g| {
+        let (anchor, cells) = group_boxes(panel, g);
+        let x0 = cells.iter().fold(anchor[0], |m, (_, c)| m.min(c[0]));
+        let edge = (anchor[2] - CELL) / 2.0;
+        inside(
+            [x0, anchor[1] + edge, anchor[0] + anchor[2] - x0, CELL],
+            mouse,
+        )
+    })
+}
+
+/// What the pointer is over: a trinket slot of the open group, or an anchor.
+enum Over {
+    Slot(usize),
+    Anchor(usize),
+}
+
+fn over(panel: [f32; 4], mouse: [f32; 2]) -> Option<Over> {
+    let g = open_group(panel, mouse)?;
+    let (anchor, cells) = group_boxes(panel, g);
+    match cells.iter().find(|(_, c)| inside(*c, mouse)) {
+        Some((i, _)) => Some(Over::Slot(*i)),
+        None if inside(anchor, mouse) => Some(Over::Anchor(g)),
+        None => None,
+    }
+}
+
+/// Whether `screen` is the player's own inventory (not a container, a mount's inventory or creative).
+fn player_inventory(screen: &ScreenView<'_>) -> bool {
+    screen.id == "inventory"
+        && screen.menu.is_none()
+        && screen.title.is_none()
+        && screen.mod_screen.is_none()
+}
+
+impl Shared {
+    /// A click on trinket slot `i` of the inventory screen, on the client tick: with nothing on the cursor, the
+    /// worn stack comes off; with a stack that fits, it is parked in a free inventory slot (a click on the
+    /// menu) and the server wears it from there.
+    fn click_slot(&self, host: &mut dyn ClientHost, i: usize) {
+        let Some(player) = host.local_player() else {
+            return;
+        };
+        let Some(menu) = player.container_menu(&*host) else {
+            return;
+        };
+        let carried = menu.carried(&*host).flatten().filter(|c| c.count() > 0);
+        let (kind, inv) = match carried {
+            None if lock(&self.view).get(i).is_some_and(Option::is_some) => (TAKE, 0),
+            None => return,
+            Some(c) => {
+                if !accepts(i, &item_id(&*host, &c)) {
+                    return;
+                }
+                // Menu slots 9..45 are the main inventory, then the hotbar.
+                let Some(s) = (9..45).find(|&s| matches!(menu.slot(&*host, s), Some(None))) else {
+                    return;
+                };
+                let pickup = MenuClick::Pickup {
+                    slot: Some(s),
+                    button: MouseButton::Left,
+                };
+                if !menu.click(host, &[pickup]) {
+                    return;
+                }
+                (WEAR, if s >= 36 { s - 36 } else { s })
+            }
+        };
+        let body = vec![kind, i as u8, inv as u8];
+        if let Err(e) = host.send_payload_to_server(&PayloadId(SLOT.into()), PayloadBytes(body)) {
+            eprintln!("[trinkets] slot: {e:?}");
+        }
     }
 }
 
@@ -632,6 +820,10 @@ impl Hooks for Mod {
             .play_to_server(
                 PayloadId(OPEN.into()),
                 Arc::new(OpenHandler(self.shared.clone())),
+            )
+            .play_to_server(
+                PayloadId(SLOT.into()),
+                Arc::new(SlotHandler(self.shared.clone())),
             );
     }
 
@@ -730,6 +922,105 @@ impl Hooks for Mod {
         let opens = std::mem::take(&mut *lock(&self.shared.opens));
         for uuid in opens {
             self.shared.open(host, uuid);
+        }
+        let slots = std::mem::take(&mut *lock(&self.shared.slots));
+        for (uuid, kind, i, inv) in slots {
+            self.shared.slot(host, uuid, kind, i, inv);
+        }
+    }
+
+    /// While the player's inventory screen is open: reads the worn stacks for it to draw and does the clicks it took.
+    fn client_tick_post(&self, host: &mut dyn ClientHost, _event: &mut ClientTickPostEvent) {
+        let shown = host
+            .observed_screen_id()
+            .is_some_and(|s| s.id == "inventory")
+            && host.screen_title().is_none();
+        let clicks = std::mem::take(&mut *lock(&self.shared.clicks));
+        let Some(player) = host.local_player().filter(|_| shown) else {
+            return;
+        };
+        *lock(&self.shared.view) = worn(host, player.uuid());
+        for i in clicks {
+            self.shared.click_slot(host, i);
+        }
+    }
+
+    /// The groups on the player's inventory screen: an anchor each, the hovered one fanned out, empty slots showing
+    /// their slot-type icon.
+    fn screen_render_post(&self, host: &dyn ClientHost, event: &mut ScreenRenderPostEvent<'_>) {
+        if !player_inventory(event.screen) {
+            return;
+        }
+        let (panel, mouse) = (event.screen.rect, event.screen.mouse);
+        let worn = lock(&self.shared.view).clone();
+        let open = open_group(panel, mouse);
+        let draw = &mut *event.draw;
+        for g in 0..GROUPS.len() {
+            let (anchor, cells) = group_boxes(panel, g);
+            if anchor[2] < 16.0 {
+                let dst = [anchor[0], anchor[1], anchor[2], anchor[2]];
+                draw.fill(dst, 0xFF373737);
+                let inner = [dst[0] + 1.0, dst[1] + 1.0, dst[2] - 2.0, dst[3] - 2.0];
+                draw.fill(inner, 0xFF8B8B8B);
+                if let Some((i, _)) = cells.first() {
+                    draw.sprite(&icon(*i), [0.0, 0.0, 16.0, 16.0], inner, Some(0xB0FFFFFF));
+                }
+            }
+            if open != Some(g) {
+                continue;
+            }
+            for (i, c) in cells {
+                if !draw.sprite("container/slot", [0.0, 0.0, 18.0, 18.0], c, None) {
+                    draw.fill(c, 0xFF8B8B8B);
+                }
+                let at = [c[0] + 1.0, c[1] + 1.0];
+                match worn.get(i).cloned().flatten() {
+                    Some(stack) => {
+                        draw.item_stack(&stack, at, 16.0);
+                    }
+                    None => {
+                        let dst = [at[0], at[1], 16.0, 16.0];
+                        draw.sprite(&icon(i), [0.0, 0.0, 16.0, 16.0], dst, Some(0x80FFFFFF));
+                    }
+                }
+                if inside(c, mouse) {
+                    draw.fill([at[0], at[1], 16.0, 16.0], 0x80FFFFFF);
+                }
+            }
+        }
+        let line = match over(panel, mouse) {
+            Some(Over::Anchor(g)) => Some(Text::literal(GROUPS[g].1)),
+            Some(Over::Slot(i)) => Some(match worn.get(i).cloned().flatten() {
+                Some(stack) => host
+                    .hover_name(&stack)
+                    .unwrap_or_else(|_| Text::literal(SLOTS[i].1)),
+                None => Text::literal(format!("{} (empty)", SLOTS[i].1)),
+            }),
+            None => None,
+        };
+        if let Some(line) = line {
+            let _ = draw.gui_tooltip(&[line], mouse);
+        }
+    }
+
+    /// A click on one of the groups' boxes belongs to them, not to the vanilla screen under it.
+    fn screen_mouse_button_pressed_pre(
+        &self,
+        _host: &dyn ClientHost,
+        event: &mut ScreenMouseButtonPressedPreEvent<'_>,
+    ) -> Flow {
+        if !player_inventory(event.screen) {
+            return Flow::Continue;
+        }
+        match over(event.screen.rect, event.screen.mouse) {
+            Some(Over::Slot(i)) => {
+                if matches!(event.button, 0 | 1) {
+                    lock(&self.shared.clicks).push(i);
+                }
+                Flow::Cancel
+            }
+            Some(Over::Anchor(_)) => Flow::Cancel,
+            None => Flow::Continue,
         }
     }
 
@@ -925,6 +1216,31 @@ mod tests {
         assert_eq!(SLOTS.len(), 15);
         assert_eq!(rows(), 2);
         assert_eq!(MENU, "minecraft:generic_9x2");
+    }
+
+    #[test]
+    fn every_slot_is_in_one_group() {
+        let mut seen: Vec<usize> = (0..GROUPS.len()).flat_map(group_slots).collect();
+        seen.sort();
+        assert_eq!(seen, (0..SLOTS.len()).collect::<Vec<_>>());
+    }
+
+    #[test]
+    fn a_group_fans_out_from_its_anchor() {
+        let panel = [100.0, 50.0, 176.0, 166.0];
+        let chest = GROUPS.iter().position(|g| g.0 == "chest").unwrap();
+        let (anchor, cells) = group_boxes(panel, chest);
+        assert_eq!(cells.len(), 4);
+        // Left of the anchor, one cell each, and the pointer over the last one keeps the group open.
+        assert!(cells.iter().all(|(_, c)| c[0] + CELL <= anchor[0]));
+        let last = cells[3].1;
+        let p = [last[0] + 3.0, last[1] + 3.0];
+        assert_eq!(open_group(panel, p), Some(chest));
+        assert!(matches!(over(panel, p), Some(Over::Slot(i)) if i == cells[3].0));
+        // Away from the group, nothing is open.
+        assert_eq!(open_group(panel, [panel[0] + 80.0, panel[1] + 100.0]), None);
+        let a = [anchor[0] + 2.0, anchor[1] + 2.0];
+        assert!(matches!(over(panel, a), Some(Over::Anchor(g)) if g == chest));
     }
 
     #[test]

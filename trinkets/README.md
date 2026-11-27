@@ -1,11 +1,12 @@
 # Trinkets
 
-Extra equipment slots for trinkets, worn from a menu on G.
+Extra equipment slots for trinkets, shown on your inventory screen and in a menu on G.
 
 Extra equipment slots for the trinkets other mods add: face, hat, necklace, back, cape, charm, glove, two rings, belt, wearable lantern, key, quiver, shoes and a second charm.
 
 What it does:
 
+- On your inventory screen, hover an armour slot or the offhand slot: the trinket slots of that group (head, chest, legs, feet, offhand) pop out to the left of it, and fold away when the pointer leaves. Hand and charm slots have a small anchor left of the panel. An empty slot shows its slot-type picture. Click a worn item to take it off; click with an item on the cursor to wear it in that slot (the item is parked in a free inventory slot first, and one of it is worn).
 - Press G (Open Trinkets in Controls) to open the Trinkets menu: a slot for each trinket place, each showing its picture while empty. Click an item in your inventory to wear it in the first empty slot that takes it (or swap with the first that does); click a worn item to take it off.
 - Right-click a trinket in your hand to wear it in the first empty slot that takes it. Backpacks and wireless terminals keep their own use; an elytra still goes in the chest slot.
 - An item's tooltip lists the trinket slots it fits, and the key that opens the menu.
@@ -15,7 +16,9 @@ What it does:
 
 Differences from the original:
 
-- The menu is a two-row chest menu with the slot pictures as placeholder items, not the original's screen beside your inventory.
+- The inventory slots are drawn and clicked by the mod, they are not real slots of the inventory menu: the pinned API (ba1f24e) has no way to add slots to the player inventory menu (`set_screen_slot` only moves slots of an open mod menu; `MenuPart::menu_slot_rules` only reaches menus with a registered type, and the player's has none). So shift-click, drag, number-key swaps and recipe viewers do not see them. Wearing from the cursor is done by parking the cursor stack in a free inventory slot, so it needs one.
+- The groups have no slot type with several copies, so the original's vertical expansion of a column is not there.
+- The G menu is a two-row chest menu with the slot pictures as placeholder items.
 - Right-click wearing is done by the server only; the client does not predict it.
 - Dropped trinkets are not put in a grave by a grave mod: no grave mod is ported.
 
