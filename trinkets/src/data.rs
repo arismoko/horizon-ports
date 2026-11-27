@@ -1,5 +1,5 @@
-// The player's trinket slots in the order the menu shows them, each (id, name, placeholder item, accepted
-// items): the slot table of Trinkets 3.7.2 with the slots and tags the modpack's mods declared.
+// The player's trinket slots in equip order (the first one that takes an item gets it: G menu, right click), each
+// (id, name, placeholder item, accepted items): the slot table of Trinkets 3.7.2 with the slots and tags the modpack's mods declared.
 pub const SLOTS: &[(&str, &str, &str, &[&str])] = &[
     (
         "head/face",
@@ -55,6 +55,25 @@ pub const SLOTS: &[(&str, &str, &str, &[&str])] = &[
             "things:placebo",
             "things:luck_of_the_irish",
             "things:hades_crystal",
+            "things:agglomeration",
+        ],
+    ),
+    (
+        "chest/back",
+        "Back",
+        "trinkets:slot_chest_back",
+        &[
+            "vc_gliders:paraglider_wood",
+            "vc_gliders:paraglider_iron",
+            "vc_gliders:paraglider_gold",
+            "vc_gliders:paraglider_diamond",
+            "vc_gliders:paraglider_netherite",
+            "sophisticatedbackpacks:backpack",
+            "sophisticatedbackpacks:copper_backpack",
+            "sophisticatedbackpacks:iron_backpack",
+            "sophisticatedbackpacks:gold_backpack",
+            "sophisticatedbackpacks:diamond_backpack",
+            "sophisticatedbackpacks:netherite_backpack",
             "things:agglomeration",
         ],
     ),
@@ -120,25 +139,6 @@ pub const SLOTS: &[(&str, &str, &str, &[&str])] = &[
             "vc_gliders:paraglider_diamond",
             "vc_gliders:paraglider_netherite",
             "wildernature:fur_cloak",
-            "things:agglomeration",
-        ],
-    ),
-    (
-        "chest/back",
-        "Back",
-        "trinkets:slot_chest_back",
-        &[
-            "vc_gliders:paraglider_wood",
-            "vc_gliders:paraglider_iron",
-            "vc_gliders:paraglider_gold",
-            "vc_gliders:paraglider_diamond",
-            "vc_gliders:paraglider_netherite",
-            "sophisticatedbackpacks:backpack",
-            "sophisticatedbackpacks:copper_backpack",
-            "sophisticatedbackpacks:iron_backpack",
-            "sophisticatedbackpacks:gold_backpack",
-            "sophisticatedbackpacks:diamond_backpack",
-            "sophisticatedbackpacks:netherite_backpack",
             "things:agglomeration",
         ],
     ),
@@ -255,4 +255,24 @@ pub const SLOTS: &[(&str, &str, &str, &[&str])] = &[
             "things:agglomeration",
         ],
     ),
+];
+
+/// The order the inventory popup shows the slots of a group in, which is the wiki's, not the equip order above
+/// (the cape sits next to the chest slot, ahead of the back slot).
+pub const DISPLAY: &[&str] = &[
+    "head/face",
+    "head/hat",
+    "chest/necklace",
+    "chest/cape",
+    "chest/back",
+    "chest/charm",
+    "hand/glove",
+    "hand/ring",
+    "offhand/ring",
+    "legs/belt",
+    "legs/lantern",
+    "legs/key",
+    "legs/quiver",
+    "feet/shoes",
+    "charm/charm",
 ];

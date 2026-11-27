@@ -10,18 +10,22 @@
 //!   opened by the Trinkets key (G, `key.trinkets.open` in Controls): the client sends `trinkets:open` and the
 //!   server opens it on its next tick. A click on an inventory item wears it, a click on a worn one takes it off.
 //! - The player's inventory screen shows the groups too (head, chest, legs, feet, offhand, hand, charm): hovering an
-//!   armour or offhand slot fans its group out to the left of it, hand and charm have a small anchor left of the panel;
-//!   an empty slot shows its slot-type icon. The pinned API cannot add slots to the player inventory menu
-//!   (`set_screen_slot` only moves slots of an open mod menu), so `screen_render_post` draws them and
-//!   `screen_mouse_button_pressed_pre` takes the clicks, which go to the server as `trinkets:slot` (a click with a
-//!   stack on the cursor first parks that stack in a free inventory slot with `MenuRef::click`).
+//!   armour or offhand slot fans its group out of it in a framed row (kept on the screen, flipped or pushed back),
+//!   hand and charm have a small anchor left of the panel; an empty slot shows its slot-type icon. The pinned API
+//!   cannot add slots to the player inventory menu (`set_screen_slot` only moves slots of an open mod menu), so
+//!   `screen_render_post` draws them and `screen_mouse_button_pressed_pre` takes the clicks, which go to the
+//!   server as `trinkets:slot` (a click with a stack on the cursor first parks that stack in a free inventory slot
+//!   with `MenuRef::click`). `popup` holds the layout, apart from the click path: backed slots (sunrise#4980) replace
+//!   the click path only. The release of a press the mod took is the mod's; any other release is the screen's.
 //! - A right click with a trinket wears it in the first empty slot that takes it (TrinketItem.use).
 //! - The tooltip names the slots an item fits.
 //! - A worn Totem of Undying saves the player: `living_death_protection` hands the engine the worn totem as the
 //!   protector, takes it out of its slot and syncs `trinkets:worn`.
 //! - Death: unless keepInventory, the worn stacks drop where the player died (vanishing-cursed ones vanish).
 pub mod data;
+pub mod popup;
 pub use data::SLOTS;
+use popup::{CELL, FRAME_CAP, FRAME_H, GROUPS, anchor_cell, members, open_group, over, place};
 
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex, RwLock};
@@ -350,6 +354,68 @@ fn plan_wear(fits: &[usize], occupied: &[bool], count: u32, room: bool, inv: usi
     }
 }
 
+/// The writes of a click.
+trait Store<I> {
+    fn set_slot(&mut self, slot: u32, stack: Option<I>) -> bool;
+    fn set_worn(&mut self, worn: &[Option<I>]) -> bool;
+    fn give(&mut self, stack: I) -> bool;
+}
+
+/// Does a click's writes all or none: `slot` is (inventory slot, new stack, old stack), then the worn stacks
+/// (`old` to `new`), then `give` goes to the inventory. When a step fails the ones before it are undone and it
+/// is false.
+fn commit<I: Clone>(
+    store: &mut impl Store<I>,
+    slot: Option<(u32, Option<I>, Option<I>)>,
+    old: &[Option<I>],
+    new: &[Option<I>],
+    give: Option<I>,
+) -> bool {
+    if let Some((s, to, _)) = &slot
+        && !store.set_slot(*s, to.clone())
+    {
+        return false;
+    }
+    let mut ok = store.set_worn(new);
+    if ok && let Some(g) = give {
+        ok = store.give(g);
+        if !ok {
+            store.set_worn(old);
+        }
+    }
+    if !ok && let Some((s, _, from)) = slot {
+        store.set_slot(s, from);
+    }
+    ok
+}
+
+/// The server's stacks as `commit` writes them.
+struct Real<'a> {
+    host: &'a mut dyn ServerHost,
+    player: PlayerRef,
+    uuid: u128,
+}
+
+impl Store<ItemStack> for Real<'_> {
+    fn set_slot(&mut self, slot: u32, stack: Option<ItemStack>) -> bool {
+        match self.player.set_inventory_slot(&mut *self.host, slot, stack) {
+            Ok(_) => true,
+            Err(e) => {
+                eprintln!("[trinkets] set_inventory_slot {slot}: {e:?}");
+                false
+            }
+        }
+    }
+
+    fn set_worn(&mut self, worn: &[Option<ItemStack>]) -> bool {
+        set_worn(&mut *self.host, self.uuid, worn)
+    }
+
+    fn give(&mut self, stack: ItemStack) -> bool {
+        give(&mut *self.host, self.player, stack)
+    }
+}
+
 #[derive(Default)]
 struct Shared {
     /// The worn Totem of Undying of each player, by entity id: what `living_death_protection` answers with. The hook's
@@ -359,15 +425,87 @@ struct Shared {
     opens: Mutex<Vec<u128>>,
     /// The open trinket menu's window of each player.
     menus: Mutex<HashMap<u128, i32>>,
-    /// Slot clicks of the inventory screen to do on the next server tick: (player, kind, trinket slot, inventory slot).
-    slots: Mutex<Vec<(u128, u8, usize, usize)>>,
+    /// Slot clicks of the inventory screen to do on the next server tick.
+    slots: Mutex<Vec<(u128, SlotClick)>>,
     /// Client: the local player's worn stacks, read each tick while the inventory screen is open (the screen's
     /// hooks cannot read attachments).
     view: Mutex<Vec<Option<ItemStack>>>,
     /// Client: the group whose popup is open on the inventory screen.
     open: Mutex<Option<usize>>,
     /// Client: trinket slots clicked on the inventory screen, handled on the next client tick.
-    clicks: Mutex<Vec<usize>>,
+    clicks: Mutex<Vec<Click>>,
+    /// Client: which presses on the inventory screen the mod took, so only their releases are the mod's.
+    presses: Mutex<Presses>,
+}
+
+/// A click on a trinket slot of the inventory screen, as it goes to the server. `expect` is the item the player
+/// saw: the worn one (take off) or the one parked in inventory slot `inv` (wear). The server drops the click when
+/// the stack there is another one by then.
+#[derive(Debug, PartialEq)]
+struct SlotClick {
+    kind: u8,
+    slot: usize,
+    inv: usize,
+    expect: String,
+}
+
+impl SlotClick {
+    fn encode(&self) -> Vec<u8> {
+        let mut body = vec![self.kind, self.slot as u8, self.inv as u8];
+        body.extend_from_slice(self.expect.as_bytes());
+        body
+    }
+
+    fn decode(body: &[u8]) -> Option<SlotClick> {
+        let [kind @ (TAKE | WEAR), slot, inv, expect @ ..] = body else {
+            return None;
+        };
+        if (*slot as usize) >= SLOTS.len() || *inv >= 36 {
+            return None;
+        }
+        Some(SlotClick {
+            kind: *kind,
+            slot: *slot as usize,
+            inv: *inv as usize,
+            expect: String::from_utf8(expect.to_vec()).ok()?,
+        })
+    }
+}
+
+/// A press on a trinket slot, noted when it happens: what was on the cursor then (its item). The click is done on
+/// the next tick and only if the screen is still the inventory and the cursor is the same.
+struct Click {
+    slot: usize,
+    carried: Option<String>,
+}
+
+/// The mouse buttons (GLFW index, as a bit) whose press the mod took. Its release is the mod's too, wherever the
+/// pointer is by then; the release of a press the screen took is the screen's.
+#[derive(Default)]
+struct Presses(u32);
+
+impl Presses {
+    fn bit(button: i32) -> u32 {
+        u32::try_from(button)
+            .ok()
+            .and_then(|b| 1u32.checked_shl(b))
+            .unwrap_or(0)
+    }
+
+    /// A press of `button`; `taken` when the mod took it. A new press ends the one before it.
+    fn press(&mut self, button: i32, taken: bool) {
+        self.0 &= !Self::bit(button);
+        if taken {
+            self.0 |= Self::bit(button);
+        }
+    }
+
+    /// A release of `button`: whether it ends a press the mod took.
+    fn release(&mut self, button: i32) -> bool {
+        let taken = self.0 & Self::bit(button) != 0;
+        self.0 &= !Self::bit(button);
+        taken
+    }
 }
 
 /// A worn totem: whose it is, the slot it sits in and the stack.
@@ -445,19 +583,31 @@ impl Shared {
         }
     }
 
-    /// A click on the inventory screen's trinket slot `i`: takes its stack off, or wears the stack in inventory slot
-    /// `inv` there. The inventory menu is not the trinket menu, so no window is refreshed.
-    fn slot(&self, host: &mut dyn ServerHost, uuid: u128, kind: u8, i: usize, inv: usize) {
+    /// A click on the inventory screen's trinket slot, on the server tick: takes the stack off, or wears the stack in
+    /// inventory slot `inv` there. The click is for the player's own inventory window and for the stack the
+    /// player saw; with another window open or another stack there it does nothing. The inventory menu is not
+    /// the trinket menu, so no window is refreshed.
+    fn slot(&self, host: &mut dyn ServerHost, uuid: u128, c: SlotClick) {
+        if live(&*host, uuid, 0).is_none() {
+            return;
+        }
         let size = rows() as usize * 9;
-        if kind == TAKE {
-            self.click(host, uuid, -1, i as i32, None);
+        if c.kind == TAKE {
+            self.click(host, uuid, -1, c.slot as i32, None, Some(&c.expect));
         } else {
-            let rel = if inv >= 9 { inv - 9 } else { inv + 27 };
-            self.click(host, uuid, -1, (size + rel) as i32, Some(i));
+            let rel = if c.inv >= 9 { c.inv - 9 } else { c.inv + 27 };
+            self.click(
+                host,
+                uuid,
+                -1,
+                (size + rel) as i32,
+                Some(c.slot),
+                Some(&c.expect),
+            );
         }
     }
 
-    /// A click in the player's trinket menu.
+    /// A click in a trinket menu: all of it or nothing. `expect` is the item the clicker saw in the slot.
     fn click(
         &self,
         host: &mut dyn ServerHost,
@@ -465,18 +615,20 @@ impl Shared {
         window: i32,
         slot: i32,
         only: Option<usize>,
+        expect: Option<&str>,
     ) {
         let Some(player) = host.player(uuid) else {
             return;
         };
         let size = rows() as usize * 9;
-        let mut worn = worn(host, uuid);
-        let (mut inv, complete) = inventory(&*host, player);
+        let before = worn(host, uuid);
+        let mut worn = before.clone();
+        let (inv, complete) = inventory(&*host, player);
         // Room for one more stack: a free slot, or (with an incomplete read) the game decides and throws what
         // doesn't fit.
         let room = !complete || inv.iter().any(Option::is_none);
-        let mut changed: Vec<u32> = Vec::new();
-        let mut gives: Vec<ItemStack> = Vec::new();
+        let mut change: Option<(u32, Option<ItemStack>, Option<ItemStack>)> = None;
+        let mut give: Option<ItemStack> = None;
         let mut message: Option<&str> = None;
         if let Ok(i) = usize::try_from(slot)
             && i < SLOTS.len()
@@ -492,8 +644,11 @@ impl Shared {
             let Some(stack) = worn[i].take() else {
                 return;
             };
+            if expect.is_some_and(|e| e != item_id(&*host, &stack)) {
+                return;
+            }
             if room {
-                gives.push(stack);
+                give = Some(stack);
             } else {
                 worn[i] = Some(stack);
                 message = Some("No room in your inventory");
@@ -506,6 +661,9 @@ impl Shared {
                 return;
             };
             let id = item_id(&*host, &stack);
+            if expect.is_some_and(|e| e != id) {
+                return;
+            }
             let fits: Vec<usize> = (0..SLOTS.len())
                 .filter(|&i| {
                     only.is_none_or(|o| o == i)
@@ -516,36 +674,31 @@ impl Shared {
             let occupied: Vec<bool> = worn.iter().map(Option::is_some).collect();
             match plan_wear(&fits, &occupied, stack.count(), room, s) {
                 Plan::Wear { i, .. } => {
-                    inv[s] = with_count(&stack, stack.count() - 1);
-                    changed.push(s as u32);
-                    if let Some(old) = worn[i].replace(with_count(&stack, 1).unwrap_or(stack)) {
-                        gives.push(old);
-                    }
+                    change = Some((
+                        s as u32,
+                        with_count(&stack, stack.count() - 1),
+                        Some(stack.clone()),
+                    ));
+                    give = worn[i].replace(with_count(&stack, 1).unwrap_or(stack));
                 }
                 Plan::Refuse(m) => message = Some(m),
             }
         } else {
             return;
         }
-        for s in changed {
-            if let Err(e) = player.set_inventory_slot(host, s, inv[s as usize].clone()) {
-                eprintln!("[trinkets] set_inventory_slot {s}: {e:?}");
+        if message.is_none() {
+            let mut store = Real {
+                host: &mut *host,
+                player,
+                uuid,
+            };
+            if !commit(&mut store, change, &before, &worn, give) {
+                message = Some("That didn't work: nothing moved");
             }
         }
-        for g in gives {
-            if !give(host, player, g.clone()) {
-                // Not given: it goes back on, or (when its slot is taken again) is dropped.
-                let id = item_id(&*host, &g);
-                match (0..SLOTS.len()).find(|&i| worn[i].is_none() && accepts(i, &id)) {
-                    Some(i) => worn[i] = Some(g),
-                    None => drop_at(host, player, g),
-                }
-                message = Some("No room in your inventory");
-            }
-        }
-        set_worn(host, uuid, &worn);
         self.refresh_totem(host, uuid);
-        let items = menu_items(&*host, &worn);
+        let now = self::worn(host, uuid);
+        let items = menu_items(&*host, &now);
         if let Some(menu) = live(&*host, uuid, window)
             && let Err(e) = menu.set_items(host, items)
         {
@@ -570,7 +723,7 @@ impl MenuPart for TrinketMenu {
         // PICKUP and QUICK_MOVE; drags, swaps and throws do nothing, and nothing moves on its own.
         if matches!(event.mode, 0 | 1) {
             self.0
-                .click(host, event.uuid, event.window, event.slot, None);
+                .click(host, event.uuid, event.window, event.slot, None, None);
         }
         Flow::Cancel
     }
@@ -611,144 +764,14 @@ impl IPayloadHandler for SlotHandler {
         payload: PayloadBytes,
         context: &mut dyn IPayloadContext,
     ) -> Result<(), PayloadHandleError> {
-        if let (Ok(p), [kind @ (TAKE | WEAR), i, inv]) = (context.player(), payload.0.as_slice())
-            && (*i as usize) < SLOTS.len()
-            && *inv < 36
-        {
-            lock(&self.0.slots).push((p.uuid(), *kind, *i as usize, *inv as usize));
+        if let (Ok(p), Some(click)) = (context.player(), SlotClick::decode(&payload.0)) {
+            lock(&self.0.slots).push((p.uuid(), click));
         }
         Ok(())
     }
 }
 
 // ---- the inventory screen ----
-
-/// A group of `SLOTS` (the first part of a slot id): its id, where its first slot sits in the inventory panel
-/// (the item's top left), and, for a group over a vanilla slot, that slot's menu index and empty-slot sprite.
-struct Group {
-    id: &'static str,
-    at: [f32; 2],
-    vanilla: Option<(usize, &'static str)>,
-}
-
-/// The groups in the original's order: over the armour and offhand slots, then (as the wiki says) "above the offhand
-/// going up", the groups that have no vanilla slot, whose first slot is always shown.
-const GROUPS: &[Group] = &[
-    Group {
-        id: "head",
-        at: [8.0, 8.0],
-        vanilla: Some((5, "container/slot/helmet")),
-    },
-    Group {
-        id: "chest",
-        at: [8.0, 26.0],
-        vanilla: Some((6, "container/slot/chestplate")),
-    },
-    Group {
-        id: "legs",
-        at: [8.0, 44.0],
-        vanilla: Some((7, "container/slot/leggings")),
-    },
-    Group {
-        id: "feet",
-        at: [8.0, 62.0],
-        vanilla: Some((8, "container/slot/boots")),
-    },
-    Group {
-        id: "offhand",
-        at: [77.0, 62.0],
-        vanilla: Some((45, "container/slot/shield")),
-    },
-    Group {
-        id: "hand",
-        at: [77.0, 44.0],
-        vanilla: None,
-    },
-    Group {
-        id: "charm",
-        at: [77.0, 26.0],
-        vanilla: None,
-    },
-];
-/// A slot's pitch.
-const CELL: f32 = 18.0;
-/// The popup frame's pieces (`more_slots.png`): a cap each side and the stretch behind one slot, 26 high.
-const FRAME_H: f32 = 26.0;
-const FRAME_CAP: f32 = 4.0;
-
-/// The indices of `SLOTS` in group `g`.
-fn group_slots(g: usize) -> Vec<usize> {
-    let prefix = format!("{}/", GROUPS[g].id);
-    (0..SLOTS.len())
-        .filter(|&i| SLOTS[i].0.starts_with(&prefix))
-        .collect()
-}
-
-/// Where position `n` of a group sits from the first: the wiki's `8 6 4 2 0 1 3 5 7 9`.
-fn offset(n: usize) -> i32 {
-    if n % 2 == 1 {
-        (n as i32 + 1) / 2
-    } else {
-        -(n as i32 / 2)
-    }
-}
-
-fn inside(rect: [f32; 4], p: [f32; 2]) -> bool {
-    p[0] >= rect[0] && p[0] < rect[0] + rect[2] && p[1] >= rect[1] && p[1] < rect[1] + rect[3]
-}
-
-/// Group `g` for the inventory panel `panel`: the item top left of each of its slots (slot index, x, y), and the
-/// popup frame `[x, y, w, h]` round the row. A vanilla slot is position 0 and the group's slots follow it.
-fn group_cells(panel: [f32; 4], g: usize) -> (Vec<(usize, [f32; 2])>, [f32; 4]) {
-    let group = &GROUPS[g];
-    let start = usize::from(group.vanilla.is_some());
-    let at = |n: usize| {
-        [
-            panel[0] + group.at[0] + offset(n) as f32 * CELL,
-            panel[1] + group.at[1],
-        ]
-    };
-    let cells: Vec<_> = group_slots(g)
-        .into_iter()
-        .enumerate()
-        .map(|(k, i)| (i, at(k + start)))
-        .collect();
-    let (mut lo, mut hi) = (0, 0);
-    for k in 0..cells.len() + start {
-        lo = lo.min(offset(k));
-        hi = hi.max(offset(k));
-    }
-    let x = panel[0] + group.at[0] + lo as f32 * CELL - 1.0 - FRAME_CAP;
-    let w = (hi - lo + 1) as f32 * CELL + 2.0 * FRAME_CAP;
-    (cells, [x, panel[1] + group.at[1] - 5.0, w, FRAME_H])
-}
-
-/// The 18 pixel box of group `g`'s first position (the vanilla slot, or its first slot).
-fn anchor_cell(panel: [f32; 4], g: usize) -> [f32; 4] {
-    [
-        panel[0] + GROUPS[g].at[0] - 1.0,
-        panel[1] + GROUPS[g].at[1] - 1.0,
-        CELL,
-        CELL,
-    ]
-}
-
-/// The group whose popup is open: the one whose first position the pointer is on, else the open one (`current`)
-/// while the pointer stays in its frame.
-fn open_group(panel: [f32; 4], mouse: [f32; 2], current: Option<usize>) -> Option<usize> {
-    (0..GROUPS.len())
-        .find(|&g| inside(anchor_cell(panel, g), mouse))
-        .or(current.filter(|&g| inside(group_cells(panel, g).1, mouse)))
-}
-
-/// The trinket slot of the open group `open` the pointer is on.
-fn over(panel: [f32; 4], mouse: [f32; 2], open: Option<usize>) -> Option<usize> {
-    let (cells, _) = group_cells(panel, open?);
-    cells
-        .into_iter()
-        .find(|(_, at)| inside([at[0] - 1.0, at[1] - 1.0, CELL, CELL], mouse))
-        .map(|(i, _)| i)
-}
 
 /// Whether `screen` is the player's own inventory (not a container, a mount's inventory or creative).
 fn player_inventory(screen: &ScreenView<'_>) -> bool {
@@ -758,11 +781,32 @@ fn player_inventory(screen: &ScreenView<'_>) -> bool {
         && screen.mod_screen.is_none()
 }
 
+/// The GUI size of the window in pixels: the screen the popup has to stay in (no limit when unknown).
+fn gui_size(host: &dyn ClientHost) -> [f32; 2] {
+    match (host.window_size(), host.gui_scale()) {
+        (Some([w, h]), Some(scale)) => {
+            let scale = scale.max(1);
+            [w.div_ceil(scale) as f32, h.div_ceil(scale) as f32]
+        }
+        _ => [f32::MAX; 2],
+    }
+}
+
+/// The item on the local player's cursor.
+fn carried_id(host: &dyn ClientHost) -> Option<String> {
+    let menu = host.local_player()?.container_menu(host)?;
+    let stack = menu.carried(host).flatten().filter(|c| c.count() > 0)?;
+    Some(item_id(host, &stack))
+}
+
 impl Shared {
-    /// A click on trinket slot `i` of the inventory screen, on the client tick: with nothing on the cursor, the
+    /// A press on trinket slot `c.slot` of the inventory screen, on the client tick: with nothing on the cursor, the
     /// worn stack comes off; with a stack that fits, it is parked in a free inventory slot (a click on the
-    /// menu) and the server wears it from there.
-    fn click_slot(&self, host: &mut dyn ClientHost, i: usize) {
+    /// menu) and the server wears it from there. A press whose cursor changed meanwhile does nothing. A full
+    /// inventory has no slot to park in, so the click is refused: only the server could swap with the cursor,
+    /// and it cannot reach it (waits for sunrise-org/sunrise#4980).
+    fn click_slot(&self, host: &mut dyn ClientHost, c: Click) {
+        let i = c.slot;
         let Some(player) = host.local_player() else {
             return;
         };
@@ -770,11 +814,25 @@ impl Shared {
             return;
         };
         let carried = menu.carried(&*host).flatten().filter(|c| c.count() > 0);
-        let (kind, inv) = match carried {
-            None if lock(&self.view).get(i).is_some_and(Option::is_some) => (TAKE, 0),
-            None => return,
-            Some(c) => {
-                if !accepts(i, &item_id(&*host, &c)) {
+        if carried.as_ref().map(|s| item_id(&*host, s)) != c.carried {
+            return;
+        }
+        let click = match carried {
+            None => {
+                let view = lock(&self.view);
+                let Some(Some(worn)) = view.get(i) else {
+                    return;
+                };
+                SlotClick {
+                    kind: TAKE,
+                    slot: i,
+                    inv: 0,
+                    expect: item_id(&*host, worn),
+                }
+            }
+            Some(stack) => {
+                let id = item_id(&*host, &stack);
+                if !accepts(i, &id) {
                     return;
                 }
                 // Menu slots 9..45 are the main inventory, then the hotbar.
@@ -788,11 +846,17 @@ impl Shared {
                 if !menu.click(host, &[pickup]) {
                     return;
                 }
-                (WEAR, if s >= 36 { s - 36 } else { s })
+                SlotClick {
+                    kind: WEAR,
+                    slot: i,
+                    inv: if s >= 36 { s - 36 } else { s },
+                    expect: id,
+                }
             }
         };
-        let body = vec![kind, i as u8, inv as u8];
-        if let Err(e) = host.send_payload_to_server(&PayloadId(SLOT.into()), PayloadBytes(body)) {
+        if let Err(e) =
+            host.send_payload_to_server(&PayloadId(SLOT.into()), PayloadBytes(click.encode()))
+        {
             eprintln!("[trinkets] slot: {e:?}");
         }
     }
@@ -984,8 +1048,8 @@ impl Hooks for Mod {
             self.shared.open(host, uuid);
         }
         let slots = std::mem::take(&mut *lock(&self.shared.slots));
-        for (uuid, kind, i, inv) in slots {
-            self.shared.slot(host, uuid, kind, i, inv);
+        for (uuid, click) in slots {
+            self.shared.slot(host, uuid, click);
         }
     }
 
@@ -997,6 +1061,8 @@ impl Hooks for Mod {
             && host.screen_title().is_none();
         let clicks = std::mem::take(&mut *lock(&self.shared.clicks));
         let Some(player) = host.local_player().filter(|_| shown) else {
+            // The screen is gone: its pending clicks and the presses it took go with it.
+            *lock(&self.shared.presses) = Presses::default();
             return;
         };
         *lock(&self.shared.view) = worn(host, player.uuid());
@@ -1011,16 +1077,16 @@ impl Hooks for Mod {
         if !player_inventory(event.screen) {
             return;
         }
-        let (panel, mouse) = (event.screen.rect, event.screen.mouse);
+        let (panel, mouse, gui) = (event.screen.rect, event.screen.mouse, gui_size(host));
         let worn = lock(&self.shared.view).clone();
         let open = {
             let mut open = lock(&self.shared.open);
-            *open = open_group(panel, mouse, *open);
+            *open = open_group(panel, gui, mouse, *open);
             *open
         };
         let menu = host.local_player().and_then(|p| p.container_menu(host));
         let draw = &mut *event.draw;
-        let mut slot = |draw: &mut dyn mod_api::DrawContext, i: usize, at: [f32; 2]| match worn
+        let slot = |draw: &mut dyn mod_api::DrawContext, i: usize, at: [f32; 2]| match worn
             .get(i)
             .cloned()
             .flatten()
@@ -1037,20 +1103,21 @@ impl Hooks for Mod {
                 );
             }
         };
-        for g in 0..GROUPS.len() {
-            let group = &GROUPS[g];
-            let (cells, frame) = group_cells(panel, g);
-            if group.vanilla.is_none() && open != Some(g) {
-                if let Some((i, at)) = cells.first() {
-                    let c = anchor_cell(panel, g);
-                    draw.sprite("container/slot", [0.0, 0.0, 18.0, 18.0], c, None);
-                    slot(draw, *i, *at);
-                }
+        for (g, group) in GROUPS.iter().enumerate() {
+            if group.vanilla.is_none()
+                && open != Some(g)
+                && let Some(&i) = members(g).first()
+            {
+                let c = anchor_cell(panel, g);
+                draw.sprite("container/slot", [0.0, 0.0, 18.0, 18.0], c, None);
+                slot(draw, i, [panel[0] + group.at[0], panel[1] + group.at[1]]);
             }
             if open != Some(g) {
                 continue;
             }
+            let placed = place(panel, gui, g);
             // The frame: a cap, the stretch behind each slot, a cap.
+            let frame = placed.frame();
             let n = ((frame[2] - 2.0 * FRAME_CAP) / CELL) as usize;
             let (x, y) = (frame[0], frame[1]);
             draw.sprite(
@@ -1070,35 +1137,32 @@ impl Hooks for Mod {
                 right,
                 None,
             );
-            let first = [panel[0] + group.at[0], panel[1] + group.at[1]];
-            match group.vanilla {
-                Some((index, empty)) => {
-                    match menu.and_then(|m| m.slot(host, index)).flatten() {
-                        Some(stack) => {
-                            draw.item_stack(&stack, first, 16.0);
-                        }
-                        None => {
-                            draw.sprite(
-                                empty,
-                                [0.0, 0.0, 16.0, 16.0],
-                                [first[0], first[1], 16.0, 16.0],
-                                None,
-                            );
-                        }
+            let first = placed.first(g);
+            if let Some((index, empty)) = group.vanilla {
+                match menu.and_then(|m| m.slot(host, index)).flatten() {
+                    Some(stack) => {
+                        draw.item_stack(&stack, first, 16.0);
                     }
-                    draw.fill([first[0], first[1], 16.0, 16.0], 0x80FFFFFF);
+                    None => {
+                        draw.sprite(
+                            empty,
+                            [0.0, 0.0, 16.0, 16.0],
+                            [first[0], first[1], 16.0, 16.0],
+                            None,
+                        );
+                    }
                 }
-                None => {}
+                draw.fill([first[0], first[1], 16.0, 16.0], 0x80FFFFFF);
             }
-            for (i, at) in &cells {
-                slot(draw, *i, *at);
-                if group.vanilla.is_none() && *at == first {
+            for (i, at) in placed.cells() {
+                slot(draw, i, at);
+                if group.vanilla.is_none() && at == first {
                     draw.fill([at[0], at[1], 16.0, 16.0], 0x80FFFFFF);
                 }
             }
         }
         // The tooltip: a worn item's own, or the slot's name.
-        if let Some(i) = over(panel, mouse, open) {
+        if let Some(i) = over(panel, gui, mouse, open) {
             let lines: Vec<Text> = match worn.get(i).cloned().flatten() {
                 Some(stack) => ItemResource::of(&stack)
                     .tooltip(host, false, false)
@@ -1122,29 +1186,34 @@ impl Hooks for Mod {
     /// click outside the panel and drop the cursor stack.
     fn screen_mouse_button_pressed_pre(
         &self,
-        _host: &dyn ClientHost,
+        host: &dyn ClientHost,
         event: &mut ScreenMouseButtonPressedPreEvent<'_>,
     ) -> Flow {
-        match self.slot_under(event.screen) {
-            Some(i) => {
-                if matches!(event.button, 0 | 1) {
-                    lock(&self.shared.clicks).push(i);
-                }
-                Flow::Cancel
-            }
-            None => Flow::Continue,
+        let over = self.slot_under(host, event.screen);
+        lock(&self.shared.presses).press(event.button, over.is_some());
+        let Some(slot) = over else {
+            return Flow::Continue;
+        };
+        if matches!(event.button, 0 | 1) {
+            lock(&self.shared.clicks).push(Click {
+                slot,
+                carried: carried_id(host),
+            });
         }
+        Flow::Cancel
     }
 
-    /// The release of such a press is the mod's as well.
+    /// The release of a press the mod took is the mod's as well; any other release is the screen's, wherever the
+    /// pointer is.
     fn screen_mouse_button_released_pre(
         &self,
         _host: &dyn ClientHost,
         event: &mut ScreenMouseButtonReleasedPreEvent<'_>,
     ) -> Flow {
-        match self.slot_under(event.screen) {
-            Some(_) => Flow::Cancel,
-            None => Flow::Continue,
+        if lock(&self.shared.presses).release(event.button) {
+            Flow::Cancel
+        } else {
+            Flow::Continue
         }
     }
 
@@ -1273,12 +1342,13 @@ impl Hooks for Mod {
 
 impl Mod {
     /// The trinket slot the pointer is on, on the player's inventory screen.
-    fn slot_under(&self, screen: &ScreenView<'_>) -> Option<usize> {
+    fn slot_under(&self, host: &dyn ClientHost, screen: &ScreenView<'_>) -> Option<usize> {
         if !player_inventory(screen) {
             return None;
         }
-        let open = open_group(screen.rect, screen.mouse, *lock(&self.shared.open));
-        over(screen.rect, screen.mouse, open)
+        let gui = gui_size(host);
+        let open = open_group(screen.rect, gui, screen.mouse, *lock(&self.shared.open));
+        over(screen.rect, gui, screen.mouse, open)
     }
 }
 
@@ -1355,22 +1425,27 @@ mod tests {
 
     #[test]
     fn every_slot_is_in_one_group() {
-        let mut seen: Vec<usize> = (0..GROUPS.len()).flat_map(group_slots).collect();
+        let mut seen: Vec<usize> = (0..GROUPS.len())
+            .flat_map(|g| members(g).iter().copied())
+            .collect();
         seen.sort();
         assert_eq!(seen, (0..SLOTS.len()).collect::<Vec<_>>());
     }
 
     #[test]
     fn positions_alternate_right_then_left() {
-        let order: Vec<i32> = (0..10).map(offset).collect();
+        let order: Vec<i32> = (0..10).map(popup::offset).collect();
         assert_eq!(order, [0, 1, -1, 2, -2, 3, -3, 4, -4, 5]);
     }
+
+    const WIDE: [f32; 2] = [1000.0, 600.0];
 
     #[test]
     fn a_group_is_one_row_over_its_vanilla_slot() {
         let panel = [100.0, 50.0, 176.0, 166.0];
         let chest = GROUPS.iter().position(|g| g.id == "chest").unwrap();
-        let (cells, frame) = group_cells(panel, chest);
+        let placed = place(panel, WIDE, chest);
+        let cells: Vec<_> = placed.cells().collect();
         // Necklace right of the chest slot, cape left of it, then back and charm further out.
         let x = |n: usize| cells[n].1[0];
         assert_eq!(
@@ -1380,23 +1455,195 @@ mod tests {
         assert_eq!(x(0), panel[0] + 8.0 + CELL);
         assert_eq!(x(1), panel[0] + 8.0 - CELL);
         // Five positions in the frame, the vanilla slot among them.
-        assert_eq!(frame[2], 5.0 * CELL + 2.0 * FRAME_CAP);
+        assert_eq!(placed.frame()[2], 5.0 * CELL + 2.0 * FRAME_CAP);
         // The pointer on the vanilla slot opens the group; it stays open over the row, not elsewhere.
         let on_slot = [panel[0] + 10.0, panel[1] + 28.0];
-        assert_eq!(open_group(panel, on_slot, None), Some(chest));
+        assert_eq!(open_group(panel, WIDE, on_slot, None), Some(chest));
         let on_necklace = [x(0) + 3.0, panel[1] + 28.0];
-        assert_eq!(open_group(panel, on_necklace, None), None);
-        assert_eq!(open_group(panel, on_necklace, Some(chest)), Some(chest));
-        assert_eq!(over(panel, on_necklace, Some(chest)), Some(cells[0].0));
+        assert_eq!(open_group(panel, WIDE, on_necklace, None), None);
+        assert_eq!(
+            open_group(panel, WIDE, on_necklace, Some(chest)),
+            Some(chest)
+        );
+        assert_eq!(
+            over(panel, WIDE, on_necklace, Some(chest)),
+            Some(cells[0].0)
+        );
     }
 
     #[test]
     fn groups_without_a_vanilla_slot_start_on_their_first_slot() {
         let panel = [0.0, 0.0, 176.0, 166.0];
         let hand = GROUPS.iter().position(|g| g.id == "hand").unwrap();
-        let (cells, _) = group_cells(panel, hand);
+        let cells: Vec<_> = place(panel, WIDE, hand).cells().collect();
         assert_eq!(cells[0].1, [77.0, 44.0]);
         assert_eq!(cells[1].1, [77.0 + CELL, 44.0]);
+    }
+
+    #[test]
+    fn a_popup_leaving_the_screen_flips_or_is_pushed_back() {
+        let chest = GROUPS.iter().position(|g| g.id == "chest").unwrap();
+        let inside = |p: &popup::Placed, w: f32| {
+            let f = p.frame();
+            f[0] >= 0.0 && f[0] + f[2] <= w
+        };
+        // Panel hard against the left edge, five positions either way: pushed back in.
+        let placed = place([0.0, 50.0, 176.0, 166.0], [400.0, 300.0], chest);
+        assert!(inside(&placed, 400.0));
+        // A screen narrower than the popup: pushed to the left edge.
+        let placed = place([10.0, 50.0, 176.0, 166.0], [60.0, 300.0], chest);
+        assert_eq!(placed.frame()[0], 0.0);
+        // The offhand's two positions: the ring goes right of the vanilla slot, left when the right is off the screen.
+        let offhand = GROUPS.iter().position(|g| g.id == "offhand").unwrap();
+        let ring = |panel_x: f32| place([panel_x, 50.0, 176.0, 166.0], [400.0, 300.0], offhand);
+        let (near, far) = (ring(100.0), ring(300.0));
+        assert_eq!(near.cells().next().unwrap().1[0], 100.0 + 77.0 + CELL);
+        assert_eq!(far.cells().next().unwrap().1[0], 300.0 + 77.0 - CELL);
+        assert!(inside(&near, 400.0) && inside(&far, 400.0));
+    }
+
+    #[test]
+    fn display_order_is_not_equip_order() {
+        // Every slot shown once.
+        let mut shown: Vec<&str> = data::DISPLAY.to_vec();
+        shown.sort();
+        let mut all: Vec<&str> = SLOTS.iter().map(|s| s.0).collect();
+        all.sort();
+        assert_eq!(shown, all);
+        // The popup puts the cape next to the chest slot, ahead of the back slot ...
+        let chest = GROUPS.iter().position(|g| g.id == "chest").unwrap();
+        let ids: Vec<&str> = members(chest).iter().map(|&i| SLOTS[i].0).collect();
+        assert_eq!(
+            ids,
+            ["chest/necklace", "chest/cape", "chest/back", "chest/charm"]
+        );
+        // ... but an item both take goes to the back slot first, as it did before the popup.
+        let first = (0..SLOTS.len()).find(|&i| accepts(i, "vc_gliders:paraglider_wood"));
+        assert_eq!(SLOTS[first.unwrap()].0, "chest/back");
+        let equip: Vec<&str> = SLOTS
+            .iter()
+            .map(|s| s.0)
+            .filter(|s| s.starts_with("chest/"))
+            .collect();
+        assert_eq!(
+            equip,
+            ["chest/necklace", "chest/back", "chest/cape", "chest/charm"]
+        );
+    }
+
+    #[test]
+    fn only_the_release_of_a_taken_press_is_taken() {
+        let mut p = Presses::default();
+        // A press the mod took: its release is the mod's, wherever the pointer is.
+        p.press(0, true);
+        assert!(p.release(0));
+        // The end of a vanilla gesture is not, even over a trinket slot.
+        p.press(0, false);
+        assert!(!p.release(0));
+        // Taken once, released once.
+        p.press(1, true);
+        assert!(!p.release(0));
+        assert!(p.release(1));
+        assert!(!p.release(1));
+        // A new press of the button ends the taken one before it.
+        p.press(0, true);
+        p.press(0, false);
+        assert!(!p.release(0));
+        // Odd button numbers take nothing.
+        p.press(-1, true);
+        p.press(40, true);
+        assert!(!p.release(-1) && !p.release(40));
+    }
+
+    #[test]
+    fn slot_clicks_survive_the_wire() {
+        let c = SlotClick {
+            kind: WEAR,
+            slot: 3,
+            inv: 35,
+            expect: "minecraft:totem_of_undying".into(),
+        };
+        assert_eq!(SlotClick::decode(&c.encode()), Some(c));
+        assert_eq!(SlotClick::decode(&[WEAR, 99, 0]), None);
+        assert_eq!(SlotClick::decode(&[WEAR, 0, 36]), None);
+        assert_eq!(SlotClick::decode(&[7, 0, 0]), None);
+        assert_eq!(SlotClick::decode(&[TAKE, 0]), None);
+    }
+
+    /// Slots, worn stacks and the give of a click, with a step that fails.
+    #[derive(Default)]
+    struct Fake {
+        slots: Vec<Option<u8>>,
+        worn: Vec<Option<u8>>,
+        given: Vec<u8>,
+        fail: &'static str,
+    }
+
+    impl Store<u8> for Fake {
+        fn set_slot(&mut self, slot: u32, stack: Option<u8>) -> bool {
+            // A failing slot write changes nothing, like the game's.
+            if self.fail == "slot" && stack.is_some() != self.slots[slot as usize].is_some() {
+                return false;
+            }
+            self.slots[slot as usize] = stack;
+            true
+        }
+        fn set_worn(&mut self, worn: &[Option<u8>]) -> bool {
+            if self.fail == "worn" && worn.iter().flatten().count() == 2 {
+                return false;
+            }
+            self.worn = worn.to_vec();
+            true
+        }
+        fn give(&mut self, stack: u8) -> bool {
+            if self.fail == "give" {
+                return false;
+            }
+            self.given.push(stack);
+            true
+        }
+    }
+
+    #[test]
+    fn a_failed_step_leaves_nothing_changed() {
+        // Wear item 7 from slot 0 (a stack of one) in place of worn item 5.
+        let old = vec![Some(5), None];
+        let new = vec![Some(7), None];
+        let slot = Some((0, None, Some(7)));
+        let start = |fail| Fake {
+            slots: vec![Some(7)],
+            worn: old.clone(),
+            fail,
+            ..Default::default()
+        };
+        let mut ok = start("");
+        assert!(commit(&mut ok, slot.clone(), &old, &new, Some(5)));
+        assert_eq!(
+            (ok.slots, ok.worn, ok.given),
+            (vec![None], new.clone(), vec![5])
+        );
+        // The give is refused: the worn stacks and the inventory slot are as they were.
+        let mut f = start("give");
+        assert!(!commit(&mut f, slot.clone(), &old, &new, Some(5)));
+        assert_eq!(
+            (f.slots, f.worn, f.given),
+            (vec![Some(7)], old.clone(), vec![])
+        );
+        // The attachment write is refused: the inventory slot is as it was and nothing was given.
+        let two = vec![Some(7), Some(5)];
+        let mut f = start("worn");
+        assert!(!commit(&mut f, slot.clone(), &old, &two, Some(5)));
+        assert_eq!(
+            (f.slots, f.worn, f.given),
+            (vec![Some(7)], old.clone(), vec![])
+        );
+        // The inventory write is refused: nothing else was written.
+        let mut f = start("slot");
+        assert!(!commit(&mut f, slot, &old, &new, Some(5)));
+        assert_eq!(
+            (f.slots, f.worn, f.given),
+            (vec![Some(7)], old.clone(), vec![])
+        );
     }
 
     #[test]
