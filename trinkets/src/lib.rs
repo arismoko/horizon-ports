@@ -34,7 +34,8 @@ use mod_api::{
     MenuClickedEvent, MenuPart, MenuRef, MenuRemovedEvent, MenuReplace, MouseButton, PayloadBytes,
     PayloadHandleError, PayloadId, PlayerLoggedInEvent, PlayerRef, PlayerRespawnedEvent, Registrar,
     RegistrationContext, RightClickItemEvent, ScreenMouseButtonPressedPreEvent,
-    ScreenRenderPostEvent, ScreenView, ServerHost, ServerTickEvent, ServerTickPhase, Tag, Text,
+    ScreenMouseButtonReleasedPreEvent, ScreenRenderPostEvent, ScreenView, ServerHost,
+    ServerTickEvent, ServerTickPhase, Tag, Text, TooltipElement,
 };
 
 /// The id of the worn-stacks attachment other packages look up.
@@ -187,9 +188,10 @@ fn set_worn(host: &mut dyn ServerHost, uuid: u128, stacks: &[Option<ItemStack>])
     ok
 }
 
-/// The GUI sprite of slot `i`'s slot-type icon.
+/// The GUI sprite of slot `i`'s slot-type icon (`trinkets:gui/slots/<slot>` of the original).
 fn icon(i: usize) -> String {
-    SLOTS[i].2.to_owned()
+    let name = SLOTS[i].0.rsplit('/').next().unwrap_or("empty");
+    format!("trinkets:slots/{name}")
 }
 
 fn item_id(host: &dyn Host, stack: &ItemStack) -> String {
@@ -362,6 +364,8 @@ struct Shared {
     /// Client: the local player's worn stacks, read each tick while the inventory screen is open (the screen's
     /// hooks cannot read attachments).
     view: Mutex<Vec<Option<ItemStack>>>,
+    /// Client: the group whose popup is open on the inventory screen.
+    open: Mutex<Option<usize>>,
     /// Client: trinket slots clicked on the inventory screen, handled on the next client tick.
     clicks: Mutex<Vec<usize>>,
 }
@@ -619,75 +623,131 @@ impl IPayloadHandler for SlotHandler {
 
 // ---- the inventory screen ----
 
-/// The groups of `SLOTS` (the first part of a slot id): name, and the anchor, `[x, y, size]` in the inventory panel.
-/// The armour and offhand groups hang off the vanilla slot itself (16 pixels, nothing drawn: hovering it opens
-/// the group, as in the original); hand and charm have no vanilla slot, so they get a small drawn anchor left of
-/// the panel.
-const GROUPS: &[(&str, &str, [f32; 3])] = &[
-    ("head", "Head", [8.0, 8.0, 16.0]),
-    ("chest", "Chest", [8.0, 26.0, 16.0]),
-    ("legs", "Legs", [8.0, 44.0, 16.0]),
-    ("feet", "Feet", [8.0, 62.0, 16.0]),
-    ("offhand", "Offhand", [77.0, 62.0, 16.0]),
-    ("hand", "Hand", [-12.0, 83.0, 10.0]),
-    ("charm", "Charm", [-12.0, 101.0, 10.0]),
+/// A group of `SLOTS` (the first part of a slot id): its id, where its first slot sits in the inventory panel
+/// (the item's top left), and, for a group over a vanilla slot, that slot's menu index and empty-slot sprite.
+struct Group {
+    id: &'static str,
+    at: [f32; 2],
+    vanilla: Option<(usize, &'static str)>,
+}
+
+/// The groups in the original's order: over the armour and offhand slots, then (as the wiki says) "above the offhand
+/// going up", the groups that have no vanilla slot, whose first slot is always shown.
+const GROUPS: &[Group] = &[
+    Group {
+        id: "head",
+        at: [8.0, 8.0],
+        vanilla: Some((5, "container/slot/helmet")),
+    },
+    Group {
+        id: "chest",
+        at: [8.0, 26.0],
+        vanilla: Some((6, "container/slot/chestplate")),
+    },
+    Group {
+        id: "legs",
+        at: [8.0, 44.0],
+        vanilla: Some((7, "container/slot/leggings")),
+    },
+    Group {
+        id: "feet",
+        at: [8.0, 62.0],
+        vanilla: Some((8, "container/slot/boots")),
+    },
+    Group {
+        id: "offhand",
+        at: [77.0, 62.0],
+        vanilla: Some((45, "container/slot/shield")),
+    },
+    Group {
+        id: "hand",
+        at: [77.0, 44.0],
+        vanilla: None,
+    },
+    Group {
+        id: "charm",
+        at: [77.0, 26.0],
+        vanilla: None,
+    },
 ];
-/// A slot's box: the 18 pixel square round a 16 pixel item.
+/// A slot's pitch.
 const CELL: f32 = 18.0;
+/// The popup frame's pieces (`more_slots.png`): a cap each side and the stretch behind one slot, 26 high.
+const FRAME_H: f32 = 26.0;
+const FRAME_CAP: f32 = 4.0;
 
 /// The indices of `SLOTS` in group `g`.
 fn group_slots(g: usize) -> Vec<usize> {
-    let prefix = format!("{}/", GROUPS[g].0);
+    let prefix = format!("{}/", GROUPS[g].id);
     (0..SLOTS.len())
         .filter(|&i| SLOTS[i].0.starts_with(&prefix))
         .collect()
+}
+
+/// Where position `n` of a group sits from the first: the wiki's `8 6 4 2 0 1 3 5 7 9`.
+fn offset(n: usize) -> i32 {
+    if n % 2 == 1 {
+        (n as i32 + 1) / 2
+    } else {
+        -(n as i32 / 2)
+    }
 }
 
 fn inside(rect: [f32; 4], p: [f32; 2]) -> bool {
     p[0] >= rect[0] && p[0] < rect[0] + rect[2] && p[1] >= rect[1] && p[1] < rect[1] + rect[3]
 }
 
-/// Group `g`'s anchor box, and its slots' boxes (slot index, box) as fanned out to the left of it, for the
-/// inventory panel `panel`.
-fn group_boxes(panel: [f32; 4], g: usize) -> ([f32; 4], Vec<(usize, [f32; 4])>) {
-    let [x, y, size] = GROUPS[g].2;
-    let (x, y) = (panel[0] + x, panel[1] + y);
-    let edge = (size - CELL) / 2.0;
-    let cells = group_slots(g)
+/// Group `g` for the inventory panel `panel`: the item top left of each of its slots (slot index, x, y), and the
+/// popup frame `[x, y, w, h]` round the row. A vanilla slot is position 0 and the group's slots follow it.
+fn group_cells(panel: [f32; 4], g: usize) -> (Vec<(usize, [f32; 2])>, [f32; 4]) {
+    let group = &GROUPS[g];
+    let start = usize::from(group.vanilla.is_some());
+    let at = |n: usize| {
+        [
+            panel[0] + group.at[0] + offset(n) as f32 * CELL,
+            panel[1] + group.at[1],
+        ]
+    };
+    let cells: Vec<_> = group_slots(g)
         .into_iter()
         .enumerate()
-        .map(|(k, i)| (i, [x + edge - CELL * (k + 1) as f32, y + edge, CELL, CELL]))
+        .map(|(k, i)| (i, at(k + start)))
         .collect();
-    ([x, y, size, size], cells)
-}
-
-/// The group whose anchor or fanned-out slots the pointer is over (it stays open over the whole row).
-fn open_group(panel: [f32; 4], mouse: [f32; 2]) -> Option<usize> {
-    (0..GROUPS.len()).find(|&g| {
-        let (anchor, cells) = group_boxes(panel, g);
-        let x0 = cells.iter().fold(anchor[0], |m, (_, c)| m.min(c[0]));
-        let edge = (anchor[2] - CELL) / 2.0;
-        inside(
-            [x0, anchor[1] + edge, anchor[0] + anchor[2] - x0, CELL],
-            mouse,
-        )
-    })
-}
-
-/// What the pointer is over: a trinket slot of the open group, or an anchor.
-enum Over {
-    Slot(usize),
-    Anchor(usize),
-}
-
-fn over(panel: [f32; 4], mouse: [f32; 2]) -> Option<Over> {
-    let g = open_group(panel, mouse)?;
-    let (anchor, cells) = group_boxes(panel, g);
-    match cells.iter().find(|(_, c)| inside(*c, mouse)) {
-        Some((i, _)) => Some(Over::Slot(*i)),
-        None if inside(anchor, mouse) => Some(Over::Anchor(g)),
-        None => None,
+    let (mut lo, mut hi) = (0, 0);
+    for k in 0..cells.len() + start {
+        lo = lo.min(offset(k));
+        hi = hi.max(offset(k));
     }
+    let x = panel[0] + group.at[0] + lo as f32 * CELL - 1.0 - FRAME_CAP;
+    let w = (hi - lo + 1) as f32 * CELL + 2.0 * FRAME_CAP;
+    (cells, [x, panel[1] + group.at[1] - 5.0, w, FRAME_H])
+}
+
+/// The 18 pixel box of group `g`'s first position (the vanilla slot, or its first slot).
+fn anchor_cell(panel: [f32; 4], g: usize) -> [f32; 4] {
+    [
+        panel[0] + GROUPS[g].at[0] - 1.0,
+        panel[1] + GROUPS[g].at[1] - 1.0,
+        CELL,
+        CELL,
+    ]
+}
+
+/// The group whose popup is open: the one whose first position the pointer is on, else the open one (`current`)
+/// while the pointer stays in its frame.
+fn open_group(panel: [f32; 4], mouse: [f32; 2], current: Option<usize>) -> Option<usize> {
+    (0..GROUPS.len())
+        .find(|&g| inside(anchor_cell(panel, g), mouse))
+        .or(current.filter(|&g| inside(group_cells(panel, g).1, mouse)))
+}
+
+/// The trinket slot of the open group `open` the pointer is on.
+fn over(panel: [f32; 4], mouse: [f32; 2], open: Option<usize>) -> Option<usize> {
+    let (cells, _) = group_cells(panel, open?);
+    cells
+        .into_iter()
+        .find(|(_, at)| inside([at[0] - 1.0, at[1] - 1.0, CELL, CELL], mouse))
+        .map(|(i, _)| i)
 }
 
 /// Whether `screen` is the player's own inventory (not a container, a mount's inventory or creative).
@@ -945,81 +1005,145 @@ impl Hooks for Mod {
         }
     }
 
-    /// The groups on the player's inventory screen: an anchor each, the hovered one fanned out, empty slots showing
-    /// their slot-type icon.
+    /// The groups on the player's inventory screen: the first slot of each group that has no vanilla slot, and the
+    /// popup of the hovered group (one framed row, its vanilla slot highlighted).
     fn screen_render_post(&self, host: &dyn ClientHost, event: &mut ScreenRenderPostEvent<'_>) {
         if !player_inventory(event.screen) {
             return;
         }
         let (panel, mouse) = (event.screen.rect, event.screen.mouse);
         let worn = lock(&self.shared.view).clone();
-        let open = open_group(panel, mouse);
+        let open = {
+            let mut open = lock(&self.shared.open);
+            *open = open_group(panel, mouse, *open);
+            *open
+        };
+        let menu = host.local_player().and_then(|p| p.container_menu(host));
         let draw = &mut *event.draw;
+        let mut slot = |draw: &mut dyn mod_api::DrawContext, i: usize, at: [f32; 2]| match worn
+            .get(i)
+            .cloned()
+            .flatten()
+        {
+            Some(stack) => {
+                draw.item_stack(&stack, at, 16.0);
+            }
+            None => {
+                draw.sprite(
+                    &icon(i),
+                    [0.0, 0.0, 16.0, 16.0],
+                    [at[0], at[1], 16.0, 16.0],
+                    None,
+                );
+            }
+        };
         for g in 0..GROUPS.len() {
-            let (anchor, cells) = group_boxes(panel, g);
-            if anchor[2] < 16.0 {
-                let dst = [anchor[0], anchor[1], anchor[2], anchor[2]];
-                draw.fill(dst, 0xFF373737);
-                let inner = [dst[0] + 1.0, dst[1] + 1.0, dst[2] - 2.0, dst[3] - 2.0];
-                draw.fill(inner, 0xFF8B8B8B);
-                if let Some((i, _)) = cells.first() {
-                    draw.sprite(&icon(*i), [0.0, 0.0, 16.0, 16.0], inner, Some(0xB0FFFFFF));
+            let group = &GROUPS[g];
+            let (cells, frame) = group_cells(panel, g);
+            if group.vanilla.is_none() && open != Some(g) {
+                if let Some((i, at)) = cells.first() {
+                    let c = anchor_cell(panel, g);
+                    draw.sprite("container/slot", [0.0, 0.0, 18.0, 18.0], c, None);
+                    slot(draw, *i, *at);
                 }
             }
             if open != Some(g) {
                 continue;
             }
-            for (i, c) in cells {
-                if !draw.sprite("container/slot", [0.0, 0.0, 18.0, 18.0], c, None) {
-                    draw.fill(c, 0xFF8B8B8B);
-                }
-                let at = [c[0] + 1.0, c[1] + 1.0];
-                match worn.get(i).cloned().flatten() {
-                    Some(stack) => {
-                        draw.item_stack(&stack, at, 16.0);
+            // The frame: a cap, the stretch behind each slot, a cap.
+            let n = ((frame[2] - 2.0 * FRAME_CAP) / CELL) as usize;
+            let (x, y) = (frame[0], frame[1]);
+            draw.sprite(
+                "trinkets:popup_left",
+                [0.0, 0.0, FRAME_CAP, FRAME_H],
+                [x, y, FRAME_CAP, FRAME_H],
+                None,
+            );
+            for k in 0..n {
+                let dst = [x + FRAME_CAP + k as f32 * CELL, y, CELL, FRAME_H];
+                draw.sprite("trinkets:popup_mid", [0.0, 0.0, CELL, FRAME_H], dst, None);
+            }
+            let right = [x + frame[2] - FRAME_CAP, y, FRAME_CAP, FRAME_H];
+            draw.sprite(
+                "trinkets:popup_right",
+                [0.0, 0.0, FRAME_CAP, FRAME_H],
+                right,
+                None,
+            );
+            let first = [panel[0] + group.at[0], panel[1] + group.at[1]];
+            match group.vanilla {
+                Some((index, empty)) => {
+                    match menu.and_then(|m| m.slot(host, index)).flatten() {
+                        Some(stack) => {
+                            draw.item_stack(&stack, first, 16.0);
+                        }
+                        None => {
+                            draw.sprite(
+                                empty,
+                                [0.0, 0.0, 16.0, 16.0],
+                                [first[0], first[1], 16.0, 16.0],
+                                None,
+                            );
+                        }
                     }
-                    None => {
-                        let dst = [at[0], at[1], 16.0, 16.0];
-                        draw.sprite(&icon(i), [0.0, 0.0, 16.0, 16.0], dst, Some(0x80FFFFFF));
-                    }
+                    draw.fill([first[0], first[1], 16.0, 16.0], 0x80FFFFFF);
                 }
-                if inside(c, mouse) {
+                None => {}
+            }
+            for (i, at) in &cells {
+                slot(draw, *i, *at);
+                if group.vanilla.is_none() && *at == first {
                     draw.fill([at[0], at[1], 16.0, 16.0], 0x80FFFFFF);
                 }
             }
         }
-        let line = match over(panel, mouse) {
-            Some(Over::Anchor(g)) => Some(Text::literal(GROUPS[g].1)),
-            Some(Over::Slot(i)) => Some(match worn.get(i).cloned().flatten() {
-                Some(stack) => host
-                    .hover_name(&stack)
-                    .unwrap_or_else(|_| Text::literal(SLOTS[i].1)),
-                None => Text::literal(format!("{} (empty)", SLOTS[i].1)),
-            }),
-            None => None,
-        };
-        if let Some(line) = line {
-            let _ = draw.gui_tooltip(&[line], mouse);
+        // The tooltip: a worn item's own, or the slot's name.
+        if let Some(i) = over(panel, mouse, open) {
+            let lines: Vec<Text> = match worn.get(i).cloned().flatten() {
+                Some(stack) => ItemResource::of(&stack)
+                    .tooltip(host, false, false)
+                    .unwrap_or_default()
+                    .into_iter()
+                    .filter_map(|e| match e {
+                        TooltipElement::Text(t, _) => Some(t),
+                        _ => None,
+                    })
+                    .collect(),
+                None => vec![Text::translate(
+                    format!("trinkets.slot.{}", SLOTS[i].0.replace('/', ".")),
+                    vec![],
+                )],
+            };
+            let _ = draw.gui_tooltip(&lines, mouse);
         }
     }
 
-    /// A click on one of the groups' boxes belongs to them, not to the vanilla screen under it.
+    /// A press on one of the open group's slots belongs to the mod: the vanilla screen under it would take it for a
+    /// click outside the panel and drop the cursor stack.
     fn screen_mouse_button_pressed_pre(
         &self,
         _host: &dyn ClientHost,
         event: &mut ScreenMouseButtonPressedPreEvent<'_>,
     ) -> Flow {
-        if !player_inventory(event.screen) {
-            return Flow::Continue;
-        }
-        match over(event.screen.rect, event.screen.mouse) {
-            Some(Over::Slot(i)) => {
+        match self.slot_under(event.screen) {
+            Some(i) => {
                 if matches!(event.button, 0 | 1) {
                     lock(&self.shared.clicks).push(i);
                 }
                 Flow::Cancel
             }
-            Some(Over::Anchor(_)) => Flow::Cancel,
+            None => Flow::Continue,
+        }
+    }
+
+    /// The release of such a press is the mod's as well.
+    fn screen_mouse_button_released_pre(
+        &self,
+        _host: &dyn ClientHost,
+        event: &mut ScreenMouseButtonReleasedPreEvent<'_>,
+    ) -> Flow {
+        match self.slot_under(event.screen) {
+            Some(_) => Flow::Cancel,
             None => Flow::Continue,
         }
     }
@@ -1147,6 +1271,17 @@ impl Hooks for Mod {
     }
 }
 
+impl Mod {
+    /// The trinket slot the pointer is on, on the player's inventory screen.
+    fn slot_under(&self, screen: &ScreenView<'_>) -> Option<usize> {
+        if !player_inventory(screen) {
+            return None;
+        }
+        let open = open_group(screen.rect, screen.mouse, *lock(&self.shared.open));
+        over(screen.rect, screen.mouse, open)
+    }
+}
+
 #[derive(Default)]
 struct Mod {
     shared: Arc<Shared>,
@@ -1226,21 +1361,42 @@ mod tests {
     }
 
     #[test]
-    fn a_group_fans_out_from_its_anchor() {
+    fn positions_alternate_right_then_left() {
+        let order: Vec<i32> = (0..10).map(offset).collect();
+        assert_eq!(order, [0, 1, -1, 2, -2, 3, -3, 4, -4, 5]);
+    }
+
+    #[test]
+    fn a_group_is_one_row_over_its_vanilla_slot() {
         let panel = [100.0, 50.0, 176.0, 166.0];
-        let chest = GROUPS.iter().position(|g| g.0 == "chest").unwrap();
-        let (anchor, cells) = group_boxes(panel, chest);
-        assert_eq!(cells.len(), 4);
-        // Left of the anchor, one cell each, and the pointer over the last one keeps the group open.
-        assert!(cells.iter().all(|(_, c)| c[0] + CELL <= anchor[0]));
-        let last = cells[3].1;
-        let p = [last[0] + 3.0, last[1] + 3.0];
-        assert_eq!(open_group(panel, p), Some(chest));
-        assert!(matches!(over(panel, p), Some(Over::Slot(i)) if i == cells[3].0));
-        // Away from the group, nothing is open.
-        assert_eq!(open_group(panel, [panel[0] + 80.0, panel[1] + 100.0]), None);
-        let a = [anchor[0] + 2.0, anchor[1] + 2.0];
-        assert!(matches!(over(panel, a), Some(Over::Anchor(g)) if g == chest));
+        let chest = GROUPS.iter().position(|g| g.id == "chest").unwrap();
+        let (cells, frame) = group_cells(panel, chest);
+        // Necklace right of the chest slot, cape left of it, then back and charm further out.
+        let x = |n: usize| cells[n].1[0];
+        assert_eq!(
+            cells[0].0,
+            SLOTS.iter().position(|s| s.0 == "chest/necklace").unwrap()
+        );
+        assert_eq!(x(0), panel[0] + 8.0 + CELL);
+        assert_eq!(x(1), panel[0] + 8.0 - CELL);
+        // Five positions in the frame, the vanilla slot among them.
+        assert_eq!(frame[2], 5.0 * CELL + 2.0 * FRAME_CAP);
+        // The pointer on the vanilla slot opens the group; it stays open over the row, not elsewhere.
+        let on_slot = [panel[0] + 10.0, panel[1] + 28.0];
+        assert_eq!(open_group(panel, on_slot, None), Some(chest));
+        let on_necklace = [x(0) + 3.0, panel[1] + 28.0];
+        assert_eq!(open_group(panel, on_necklace, None), None);
+        assert_eq!(open_group(panel, on_necklace, Some(chest)), Some(chest));
+        assert_eq!(over(panel, on_necklace, Some(chest)), Some(cells[0].0));
+    }
+
+    #[test]
+    fn groups_without_a_vanilla_slot_start_on_their_first_slot() {
+        let panel = [0.0, 0.0, 176.0, 166.0];
+        let hand = GROUPS.iter().position(|g| g.id == "hand").unwrap();
+        let (cells, _) = group_cells(panel, hand);
+        assert_eq!(cells[0].1, [77.0, 44.0]);
+        assert_eq!(cells[1].1, [77.0 + CELL, 44.0]);
     }
 
     #[test]
