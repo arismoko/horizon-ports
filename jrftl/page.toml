@@ -7,3 +7,11 @@ Upstream Fabric 1.10.0 still references Prepared Flesh and hard-mode recipes in 
 Originally by Alexander Daum (456Xander), ported to Sunrise by arismoko.
 """
 categories = ["game-mechanics"]
+
+[[screenshots]]
+path = "page/furnace.png"
+caption = "Leather in the furnace's output slot."
+
+[[screenshots]]
+path = "page/smoker.png"
+caption = "Leather in the smoker's output slot."
