@@ -1,19 +1,19 @@
-summary = "Fifteen extra equipment slots (hat, necklace, back, cape, ring, belt, shoes, charm and more), worn from a menu on G or by right-clicking the item."
+summary = "Fifteen extra equipment slots (hat, necklace, back, cape, ring, belt, shoes, charm and more), worn from a popup on your inventory screen or by right-clicking the item."
 description = """
 Extra equipment slots for the trinkets other mods add: face, hat, necklace, back, cape, charm, glove, two rings, belt, wearable lantern, key, quiver, shoes and a second charm.
 
 What it does:
 
-- Press G (Open Trinkets in Controls) to open the Trinkets menu: a slot for each trinket place, each showing its picture while empty. Click an item in your inventory to wear it in the first empty slot that takes it (or swap with the first that does); click a worn item to take it off.
+- On your inventory screen, hover an armour slot or the offhand slot: that group's trinket slots pop out in one framed row. Click a worn item to take it off; click with an item on the cursor to wear it in that slot.
 - Right-click a trinket in your hand to wear it in the first empty slot that takes it. Backpacks and wireless terminals keep their own use; an elytra still goes in the chest slot.
-- An item's tooltip lists the trinket slots it fits, and the key that opens the menu.
+- An item's tooltip lists the trinket slots it fits.
 - A Totem of Undying worn in a trinket slot saves you from a killing blow, and is used up.
 - What you wear is saved with you, kept through death, and shown to your client. When you die without keepInventory your worn trinkets drop where you died (items with Curse of Vanishing are destroyed).
 - Other mods read the worn stacks from the `trinkets:worn` player attachment: Sophisticated Backpacks' back slot, Elytra Slot, Things, Radiant Gear and others.
 
 Differences from the original:
 
-- The menu is a two-row chest menu with the slot pictures as placeholder items, not the original's screen beside your inventory.
+- The popup's slots are drawn and clicked by the mod, not real slots of the inventory menu: shift-click, drag, number keys and recipe viewers do not see them. Real backed slots wait for sunrise-org/sunrise#4980.
 - Right-click wearing is done by the server only; the client does not predict it.
 - Dropped trinkets are not put in a grave by a grave mod: no grave mod is ported.
 
@@ -23,4 +23,4 @@ categories = ["equipment", "utility"]
 
 [[screenshots]]
 path = "page/world.png"
-caption = "Trinkets 15-slot equipment menu opened with G"
+caption = "The legs group opened from the leggings slot of the inventory screen"

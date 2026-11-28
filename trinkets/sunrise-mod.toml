@@ -2,7 +2,7 @@
 id = "trinkets"
 name = "Trinkets"
 version = "0.6.0"
-description = "Extra equipment slots for trinkets: they pop out of the armour and offhand slots of your inventory screen, and a menu on G."
+description = "Extra equipment slots for trinkets: they pop out of the armour and offhand slots of your inventory screen."
 authors = ["Emi", "C4", "lavoide", "arismoko"]
 license = "MIT"
 credits = "Ported to Minecraft 26.3 by lavoide, and to Sunrise by arismoko."

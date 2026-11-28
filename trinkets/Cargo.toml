@@ -3,7 +3,7 @@ name = "mod-trinkets"
 version = "0.6.0"
 edition = "2024"
 license = "MIT"
-description = "Trinkets for Sunrise: the player's extra equipment slots, in a menu on G"
+description = "Trinkets for Sunrise: the player's extra equipment slots, in the inventory screen"
 # Ported from: Trinkets 3.7.2 (Emi, C4, MIT).
 # Cargo's name and version are not the mod's identity: sunrise-mod.toml is.
 publish = false

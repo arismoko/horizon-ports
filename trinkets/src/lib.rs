@@ -6,9 +6,6 @@
 //!   (`{id, count, components}`), saved with the player, kept through death, and synced to the player's client.
 //!   Other packages (sophisticatedcore's back slot, elytraslot, things, radiantgear) read it with
 //!   `attachment_key::<Compound>("trinkets:worn")` after declaring this package as a dependency.
-//! - The menu (TrinketInventoryScreen's slots) is a vanilla chest menu the mod fills (`open_chest_menu`),
-//!   opened by the Trinkets key (G, `key.trinkets.open` in Controls): the client sends `trinkets:open` and the
-//!   server opens it on its next tick. A click on an inventory item wears it, a click on a worn one takes it off.
 //! - The player's inventory screen shows the groups too (head, chest, legs, feet, offhand, hand, charm): hovering an
 //!   armour or offhand slot fans its group out of it in a framed row (kept on the screen, flipped or pushed back),
 //!   hand and charm have a small anchor left of the panel; an empty slot shows its slot-type icon. The pinned API
@@ -33,10 +30,9 @@ use std::sync::{Arc, Mutex, RwLock};
 use mod_api::{
     AttachmentCodec, AttachmentDescriptor, AttachmentKey, ClientHost, ClientTickPostEvent,
     Compound, Flow, Hand, HitHost, Holder, Hooks, Host, HostSide, IPayloadContext, IPayloadHandler,
-    Identifier, InputKeyEvent, InteractionResult, ItemResource, ItemStack, ItemTooltipEvent,
-    KeyAction, KeyRegistration, LivingDeathEvent, LivingDeathProtectionEvent, MenuClick,
-    MenuClickedEvent, MenuPart, MenuRef, MenuRemovedEvent, MenuReplace, MouseButton, PayloadBytes,
-    PayloadHandleError, PayloadId, PlayerLoggedInEvent, PlayerRef, PlayerRespawnedEvent, Registrar,
+    Identifier, InteractionResult, ItemResource, ItemStack, ItemTooltipEvent, LivingDeathEvent,
+    LivingDeathProtectionEvent, MenuClick, MenuRef, MouseButton, PayloadBytes, PayloadHandleError,
+    PayloadId, PlayerLoggedInEvent, PlayerRef, PlayerRespawnedEvent, Registrar,
     RegistrationContext, RightClickItemEvent, ScreenMouseButtonPressedPreEvent,
     ScreenMouseButtonReleasedPreEvent, ScreenRenderPostEvent, ScreenView, ServerHost,
     ServerTickEvent, ServerTickPhase, Tag, Text, TooltipElement,
@@ -44,13 +40,10 @@ use mod_api::{
 
 /// The id of the worn-stacks attachment other packages look up.
 pub const WORN_ID: &str = "trinkets:worn";
-const OPEN: &str = "trinkets:open";
 /// A click on a trinket slot of the inventory screen: [kind, trinket slot, inventory slot].
 const SLOT: &str = "trinkets:slot";
 const TAKE: u8 = 0;
 const WEAR: u8 = 1;
-const KEY: &str = "open";
-const MENU: &str = "minecraft:generic_9x2";
 
 static WORN: RwLock<Option<AttachmentKey<Compound>>> = RwLock::new(None);
 
@@ -64,16 +57,16 @@ fn lock<T>(m: &Mutex<T>) -> std::sync::MutexGuard<'_, T> {
 
 /// Whether slot `i` takes `item` (its trinkets tag).
 pub fn accepts(i: usize, item: &str) -> bool {
-    SLOTS.get(i).is_some_and(|s| s.3.contains(&item))
+    SLOTS.get(i).is_some_and(|s| s.2.contains(&item))
 }
 
 /// Whether some slot takes `item`.
 pub fn is_trinket(item: &str) -> bool {
-    SLOTS.iter().any(|s| s.3.contains(&item))
+    SLOTS.iter().any(|s| s.2.contains(&item))
 }
 
 /// Items tagged into a trinket slot that aren't TrinketItems in Java: their own use comes first (a backpack
-/// opens, a wireless terminal opens its terminal), so a right click doesn't wear them; the menu still does.
+/// opens, a wireless terminal opens its terminal), so a right click doesn't wear them.
 fn own_use(id: &str) -> bool {
     id.starts_with("sophisticatedbackpacks:") || id == "toms_storage:ts.adv_wireless_terminal"
 }
@@ -222,53 +215,6 @@ fn with_count(stack: &ItemStack, count: u32) -> Option<ItemStack> {
     let mut s = stack.clone();
     s.set_count(count).ok()?;
     Some(s)
-}
-
-// ---- the menu ----
-
-/// The chest rows the slots fill.
-pub fn rows() -> u8 {
-    SLOTS.len().div_ceil(9).clamp(1, 6) as u8
-}
-
-/// What the menu shows: each worn stack, or the slot's placeholder named for the slot.
-fn menu_items(host: &dyn Host, worn: &[Option<ItemStack>]) -> Vec<Option<ItemStack>> {
-    let mut out: Vec<Option<ItemStack>> = SLOTS
-        .iter()
-        .zip(worn)
-        .map(|(s, w)| {
-            w.clone().or_else(|| {
-                let key = host.item_key(&Identifier::parse(s.2).ok()?)?;
-                let mut p = ItemStack::new(key, 1)?;
-                let mut patch = Compound::new();
-                patch.insert(
-                    "minecraft:custom_name".into(),
-                    text_line(&format!("{} (empty)", s.1), None),
-                );
-                patch.insert(
-                    "minecraft:lore".into(),
-                    Tag::List(vec![text_line(
-                        "Click a trinket in your inventory to wear it.",
-                        Some("gray"),
-                    )]),
-                );
-                let _ = p.apply_components(&patch);
-                Some(p)
-            })
-        })
-        .collect();
-    out.resize(rows() as usize * 9, None);
-    out
-}
-
-/// A menu slot past the menu's own: the player's inventory slot (main 9..36 first, then the hotbar).
-pub fn inventory_slot(size: usize, slot: i32) -> Option<u32> {
-    let rel = usize::try_from(slot).ok()?.checked_sub(size)?;
-    match rel {
-        0..27 => Some(rel as u32 + 9),
-        27..36 => Some(rel as u32 - 27),
-        _ => None,
-    }
 }
 
 /// The main inventory (slots 0..36), and whether every slot was read as it is. A slot whose stack can't be handed
@@ -421,10 +367,6 @@ struct Shared {
     /// The worn Totem of Undying of each player, by entity id: what `living_death_protection` answers with. The hook's
     /// host reads no item registry, so the stack is kept here whenever the worn stacks change or the player appears.
     totems: Mutex<HashMap<i32, WornTotem>>,
-    /// Players who pressed the key, to open the menu for on the next server tick.
-    opens: Mutex<Vec<u128>>,
-    /// The open trinket menu's window of each player.
-    menus: Mutex<HashMap<u128, i32>>,
     /// Slot clicks of the inventory screen to do on the next server tick.
     slots: Mutex<Vec<(u128, SlotClick)>>,
     /// Client: the local player's worn stacks, read each tick while the inventory screen is open (the screen's
@@ -556,71 +498,16 @@ fn live(host: &dyn ServerHost, uuid: u128, window: i32) -> Option<MenuRef> {
 }
 
 impl Shared {
-    fn open(&self, host: &mut dyn ServerHost, uuid: u128) {
-        // Already looking at it: don't rebuild the menu and resend the inventory.
-        let window = lock(&self.menus).get(&uuid).copied();
-        if window.is_some_and(|w| live(&*host, uuid, w).is_some()) {
-            return;
-        }
-        let stacks = worn(host, uuid);
-        let items = menu_items(&*host, &stacks);
-        let Some(player) = host.player(uuid) else {
-            return;
-        };
-        match player.open_chest_menu(
-            host,
-            rows(),
-            Text::literal("Trinkets"),
-            items,
-            MenuReplace::CloseFirst,
-        ) {
-            Ok(menu) => {
-                if let Some(window) = menu.container_id(&*host) {
-                    lock(&self.menus).insert(uuid, window);
-                }
-            }
-            Err(e) => eprintln!("[trinkets] open_chest_menu: {e:?}"),
-        }
-    }
-
     /// A click on the inventory screen's trinket slot, on the server tick: takes the stack off, or wears the stack in
-    /// inventory slot `inv` there. The click is for the player's own inventory window and for the stack the
-    /// player saw; with another window open or another stack there it does nothing. The inventory menu is not
-    /// the trinket menu, so no window is refreshed.
+    /// inventory slot `inv` there. All of it or nothing. The click is for the player's own inventory window and for
+    /// the stack the player saw (`expect`); with another window open or another stack there it does nothing.
     fn slot(&self, host: &mut dyn ServerHost, uuid: u128, c: SlotClick) {
         if live(&*host, uuid, 0).is_none() {
             return;
         }
-        let size = rows() as usize * 9;
-        if c.kind == TAKE {
-            self.click(host, uuid, -1, c.slot as i32, None, Some(&c.expect));
-        } else {
-            let rel = if c.inv >= 9 { c.inv - 9 } else { c.inv + 27 };
-            self.click(
-                host,
-                uuid,
-                -1,
-                (size + rel) as i32,
-                Some(c.slot),
-                Some(&c.expect),
-            );
-        }
-    }
-
-    /// A click in a trinket menu: all of it or nothing. `expect` is the item the clicker saw in the slot.
-    fn click(
-        &self,
-        host: &mut dyn ServerHost,
-        uuid: u128,
-        window: i32,
-        slot: i32,
-        only: Option<usize>,
-        expect: Option<&str>,
-    ) {
         let Some(player) = host.player(uuid) else {
             return;
         };
-        let size = rows() as usize * 9;
         let before = worn(host, uuid);
         let mut worn = before.clone();
         let (inv, complete) = inventory(&*host, player);
@@ -630,52 +517,45 @@ impl Shared {
         let mut change: Option<(u32, Option<ItemStack>, Option<ItemStack>)> = None;
         let mut give: Option<ItemStack> = None;
         let mut message: Option<&str> = None;
-        if let Ok(i) = usize::try_from(slot)
-            && i < SLOTS.len()
-        {
+        if c.kind == TAKE {
             // TrinketSlot: take a worn stack off, into the inventory.
-            if worn[i].as_ref().is_some_and(is_unknown) {
+            if worn[c.slot].as_ref().is_some_and(is_unknown) {
                 let _ = player.action_bar(
                     host,
                     Text::literal("This item's mod isn't installed: it stays in its slot"),
                 );
                 return;
             }
-            let Some(stack) = worn[i].take() else {
+            let Some(stack) = worn[c.slot].take() else {
                 return;
             };
-            if expect.is_some_and(|e| e != item_id(&*host, &stack)) {
+            if c.expect != item_id(&*host, &stack) {
                 return;
             }
             if room {
                 give = Some(stack);
             } else {
-                worn[i] = Some(stack);
+                worn[c.slot] = Some(stack);
                 message = Some("No room in your inventory");
             }
-        } else if let Some(s) = inventory_slot(size, slot) {
-            // A click on an inventory item: into the first empty slot that takes it, else swapped with the
-            // first one that does.
-            let s = s as usize;
-            let Some(stack) = inv[s].clone() else {
+        } else {
+            // Wear the stack from inventory slot `inv` in that slot, swapping with what is there.
+            let Some(stack) = inv[c.inv].clone() else {
                 return;
             };
             let id = item_id(&*host, &stack);
-            if expect.is_some_and(|e| e != id) {
+            if c.expect != id {
                 return;
             }
-            let fits: Vec<usize> = (0..SLOTS.len())
-                .filter(|&i| {
-                    only.is_none_or(|o| o == i)
-                        && accepts(i, &id)
-                        && !worn[i].as_ref().is_some_and(is_unknown)
-                })
+            let fits: Vec<usize> = [c.slot]
+                .into_iter()
+                .filter(|&i| accepts(i, &id) && !worn[i].as_ref().is_some_and(is_unknown))
                 .collect();
             let occupied: Vec<bool> = worn.iter().map(Option::is_some).collect();
-            match plan_wear(&fits, &occupied, stack.count(), room, s) {
+            match plan_wear(&fits, &occupied, stack.count(), room, c.inv) {
                 Plan::Wear { i, .. } => {
                     change = Some((
-                        s as u32,
+                        c.inv as u32,
                         with_count(&stack, stack.count() - 1),
                         Some(stack.clone()),
                     ));
@@ -683,8 +563,6 @@ impl Shared {
                 }
                 Plan::Refuse(m) => message = Some(m),
             }
-        } else {
-            return;
         }
         if message.is_none() {
             let mut store = Real {
@@ -697,62 +575,9 @@ impl Shared {
             }
         }
         self.refresh_totem(host, uuid);
-        let now = self::worn(host, uuid);
-        let items = menu_items(&*host, &now);
-        if let Some(menu) = live(&*host, uuid, window)
-            && let Err(e) = menu.set_items(host, items)
-        {
-            eprintln!("[trinkets] set_items: {e:?}");
-        }
         if let Some(m) = message {
             let _ = player.action_bar(host, Text::literal(m));
         }
-    }
-}
-
-/// The trinket menu's clicks: the menu is the vanilla two-row chest menu, so the part is asked for every such
-/// menu and takes only the window it opened.
-struct TrinketMenu(Arc<Shared>);
-
-#[mod_api::sunrise_part]
-impl MenuPart for TrinketMenu {
-    fn menu_clicked(&self, host: &mut dyn ServerHost, event: &mut MenuClickedEvent<'_>) -> Flow {
-        if lock(&self.0.menus).get(&event.uuid) != Some(&event.window) {
-            return Flow::Continue;
-        }
-        // PICKUP and QUICK_MOVE; drags, swaps and throws do nothing, and nothing moves on its own.
-        if matches!(event.mode, 0 | 1) {
-            self.0
-                .click(host, event.uuid, event.window, event.slot, None, None);
-        }
-        Flow::Cancel
-    }
-
-    fn menu_removed(&self, _host: &mut dyn ServerHost, event: &mut MenuRemovedEvent<'_>) {
-        let mut menus = lock(&self.0.menus);
-        if menus.get(&event.uuid) == Some(&event.window) {
-            menus.remove(&event.uuid);
-        }
-    }
-}
-
-struct OpenHandler(Arc<Shared>);
-
-impl IPayloadHandler for OpenHandler {
-    fn handle(
-        &self,
-        _payload: PayloadBytes,
-        context: &mut dyn IPayloadContext,
-    ) -> Result<(), PayloadHandleError> {
-        // One pending open per player, however often the key packet comes.
-        if let Ok(p) = context.player() {
-            let uuid = p.uuid();
-            let mut opens = lock(&self.0.opens);
-            if !opens.contains(&uuid) {
-                opens.push(uuid);
-            }
-        }
-        Ok(())
     }
 }
 
@@ -880,40 +705,15 @@ fn wear_slot(
     Some((i, worn))
 }
 
-/// A key name for a tooltip from its saved form (`key.keyboard.g`, `key.keyboard.left.shift`, `key.mouse.4`):
-/// `G`, `Left Shift`, `Mouse 4`. None when unbound.
-fn key_label(key: &str) -> Option<String> {
-    let (kind, rest) = if let Some(r) = key.strip_prefix("key.keyboard.") {
-        ("", r)
-    } else {
-        let r = key.strip_prefix("key.mouse.")?;
-        ("Mouse ", r)
-    };
-    if rest.is_empty() || rest == "unknown" {
-        return None;
-    }
-    let words: Vec<String> = rest
-        .split('.')
-        .map(|w| {
-            let mut c = w.chars();
-            match c.next() {
-                Some(f) => f.to_uppercase().chain(c).collect(),
-                None => String::new(),
-            }
-        })
-        .collect();
-    Some(format!("{kind}{}", words.join(" ")))
-}
-
-/// The tooltip line for the slots `names` (the slots an item fits), with the key as the player bound it.
-fn tooltip_line(names: &[&str], hint: &str) -> Option<String> {
+/// The tooltip line for the slots `names` (the slots an item fits).
+fn tooltip_line(names: &[&str]) -> Option<String> {
     let mut names: Vec<&str> = names.to_vec();
     names.dedup();
     match names.as_slice() {
         [] => None,
-        [one] => Some(format!("§7Equippable in the §9{one}§7 trinket slot{hint}")),
+        [one] => Some(format!("§7Equippable in the §9{one}§7 trinket slot")),
         many => Some(format!(
-            "§7Equippable in the trinket slots: §9{}§7{hint}",
+            "§7Equippable in the trinket slots: §9{}§7",
             many.join(", ")
         )),
     }
@@ -934,17 +734,9 @@ impl Hooks for Mod {
             Ok(key) => *WORN.write().unwrap_or_else(|e| e.into_inner()) = Some(key),
             Err(e) => eprintln!("[trinkets] {WORN_ID} not registered: {e}"),
         }
-        r.register_key_mapping(
-            KeyRegistration::new(KEY, "key.keyboard.g").label("key.trinkets.open"),
-        );
-        r.menu_part(MENU, TrinketMenu(self.shared.clone()));
         r.payload_handlers()
             .registrar("1")
             .optional()
-            .play_to_server(
-                PayloadId(OPEN.into()),
-                Arc::new(OpenHandler(self.shared.clone())),
-            )
             .play_to_server(
                 PayloadId(SLOT.into()),
                 Arc::new(SlotHandler(self.shared.clone())),
@@ -1012,40 +804,9 @@ impl Hooks for Mod {
         *event.protector = with_count(&totem.stack, 1);
     }
 
-    /// The Trinkets key, while playing or in the player's own inventory: asks the server for the menu.
-    fn input_key(&self, host: &mut dyn ClientHost, event: &mut InputKeyEvent<'_>) {
-        if !matches!(event.action, KeyAction::Press) {
-            return;
-        }
-        let bound = host
-            .mod_key_mapping("trinkets", KEY)
-            .ok()
-            .and_then(|m| m.binding(&*host).ok().map(|(key, _)| key == event.key))
-            == Some(true);
-        if !bound {
-            return;
-        }
-        let inventory = host
-            .observed_screen_id()
-            .is_some_and(|s| s.id == "inventory")
-            && host.screen_title().is_none();
-        if !(host.playing() || inventory) {
-            return;
-        }
-        if let Err(e) =
-            host.send_payload_to_server(&PayloadId(OPEN.into()), PayloadBytes(Vec::new()))
-        {
-            eprintln!("[trinkets] open: {e:?}");
-        }
-    }
-
     fn server_tick(&self, host: &mut dyn ServerHost, event: &mut ServerTickEvent<'_>) {
         if !matches!(event.phase, ServerTickPhase::ServerTickEnd { .. }) {
             return;
-        }
-        let opens = std::mem::take(&mut *lock(&self.shared.opens));
-        for uuid in opens {
-            self.shared.open(host, uuid);
         }
         let slots = std::mem::take(&mut *lock(&self.shared.slots));
         for (uuid, click) in slots {
@@ -1313,28 +1074,17 @@ impl Hooks for Mod {
         Flow::Continue
     }
 
-    /// TrinketsClient's tooltip: which trinket slots take the item (placeholders show nothing).
+    /// TrinketsClient's tooltip: which trinket slots take the item.
     fn item_tooltip(&self, host: &dyn ClientHost, event: &mut ItemTooltipEvent<'_>) {
         let Some(id) = event.stack.item().id(host) else {
             return;
         };
-        if id.starts_with("trinkets:slot_") {
-            return;
-        }
         let names: Vec<&str> = SLOTS
             .iter()
-            .filter(|s| s.3.contains(&id))
+            .filter(|s| s.2.contains(&id))
             .map(|s| s.1)
             .collect();
-        // The key as the player bound it; no hint when it's unbound.
-        let hint = host
-            .mod_key_mapping("trinkets", KEY)
-            .ok()
-            .and_then(|m| m.binding(host).ok())
-            .and_then(|(key, _)| key_label(key))
-            .map(|k| format!(" ({k})"))
-            .unwrap_or_default();
-        if let Some(line) = tooltip_line(&names, &hint) {
+        if let Some(line) = tooltip_line(&names) {
             let _ = event.lines.push(Text::literal(line), 0xFFAAAAAA);
         }
     }
@@ -1372,35 +1122,6 @@ mod tests {
     }
 
     #[test]
-    fn key_labels() {
-        assert_eq!(key_label("key.keyboard.g").as_deref(), Some("G"));
-        assert_eq!(
-            key_label("key.keyboard.left.shift").as_deref(),
-            Some("Left Shift")
-        );
-        assert_eq!(
-            key_label("key.keyboard.keypad.1").as_deref(),
-            Some("Keypad 1")
-        );
-        assert_eq!(key_label("key.mouse.4").as_deref(), Some("Mouse 4"));
-        assert_eq!(key_label("key.keyboard.unknown"), None);
-        assert_eq!(key_label("key.keyboard."), None);
-        assert_eq!(key_label("g"), None);
-    }
-
-    #[test]
-    fn inventory_slots_follow_the_menu() {
-        let size = rows() as usize * 9;
-        assert_eq!(inventory_slot(size, size as i32), Some(9));
-        assert_eq!(inventory_slot(size, size as i32 + 26), Some(35));
-        assert_eq!(inventory_slot(size, size as i32 + 27), Some(0));
-        assert_eq!(inventory_slot(size, size as i32 + 35), Some(8));
-        assert_eq!(inventory_slot(size, size as i32 + 36), None);
-        assert_eq!(inventory_slot(size, 3), None);
-        assert_eq!(inventory_slot(size, -999), None);
-    }
-
-    #[test]
     fn vanishing_curse_is_read_from_the_enchantments() {
         let mut enchantments = Compound::new();
         enchantments.insert("minecraft:vanishing_curse".into(), Tag::Int(1));
@@ -1417,10 +1138,8 @@ mod tests {
     }
 
     #[test]
-    fn the_menu_is_two_rows() {
+    fn there_are_fifteen_slots() {
         assert_eq!(SLOTS.len(), 15);
-        assert_eq!(rows(), 2);
-        assert_eq!(MENU, "minecraft:generic_9x2");
     }
 
     #[test]
@@ -1669,11 +1388,9 @@ mod tests {
     }
 
     #[test]
-    fn slot_ids_are_unique_and_have_placeholders() {
+    fn slot_ids_are_unique() {
         for (n, s) in SLOTS.iter().enumerate() {
             assert!(SLOTS[n + 1..].iter().all(|t| t.0 != s.0), "{}", s.0);
-            assert!(s.2.starts_with("trinkets:slot_"));
-            assert_eq!(s.2, format!("trinkets:slot_{}", s.0.replace('/', "_")));
         }
     }
 
@@ -1716,13 +1433,13 @@ mod tests {
     #[test]
     fn tooltips_name_the_slots() {
         assert_eq!(
-            tooltip_line(&["Cape"], " (G)").as_deref(),
-            Some("§7Equippable in the §9Cape§7 trinket slot (G)")
+            tooltip_line(&["Cape"]).as_deref(),
+            Some("§7Equippable in the §9Cape§7 trinket slot")
         );
         assert_eq!(
-            tooltip_line(&["Ring", "Ring", "Belt"], "").as_deref(),
+            tooltip_line(&["Ring", "Ring", "Belt"]).as_deref(),
             Some("§7Equippable in the trinket slots: §9Ring, Belt§7")
         );
-        assert_eq!(tooltip_line(&[], ""), None);
+        assert_eq!(tooltip_line(&[]), None);
     }
 }

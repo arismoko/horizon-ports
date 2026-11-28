@@ -1,15 +1,14 @@
 # Trinkets
 
-Extra equipment slots for trinkets, popping out of your inventory screen's armour and offhand slots, and in a menu on G.
+Extra equipment slots for trinkets, popping out of your inventory screen's armour and offhand slots.
 
 Extra equipment slots for the trinkets other mods add: face, hat, necklace, back, cape, charm, glove, two rings, belt, wearable lantern, key, quiver, shoes and a second charm.
 
 What it does:
 
 - On your inventory screen, hover an armour slot or the offhand slot: that group's trinket slots pop out in one framed row, the vanilla slot highlighted in it and the group's slots on either side (the first to its right, the next to its left, and so on: `4 2 0 1 3`). It folds away when the pointer leaves. Groups with no vanilla slot (hand, charm) have their first slot always shown above the offhand; hover it for the rest of the group. An empty slot shows its slot-type picture, a worn item its own tooltip, an empty slot its name. Click a worn item to take it off; click with an item on the cursor to wear it in that slot (the item is parked in a free inventory slot first, and one of it is worn).
-- Press G (Open Trinkets in Controls) to open the Trinkets menu: a slot for each trinket place, each showing its picture while empty. Click an item in your inventory to wear it in the first empty slot that takes it (or swap with the first that does); click a worn item to take it off.
 - Right-click a trinket in your hand to wear it in the first empty slot that takes it. Backpacks and wireless terminals keep their own use; an elytra still goes in the chest slot.
-- An item's tooltip lists the trinket slots it fits, and the key that opens the menu.
+- An item's tooltip lists the trinket slots it fits.
 - A Totem of Undying worn in a trinket slot saves you from a killing blow, and is used up.
 - What you wear is saved with you, kept through death, and shown to your client. When you die without keepInventory your worn trinkets drop where you died (items with Curse of Vanishing are destroyed).
 - Other mods read the worn stacks from the `trinkets:worn` player attachment: Sophisticated Backpacks' back slot, Elytra Slot, Things, Radiant Gear and others.
@@ -20,13 +19,12 @@ Differences from the original:
 - Wearing from the cursor parks the cursor stack in a free inventory slot first (the server cannot set the cursor), so with a full inventory the click is refused and nothing changes, where the original swaps with the cursor.
 - The popup keeps itself on the screen: when its row would leave the screen on one side it goes the other way if it fits there, else it is pushed back in. The panel moving for the recipe book is followed. This port has no slot type with several copies, so the original's vertical expansion (a column of copies of one slot type) is not there; it would be added with the first such type.
 - The popup frame, the empty-slot pictures (and the slot and group names) come from the original's `more_slots.png` and `gui/slots/*.png` (MIT); the lantern, key and quiver slots, which the original has no picture for, keep this port's own.
-- The G menu is a two-row chest menu with the slot pictures as placeholder items (the original opens its own screen).
+- There is no menu and no key: the inventory popup is the only UI, as in the original. Real backed slots (shift-click, drag, recipe viewers) wait for sunrise-org/sunrise#4980.
 - Right-click wearing is done by the server only; the client does not predict it.
 - Dropped trinkets are not put in a grave by a grave mod (universalgraves in the earlier pack): no grave mod is ported. Death drop uses `living_death` and the `minecraft:keep_inventory` game rule.
-- The Open Trinkets key listens to keyboard bindings only (a mouse button binding does not open the menu).
 - The vanishing-curse check reads `minecraft:enchantments` in the stack's components.
 
-Wearing is first-fit in the slot table's order (the G menu and right click); the popup shows a group's slots in the wiki's order (cape next to the chest slot), which is a separate table (`DISPLAY` in `src/data.rs`).
+Wearing is first-fit in the slot table's order (right click); the popup shows a group's slots in the wiki's order (cape next to the chest slot), which is a separate table (`DISPLAY` in `src/data.rs`).
 
 ## Package API for other mods
 

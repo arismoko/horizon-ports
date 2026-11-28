@@ -1,10 +1,9 @@
-// The player's trinket slots in equip order (the first one that takes an item gets it: G menu, right click), each
-// (id, name, placeholder item, accepted items): the slot table of Trinkets 3.7.2 with the slots and tags the modpack's mods declared.
-pub const SLOTS: &[(&str, &str, &str, &[&str])] = &[
+// The player's trinket slots in equip order (the first one that takes an item gets it: right click), each
+// (id, name, accepted items): the slot table of Trinkets 3.7.2 with the slots and tags the modpack's mods declared.
+pub const SLOTS: &[(&str, &str, &[&str])] = &[
     (
         "head/face",
         "Face",
-        "trinkets:slot_head_face",
         &[
             "create:goggles",
             "beachparty:sunglasses",
@@ -15,7 +14,6 @@ pub const SLOTS: &[(&str, &str, &str, &[&str])] = &[
     (
         "head/hat",
         "Hat",
-        "trinkets:slot_head_hat",
         &[
             "hexalia:earplugs",
             "clutter:beach_hat",
@@ -47,7 +45,6 @@ pub const SLOTS: &[(&str, &str, &str, &[&str])] = &[
     (
         "chest/necklace",
         "Necklace",
-        "trinkets:slot_chest_necklace",
         &[
             "hexalia:seafoam_talisman",
             "hexalia:sage_pendant",
@@ -61,7 +58,6 @@ pub const SLOTS: &[(&str, &str, &str, &[&str])] = &[
     (
         "chest/back",
         "Back",
-        "trinkets:slot_chest_back",
         &[
             "vc_gliders:paraglider_wood",
             "vc_gliders:paraglider_iron",
@@ -80,7 +76,6 @@ pub const SLOTS: &[(&str, &str, &str, &[&str])] = &[
     (
         "chest/cape",
         "Cape",
-        "trinkets:slot_chest_cape",
         &[
             "minecraft:elytra",
             "clutter:white_butterfly_elytra",
@@ -145,7 +140,6 @@ pub const SLOTS: &[(&str, &str, &str, &[&str])] = &[
     (
         "chest/charm",
         "Charm",
-        "trinkets:slot_chest_charm",
         &[
             "hexalia:witchheart_cluster",
             "hexalia:wyrd_feather",
@@ -155,7 +149,6 @@ pub const SLOTS: &[(&str, &str, &str, &[&str])] = &[
     (
         "hand/glove",
         "Glove",
-        "trinkets:slot_hand_glove",
         &[
             "beachparty:swim_wings",
             "things:riot_gauntlet",
@@ -168,7 +161,6 @@ pub const SLOTS: &[(&str, &str, &str, &[&str])] = &[
     (
         "hand/ring",
         "Ring",
-        "trinkets:slot_hand_ring",
         &[
             "hexalia:moonward_ring",
             "hexalia:green_omen",
@@ -176,16 +168,10 @@ pub const SLOTS: &[(&str, &str, &str, &[&str])] = &[
             "things:agglomeration",
         ],
     ),
-    (
-        "offhand/ring",
-        "Ring",
-        "trinkets:slot_offhand_ring",
-        &["things:agglomeration"],
-    ),
+    ("offhand/ring", "Ring", &["things:agglomeration"]),
     (
         "legs/belt",
         "Belt",
-        "trinkets:slot_legs_belt",
         &[
             "beachparty:bikini",
             "beachparty:trunks",
@@ -202,7 +188,6 @@ pub const SLOTS: &[(&str, &str, &str, &[&str])] = &[
     (
         "legs/lantern",
         "Wearable Lantern",
-        "trinkets:slot_legs_lantern",
         &[
             "trinketlantern:carry_lantern",
             "trinketlantern:carry_soul_lantern",
@@ -214,7 +199,6 @@ pub const SLOTS: &[(&str, &str, &str, &[&str])] = &[
     (
         "legs/key",
         "Key",
-        "trinkets:slot_legs_key",
         &[
             "supplementaries:key",
             "suppsquared:heavy_key",
@@ -224,13 +208,11 @@ pub const SLOTS: &[(&str, &str, &str, &[&str])] = &[
     (
         "legs/quiver",
         "Quiver",
-        "trinkets:slot_legs_quiver",
         &["supplementaries:quiver", "things:agglomeration"],
     ),
     (
         "feet/shoes",
         "Shoes",
-        "trinkets:slot_feet_shoes",
         &[
             "beachparty:crocs",
             "things:enchanted_wax_gland",
@@ -243,7 +225,6 @@ pub const SLOTS: &[(&str, &str, &str, &[&str])] = &[
     (
         "charm/charm",
         "Charm",
-        "trinkets:slot_charm_charm",
         &[
             "friendsandfoes:totem_of_freezing",
             "friendsandfoes:totem_of_illusion",
